@@ -1,0 +1,6 @@
+@KidTracking.API_HostAddress = http://localhost:5219
+
+GET {{KidTracking.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
