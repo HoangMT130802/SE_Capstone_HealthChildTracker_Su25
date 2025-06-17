@@ -7,9 +7,7 @@ namespace Services.Common
     {
         public MapperProfile()
         {
-            //Account
-            //CreateMap<AccountRegisterModel, Account>();
-            //CreateMap<AccountModel, Account>().ReverseMap();
+          
         }
     }
 }

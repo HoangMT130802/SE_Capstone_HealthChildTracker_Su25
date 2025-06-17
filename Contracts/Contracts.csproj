@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="DTOs\Member\" />
+    <Folder Include="DTOs\Membership\" />
+    <Folder Include="DTOs\FacilitySubcription\" />
+    <Folder Include="DTOs\Appointment\" />
+    <Folder Include="DTOs\FacilitySchedule\" />
+    <Folder Include="DTOs\Blog\" />
+    <Folder Include="DTOs\Survey\" />
+    <Folder Include="DTOs\Transaction\" />
+    <Folder Include="DTOs\Order\" />
+    <Folder Include="DTOs\Vaccine\" />
+  </ItemGroup>
+
+</Project>
