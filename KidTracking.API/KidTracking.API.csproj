@@ -6,6 +6,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="Middlewares\**" />
+    <Compile Remove="Utils\**" />
+    <Content Remove="Middlewares\**" />
+    <Content Remove="Utils\**" />
+    <EmbeddedResource Remove="Middlewares\**" />
+    <EmbeddedResource Remove="Utils\**" />
+    <None Remove="Middlewares\**" />
+    <None Remove="Utils\**" />
+  </ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
@@ -23,10 +34,5 @@
 		<ProjectReference Include="..\Repositories\Repositories.csproj" />
 		<ProjectReference Include="..\Services\Services.csproj" />
 	</ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Middlewares\" />
-    <Folder Include="Utils\" />
-  </ItemGroup>
 
 </Project>
