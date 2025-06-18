@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Contracts.DTOs.FacilityStaff
 {
-    internal class StaffDTO
+    public class StaffDTO
     {
     }
 }
