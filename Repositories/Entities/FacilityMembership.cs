@@ -5,9 +5,9 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class Membership
+public partial class FacilityMembership
 {
-    public int MembershipId { get; set; }
+    public int FacilityMembershipId { get; set; }
 
     public string Name { get; set; }
 
@@ -25,5 +25,5 @@ public partial class Membership
 
     public DateTime UpdatedAt { get; set; }
 
-    public virtual ICollection<UserMembership> UserMemberships { get; set; } = new List<UserMembership>();
+    public virtual ICollection<FacilityMembershipSubscription> FacilityMembershipSubscriptions { get; set; } = new List<FacilityMembershipSubscription>();
 }

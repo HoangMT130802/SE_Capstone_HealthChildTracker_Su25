@@ -5,21 +5,19 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class Blog
+public partial class VaccineDisease
 {
-    public int BlogId { get; set; }
+    public int VaccineDiseaseId { get; set; }
 
-    public string Title { get; set; }
+    public int DiseaseId { get; set; }
 
-    public string Content { get; set; }
-
-    public string Image { get; set; }
-
-    public string Category { get; set; }
-
-    public string Status { get; set; }
+    public int VaccineId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual Disease Disease { get; set; }
+
+    public virtual Vaccine Vaccine { get; set; }
 }

@@ -5,21 +5,23 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class Blog
+public partial class HealthSurvey
 {
-    public int BlogId { get; set; }
+    public int SurveyId { get; set; }
 
     public string Title { get; set; }
 
-    public string Content { get; set; }
+    public string Description { get; set; }
 
-    public string Image { get; set; }
+    public DateOnly StartDate { get; set; }
 
-    public string Category { get; set; }
+    public DateOnly EndDate { get; set; }
 
     public string Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual ICollection<SurveyQuestion> SurveyQuestions { get; set; } = new List<SurveyQuestion>();
 }

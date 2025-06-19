@@ -5,9 +5,9 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class ChildDiary
+public partial class DailyRecord
 {
-    public int DiaryId { get; set; }
+    public int DailyRecordId { get; set; }
 
     public int ChildId { get; set; }
 
@@ -26,4 +26,6 @@ public partial class ChildDiary
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual Child Child { get; set; }
 }

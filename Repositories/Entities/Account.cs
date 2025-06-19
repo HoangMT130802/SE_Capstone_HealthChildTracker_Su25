@@ -5,21 +5,15 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class User
+public partial class Account
 {
-    public int UserId { get; set; }
+    public int AccountId { get; set; }
 
-    public string Username { get; set; }
+    public string AccountName { get; set; }
 
     public string Password { get; set; }
 
     public string Email { get; set; }
-
-    public string FullName { get; set; }
-
-    public string Phone { get; set; }
-
-    public string Address { get; set; }
 
     public string Role { get; set; }
 
@@ -28,4 +22,10 @@ public partial class User
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual ICollection<FacilityStaff> FacilityStaffs { get; set; } = new List<FacilityStaff>();
+
+    public virtual ICollection<Member> Members { get; set; } = new List<Member>();
+
+    public virtual ICollection<UserMembership> UserMemberships { get; set; } = new List<UserMembership>();
 }

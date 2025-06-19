@@ -5,21 +5,21 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class Blog
+public partial class ScheduleSlot
 {
-    public int BlogId { get; set; }
+    public int SlotId { get; set; }
 
-    public string Title { get; set; }
+    public string SlotTime { get; set; }
 
-    public string Content { get; set; }
+    public int MaxCapacity { get; set; }
 
-    public string Image { get; set; }
-
-    public string Category { get; set; }
+    public int BookedCount { get; set; }
 
     public string Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual ICollection<AppointmentSchedule> AppointmentSchedules { get; set; } = new List<AppointmentSchedule>();
 }

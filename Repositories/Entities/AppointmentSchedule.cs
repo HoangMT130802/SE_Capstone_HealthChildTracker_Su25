@@ -5,23 +5,17 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class FacilityVaccine
+public partial class AppointmentSchedule
 {
-    public int FacilityVaccineId { get; set; }
+    public int ScheduleId { get; set; }
 
     public int FacilityId { get; set; }
 
-    public int VaccineId { get; set; }
+    public int SlotId { get; set; }
 
-    public decimal Price { get; set; }
+    public DateOnly Date { get; set; }
 
-    public int AvailableQuantity { get; set; }
-
-    public int BatchNumber { get; set; }
-
-    public DateOnly ExpiryDate { get; set; }
-
-    public DateOnly ImportDate { get; set; }
+    public int? BookedCount { get; set; }
 
     public string Status { get; set; }
 
@@ -31,5 +25,7 @@ public partial class FacilityVaccine
 
     public virtual VaccinationFacility Facility { get; set; }
 
-    public virtual Vaccine Vaccine { get; set; }
+    public virtual ScheduleSlot Slot { get; set; }
+
+    public virtual ICollection<VaccinationAppointment> VaccinationAppointments { get; set; } = new List<VaccinationAppointment>();
 }

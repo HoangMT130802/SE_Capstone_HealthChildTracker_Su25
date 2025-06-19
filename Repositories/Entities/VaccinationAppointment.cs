@@ -11,11 +11,9 @@ public partial class VaccinationAppointment
 
     public int ChildId { get; set; }
 
-    public int FacilityId { get; set; }
+    public int ScheduleId { get; set; }
 
-    public int VaccineId { get; set; }
-
-    public DateTime AppointmentDate { get; set; }
+    public int? OrderId { get; set; }
 
     public string Status { get; set; }
 
@@ -24,4 +22,16 @@ public partial class VaccinationAppointment
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual ICollection<AppointmentSurvey> AppointmentSurveys { get; set; } = new List<AppointmentSurvey>();
+
+    public virtual Child Child { get; set; }
+
+    public virtual ICollection<ChildVaccineProfile> ChildVaccineProfiles { get; set; } = new List<ChildVaccineProfile>();
+
+    public virtual Order Order { get; set; }
+
+    public virtual AppointmentSchedule Schedule { get; set; }
+
+    public virtual ICollection<VaccinationAppointmentDetail> VaccinationAppointmentDetails { get; set; } = new List<VaccinationAppointmentDetail>();
 }

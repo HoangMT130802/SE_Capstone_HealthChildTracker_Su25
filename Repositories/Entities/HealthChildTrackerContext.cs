@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Repositories.Entities;
 
@@ -12,53 +13,190 @@ public partial class HealthChildTrackerContext : DbContext
         : base(options)
     {
     }
+    public HealthChildTrackerContext() { }
+    public virtual DbSet<Account> Accounts { get; set; }
+
+    public virtual DbSet<AppointmentSchedule> AppointmentSchedules { get; set; }
+
+    public virtual DbSet<AppointmentSurvey> AppointmentSurveys { get; set; }
 
     public virtual DbSet<Blog> Blogs { get; set; }
 
     public virtual DbSet<Child> Children { get; set; }
 
-    public virtual DbSet<ChildDiary> ChildDiaries { get; set; }
+    public virtual DbSet<ChildVaccineProfile> ChildVaccineProfiles { get; set; }
 
-    public virtual DbSet<ChildVaccination> ChildVaccinations { get; set; }
+    public virtual DbSet<DailyRecord> DailyRecords { get; set; }
+
+    public virtual DbSet<Disease> Diseases { get; set; }
+
+    public virtual DbSet<DoctorProfile> DoctorProfiles { get; set; }
+
+    public virtual DbSet<FacilityMembership> FacilityMemberships { get; set; }
+
+    public virtual DbSet<FacilityMembershipSubscription> FacilityMembershipSubscriptions { get; set; }
+
+    public virtual DbSet<FacilityRating> FacilityRatings { get; set; }
+
+    public virtual DbSet<FacilityStaff> FacilityStaffs { get; set; }
 
     public virtual DbSet<FacilityVaccine> FacilityVaccines { get; set; }
-
-    public virtual DbSet<Faq> Faqs { get; set; }
-
-    public virtual DbSet<GrowthPrediction> GrowthPredictions { get; set; }
 
     public virtual DbSet<GrowthRecord> GrowthRecords { get; set; }
 
     public virtual DbSet<GrowthStandard> GrowthStandards { get; set; }
 
+    public virtual DbSet<HealthSurvey> HealthSurveys { get; set; }
+
+    public virtual DbSet<Member> Members { get; set; }
+
     public virtual DbSet<Membership> Memberships { get; set; }
 
-    public virtual DbSet<Review> Reviews { get; set; }
+    public virtual DbSet<Order> Orders { get; set; }
+
+    public virtual DbSet<OrderDetail> OrderDetails { get; set; }
+
+    public virtual DbSet<PackageVaccine> PackageVaccines { get; set; }
+
+    public virtual DbSet<ScheduleSlot> ScheduleSlots { get; set; }
+
+    public virtual DbSet<SurveyAnswer> SurveyAnswers { get; set; }
+
+    public virtual DbSet<SurveyQuestion> SurveyQuestions { get; set; }
 
     public virtual DbSet<Transaction> Transactions { get; set; }
-
-    public virtual DbSet<User> Users { get; set; }
 
     public virtual DbSet<UserMembership> UserMemberships { get; set; }
 
     public virtual DbSet<VaccinationAppointment> VaccinationAppointments { get; set; }
 
+    public virtual DbSet<VaccinationAppointmentDetail> VaccinationAppointmentDetails { get; set; }
+
     public virtual DbSet<VaccinationFacility> VaccinationFacilities { get; set; }
 
     public virtual DbSet<Vaccine> Vaccines { get; set; }
 
-    public virtual DbSet<VaccineSchedule> VaccineSchedules { get; set; }
+    public virtual DbSet<VaccineDisease> VaccineDiseases { get; set; }
 
+    public virtual DbSet<VaccinePackage> VaccinePackages { get; set; }
+
+    public virtual DbSet<VaccineTemplate> VaccineTemplates { get; set; }
+
+    public static string GetConnectionString(string connectionStringName)
+    {
+        var config = new ConfigurationBuilder()
+            .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
+            .AddJsonFile("appsettings.json")
+            .Build();
+
+        string connectionString = config.GetConnectionString(connectionStringName);
+        return connectionString;
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        => optionsBuilder.UseSqlServer(GetConnectionString("DefaultConnection"));
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Blog>(entity =>
+        modelBuilder.Entity<Account>(entity =>
         {
-            entity.Property(e => e.Content).IsRequired();
+            entity.HasKey(e => e.AccountId).HasName("PK__Account__46A222CD350285CB");
+
+            entity.ToTable("Account");
+
+            entity.Property(e => e.AccountId).HasColumnName("account_id");
+            entity.Property(e => e.AccountName)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("accountName");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Email)
+                .IsRequired()
+                .HasMaxLength(255)
+                .IsFixedLength()
+                .HasColumnName("email");
+            entity.Property(e => e.Password)
+                .IsRequired()
+                .HasMaxLength(255)
+                .IsFixedLength()
+                .HasColumnName("password");
+            entity.Property(e => e.Role)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("role");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<AppointmentSchedule>(entity =>
+        {
+            entity.HasKey(e => e.ScheduleId).HasName("PK__Appointm__9C8A5B498C4209A0");
+
+            entity.ToTable("AppointmentSchedule");
+
+            entity.Property(e => e.BookedCount).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
-            entity.Property(e => e.ImageUrl).HasMaxLength(255);
             entity.Property(e => e.Status)
                 .IsRequired()
                 .HasMaxLength(50);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Facility).WithMany(p => p.AppointmentSchedules)
+                .HasForeignKey(d => d.FacilityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AppointmentSchedule_Facility");
+
+            entity.HasOne(d => d.Slot).WithMany(p => p.AppointmentSchedules)
+                .HasForeignKey(d => d.SlotId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AppointmentSchedule_Slot");
+        });
+
+        modelBuilder.Entity<AppointmentSurvey>(entity =>
+        {
+            entity.HasKey(e => e.SurveyId).HasName("PK__Appointm__A5481F9D8C5421DD");
+
+            entity.ToTable("AppointmentSurvey");
+
+            entity.Property(e => e.SurveyId).HasColumnName("SurveyID");
+            entity.Property(e => e.AnswerId).HasColumnName("AnswerID");
+            entity.Property(e => e.AppointmentId).HasColumnName("AppointmentID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.QuestionId).HasColumnName("QuestionID");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Answer).WithMany(p => p.AppointmentSurveys)
+                .HasForeignKey(d => d.AnswerId)
+                .HasConstraintName("FK_AppointmentSurvey_Answer");
+
+            entity.HasOne(d => d.Appointment).WithMany(p => p.AppointmentSurveys)
+                .HasForeignKey(d => d.AppointmentId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AppointmentSurvey_Appointment");
+
+            entity.HasOne(d => d.Question).WithMany(p => p.AppointmentSurveys)
+                .HasForeignKey(d => d.QuestionId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AppointmentSurvey_Question");
+        });
+
+        modelBuilder.Entity<Blog>(entity =>
+        {
+            entity.HasKey(e => e.BlogId).HasName("PK__Blog__54379E3003061ED8");
+
+            entity.ToTable("Blog");
+
+            entity.Property(e => e.Category)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(255);
             entity.Property(e => e.Title)
                 .IsRequired()
                 .HasMaxLength(255);
@@ -67,106 +205,303 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<Child>(entity =>
         {
-            entity.Property(e => e.AllergiesNotes).IsRequired();
-            entity.Property(e => e.BirthDate).HasColumnType("datetime");
+            entity.HasKey(e => e.ChildId).HasName("PK__Child__015ADC0557515016");
+
+            entity.ToTable("Child");
+
+            entity.Property(e => e.ChildId).HasColumnName("child_id");
+            entity.Property(e => e.AllergiesNotes).HasMaxLength(255);
+            entity.Property(e => e.BirthDate)
+                .HasColumnType("datetime")
+                .HasColumnName("birth_date");
             entity.Property(e => e.BloodType)
                 .IsRequired()
-                .HasMaxLength(5);
+                .HasMaxLength(255);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.FullName)
                 .IsRequired()
                 .HasMaxLength(255);
             entity.Property(e => e.Gender)
                 .IsRequired()
-                .HasMaxLength(10);
-            entity.Property(e => e.MedicalHistory).IsRequired();
-            entity.Property(e => e.ParentName)
+                .HasMaxLength(255)
+                .IsFixedLength()
+                .HasColumnName("gender");
+            entity.Property(e => e.MedicalHistory).HasMaxLength(255);
+            entity.Property(e => e.MemberId).HasColumnName("MemberID");
+            entity.Property(e => e.UpdateAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Member).WithMany(p => p.Children)
+                .HasForeignKey(d => d.MemberId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Child_Member");
+        });
+
+        modelBuilder.Entity<ChildVaccineProfile>(entity =>
+        {
+            entity.HasKey(e => e.VaccineProfileId).HasName("PK__ChildVac__5845CEFCD0F4F77F");
+
+            entity.ToTable("ChildVaccineProfile");
+
+            entity.Property(e => e.Priority)
                 .IsRequired()
                 .HasMaxLength(255);
-            entity.Property(e => e.ParentNumber)
-                .IsRequired()
-                .HasMaxLength(20)
-                .IsUnicode(false);
-            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
-        });
-
-        modelBuilder.Entity<ChildDiary>(entity =>
-        {
-            entity.HasKey(e => e.DiaryId);
-
-            entity.ToTable("ChildDiary");
-
-            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
-            entity.Property(e => e.Note).IsRequired();
-            entity.Property(e => e.SleepHours).HasColumnType("decimal(8, 2)");
-            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
-        });
-
-        modelBuilder.Entity<ChildVaccination>(entity =>
-        {
-            entity.HasKey(e => e.VaccinationId);
-
-            entity.Property(e => e.NextVaccinationDate).HasColumnType("datetime");
             entity.Property(e => e.Status)
                 .IsRequired()
-                .HasMaxLength(50);
-            entity.Property(e => e.VaccinationDate).HasColumnType("datetime");
+                .HasMaxLength(255);
+
+            entity.HasOne(d => d.Appointment).WithMany(p => p.ChildVaccineProfiles)
+                .HasForeignKey(d => d.AppointmentId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ChildVaccineProfile_Appointment");
+
+            entity.HasOne(d => d.Child).WithMany(p => p.ChildVaccineProfiles)
+                .HasForeignKey(d => d.ChildId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ChildVaccineProfile_Child");
+
+            entity.HasOne(d => d.Disease).WithMany(p => p.ChildVaccineProfiles)
+                .HasForeignKey(d => d.DiseaseId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ChildVaccineProfile_Disease");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.ChildVaccineProfiles)
+                .HasForeignKey(d => d.VaccineId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ChildVaccineProfile_Vaccine");
+        });
+
+        modelBuilder.Entity<DailyRecord>(entity =>
+        {
+            entity.HasKey(e => e.DailyRecordId).HasName("PK__DailyRec__3A7D5F128233E804");
+
+            entity.ToTable("DailyRecord");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Note)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.SleepHours).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Child).WithMany(p => p.DailyRecords)
+                .HasForeignKey(d => d.ChildId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_DailyRecord_Child");
+        });
+
+        modelBuilder.Entity<Disease>(entity =>
+        {
+            entity.HasKey(e => e.DiseaseId).HasName("PK__Disease__69B533A93C1BE5FC");
+
+            entity.ToTable("Disease");
+
+            entity.Property(e => e.DiseaseId).HasColumnName("DiseaseID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Name)
+                .IsRequired()
+                .HasMaxLength(100);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorProfile>(entity =>
+        {
+            entity.HasKey(e => e.DoctorId).HasName("PK__DoctorPr__F3993564AF0E2DBB");
+
+            entity.ToTable("DoctorProfile");
+
+            entity.Property(e => e.DoctorId)
+                .ValueGeneratedNever()
+                .HasColumnName("doctor_id");
+            entity.Property(e => e.Age).HasColumnName("age");
+            entity.Property(e => e.Bio).HasColumnName("bio");
+            entity.Property(e => e.Certifications).HasColumnName("certifications");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Specialization)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("specialization");
+            entity.Property(e => e.University)
+                .HasMaxLength(255)
+                .HasColumnName("university");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Doctor).WithOne(p => p.DoctorProfile)
+                .HasForeignKey<DoctorProfile>(d => d.DoctorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_DoctorProfile_FacilityStaff");
+        });
+
+        modelBuilder.Entity<FacilityMembership>(entity =>
+        {
+            entity.HasKey(e => e.FacilityMembershipId).HasName("PK__Facility__97DC9F534FC1CEBE");
+
+            entity.ToTable("FacilityMembership");
+
+            entity.Property(e => e.Benefits).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Description).IsRequired();
+            entity.Property(e => e.Name)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.Price).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<FacilityMembershipSubscription>(entity =>
+        {
+            entity.HasKey(e => e.SubscriptionId).HasName("PK__Facility__9A2B249D62F27F92");
+
+            entity.ToTable("FacilityMembershipSubscription");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.EndDate).HasColumnType("datetime");
+            entity.Property(e => e.StartDate).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Facility).WithMany(p => p.FacilityMembershipSubscriptions)
+                .HasForeignKey(d => d.FacilityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityMembershipSubscription_Facility");
+
+            entity.HasOne(d => d.FacilityMembership).WithMany(p => p.FacilityMembershipSubscriptions)
+                .HasForeignKey(d => d.FacilityMembershipId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityMembershipSubscription_Membership");
+        });
+
+        modelBuilder.Entity<FacilityRating>(entity =>
+        {
+            entity.HasKey(e => e.RatingId).HasName("PK__Facility__FCCDF87C20161C39");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Facility).WithMany(p => p.FacilityRatings)
+                .HasForeignKey(d => d.FacilityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityRatings_Facility");
+
+            entity.HasOne(d => d.Member).WithMany(p => p.FacilityRatings)
+                .HasForeignKey(d => d.MemberId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityRatings_Member");
+        });
+
+        modelBuilder.Entity<FacilityStaff>(entity =>
+        {
+            entity.HasKey(e => e.StaffId).HasName("PK__Facility__1963DD9CDF966BB6");
+
+            entity.ToTable("FacilityStaff");
+
+            entity.Property(e => e.StaffId).HasColumnName("staff_id");
+            entity.Property(e => e.AccountId).HasColumnName("account_id");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.Email)
+                .HasMaxLength(255)
+                .HasColumnName("email");
+            entity.Property(e => e.FacilityId).HasColumnName("facility_id");
+            entity.Property(e => e.FullName)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("full_name");
+            entity.Property(e => e.Phone).HasColumnName("phone");
+            entity.Property(e => e.Position)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("position");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.FacilityStaffs)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityStaff_Account");
+
+            entity.HasOne(d => d.Facility).WithMany(p => p.FacilityStaffs)
+                .HasForeignKey(d => d.FacilityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityStaff_Facility");
         });
 
         modelBuilder.Entity<FacilityVaccine>(entity =>
         {
-            entity.Property(e => e.Price).HasColumnType("decimal(10, 2)");
-        });
+            entity.HasKey(e => e.FacilityVaccineId).HasName("PK__Facility__476D7086AEA6149E");
 
-        modelBuilder.Entity<Faq>(entity =>
-        {
-            entity.ToTable("FAQs");
+            entity.ToTable("FacilityVaccine");
 
-            entity.Property(e => e.Answer).IsRequired();
-            entity.Property(e => e.Category)
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Price).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.Status)
                 .IsRequired()
-                .HasMaxLength(50);
-            entity.Property(e => e.Question).IsRequired();
-        });
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
 
-        modelBuilder.Entity<GrowthPrediction>(entity =>
-        {
-            entity.HasKey(e => e.PredictionId);
+            entity.HasOne(d => d.Facility).WithMany(p => p.FacilityVaccines)
+                .HasForeignKey(d => d.FacilityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityVaccine_Facility");
 
-            entity.Property(e => e.ConfidenceLevel).HasColumnType("decimal(5, 2)");
-            entity.Property(e => e.PredictedBmi)
-                .HasColumnType("decimal(8, 2)")
-                .HasColumnName("PredictedBMI");
-            entity.Property(e => e.PredictedHeight).HasColumnType("decimal(8, 2)");
-            entity.Property(e => e.PredictedWeight).HasColumnType("decimal(8, 2)");
-            entity.Property(e => e.PredictionDate).HasColumnType("datetime");
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.FacilityVaccines)
+                .HasForeignKey(d => d.VaccineId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FacilityVaccine_Vaccine");
         });
 
         modelBuilder.Entity<GrowthRecord>(entity =>
         {
-            entity.HasKey(e => e.RecordId);
+            entity.HasKey(e => e.RecordId).HasName("PK__GrowthRe__FBDF78E9D20881B5");
+
+            entity.ToTable("GrowthRecord");
 
             entity.Property(e => e.Bmi)
                 .HasColumnType("decimal(8, 2)")
                 .HasColumnName("BMI");
-            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.ChildId).HasColumnName("child_id");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("Created_at");
             entity.Property(e => e.HeadCircumference).HasColumnType("decimal(8, 2)");
-            entity.Property(e => e.Height).HasColumnType("decimal(8, 2)");
-            entity.Property(e => e.Note).IsRequired();
-            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
-            entity.Property(e => e.Weight).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.Height)
+                .HasColumnType("decimal(8, 2)")
+                .HasColumnName("height");
+            entity.Property(e => e.Note)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("Updated_at");
+            entity.Property(e => e.Weight)
+                .HasColumnType("decimal(8, 2)")
+                .HasColumnName("weight");
+
+            entity.HasOne(d => d.Child).WithMany(p => p.GrowthRecords)
+                .HasForeignKey(d => d.ChildId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_GrowthRecord_Child");
         });
 
         modelBuilder.Entity<GrowthStandard>(entity =>
         {
-            entity.HasKey(e => e.StandardId);
+            entity.HasKey(e => e.Id).HasName("PK__GrowthSt__3213E83F9EFE97A8");
 
+            entity.ToTable("GrowthStandard");
+
+            entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.Gender)
                 .IsRequired()
-                .HasMaxLength(10);
+                .HasMaxLength(255);
             entity.Property(e => e.Measurement)
                 .IsRequired()
-                .HasMaxLength(50);
+                .HasMaxLength(255);
             entity.Property(e => e.Median).HasColumnType("decimal(8, 2)");
             entity.Property(e => e.Sd1neg)
                 .HasColumnType("decimal(8, 2)")
@@ -188,128 +523,402 @@ public partial class HealthChildTrackerContext : DbContext
                 .HasColumnName("SD3pos");
         });
 
+        modelBuilder.Entity<HealthSurvey>(entity =>
+        {
+            entity.HasKey(e => e.SurveyId).HasName("PK__HealthSu__A5481F9DD0935EDA");
+
+            entity.ToTable("HealthSurvey");
+
+            entity.Property(e => e.SurveyId).HasColumnName("SurveyID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.Title)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<Member>(entity =>
+        {
+            entity.HasKey(e => e.MemberId).HasName("PK__Member__0CF04B389FF37B34");
+
+            entity.ToTable("Member");
+
+            entity.Property(e => e.MemberId).HasColumnName("MemberID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.Address).HasMaxLength(255);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.FullName)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.PhoneNumber)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.Members)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Member_Account");
+        });
+
         modelBuilder.Entity<Membership>(entity =>
         {
-            entity.Property(e => e.Description).IsRequired();
+            entity.HasKey(e => e.MembershipId).HasName("PK__Membersh__92A78679E1FB2CAD");
+
+            entity.ToTable("Membership");
+
+            entity.Property(e => e.Benefits)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Description)
+                .IsRequired()
+                .HasMaxLength(255);
             entity.Property(e => e.Name)
                 .IsRequired()
-                .HasMaxLength(100);
+                .HasMaxLength(255);
             entity.Property(e => e.Price).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
         });
 
-        modelBuilder.Entity<Review>(entity =>
+        modelBuilder.Entity<Order>(entity =>
         {
-            entity.Property(e => e.Comment).IsRequired();
+            entity.HasKey(e => e.OrderId).HasName("PK__Order__C3905BAFAF9A6F5D");
+
+            entity.ToTable("Order");
+
+            entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.OrderDate).HasColumnType("datetime");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(10, 2)");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Member).WithMany(p => p.Orders)
+                .HasForeignKey(d => d.MemberId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Order_Member");
+
+            entity.HasOne(d => d.Package).WithMany(p => p.Orders)
+                .HasForeignKey(d => d.PackageId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Order_Package");
         });
 
-        modelBuilder.Entity<Transaction>(entity =>
+        modelBuilder.Entity<OrderDetail>(entity =>
         {
-            entity.Property(e => e.Amount).HasColumnType("decimal(8, 2)");
+            entity.HasKey(e => e.OrderDetailId).HasName("PK__OrderDet__D3B9D30C6EB8434E");
+
+            entity.ToTable("OrderDetail");
+
+            entity.Property(e => e.OrderDetailId).HasColumnName("OrderDetailID");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
-            entity.Property(e => e.Description).IsRequired();
-            entity.Property(e => e.PaymentMethod)
+            entity.Property(e => e.OrderId).HasColumnName("OrderID");
+            entity.Property(e => e.Price).HasColumnType("decimal(10, 2)");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+            entity.Property(e => e.VaccineId).HasColumnName("VaccineID");
+
+            entity.HasOne(d => d.Order).WithMany(p => p.OrderDetails)
+                .HasForeignKey(d => d.OrderId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OrderDetail_Order");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.OrderDetails)
+                .HasForeignKey(d => d.VaccineId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OrderDetail_Vaccine");
+        });
+
+        modelBuilder.Entity<PackageVaccine>(entity =>
+        {
+            entity.HasKey(e => e.PackageVaccineId).HasName("PK__PackageV__6CD20C2153B192A1");
+
+            entity.ToTable("PackageVaccine");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Package).WithMany(p => p.PackageVaccines)
+                .HasForeignKey(d => d.PackageId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PackageVaccine_Package");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.PackageVaccines)
+                .HasForeignKey(d => d.VaccineId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PackageVaccine_Vaccine");
+        });
+
+        modelBuilder.Entity<ScheduleSlot>(entity =>
+        {
+            entity.HasKey(e => e.SlotId).HasName("PK__Schedule__0A124AAFA4EE32F5");
+
+            entity.ToTable("ScheduleSlot");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.SlotTime)
                 .IsRequired()
                 .HasMaxLength(50);
             entity.Property(e => e.Status)
                 .IsRequired()
                 .HasMaxLength(50);
-            entity.Property(e => e.TransactionCode)
-                .IsRequired()
-                .HasMaxLength(100);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
         });
 
-        modelBuilder.Entity<User>(entity =>
+        modelBuilder.Entity<SurveyAnswer>(entity =>
         {
-            entity.Property(e => e.Address)
-                .IsRequired()
-                .HasMaxLength(255);
+            entity.HasKey(e => e.AnswerId).HasName("PK__SurveyAn__D4825024C9E37D75");
+
+            entity.ToTable("SurveyAnswer");
+
+            entity.Property(e => e.AnswerId).HasColumnName("AnswerID");
+            entity.Property(e => e.AnswerText).IsRequired();
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
-            entity.Property(e => e.Email)
-                .IsRequired()
-                .HasMaxLength(255);
-            entity.Property(e => e.FullName)
-                .IsRequired()
-                .HasMaxLength(255);
-            entity.Property(e => e.Password)
-                .IsRequired()
-                .HasMaxLength(255);
-            entity.Property(e => e.Phone)
-                .IsRequired()
-                .HasMaxLength(20)
-                .IsUnicode(false);
-            entity.Property(e => e.Role)
+            entity.Property(e => e.QuestionId).HasColumnName("QuestionID");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Question).WithMany(p => p.SurveyAnswers)
+                .HasForeignKey(d => d.QuestionId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SurveyAnswer_Question");
+        });
+
+        modelBuilder.Entity<SurveyQuestion>(entity =>
+        {
+            entity.HasKey(e => e.QuestionId).HasName("PK__SurveyQu__0DC06F8C973F3CEE");
+
+            entity.ToTable("SurveyQuestion");
+
+            entity.Property(e => e.QuestionId).HasColumnName("QuestionID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.QuestionText).IsRequired();
+            entity.Property(e => e.QuestionType)
                 .IsRequired()
                 .HasMaxLength(50);
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
-            entity.Property(e => e.Username)
+
+            entity.HasOne(d => d.Survey).WithMany(p => p.SurveyQuestions)
+                .HasForeignKey(d => d.SurveyId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SurveyQuestion_Survey");
+        });
+
+        modelBuilder.Entity<Transaction>(entity =>
+        {
+            entity.HasKey(e => e.TransactionId).HasName("PK__Transact__9A8C4A3D2E054878");
+
+            entity.ToTable("Transaction");
+
+            entity.Property(e => e.TransactionId).HasColumnName("Transaction_id");
+            entity.Property(e => e.Amount)
+                .HasColumnType("decimal(8, 2)")
+                .HasColumnName("amount");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.Description)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.PaymentMethod)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.TransactionCode)
                 .IsRequired()
                 .HasMaxLength(255);
         });
 
         modelBuilder.Entity<UserMembership>(entity =>
         {
+            entity.HasKey(e => e.UserMembershipId).HasName("PK__UserMemb__5A4E736A1D443DB8");
+
+            entity.ToTable("UserMembership");
+
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.EndDate).HasColumnType("datetime");
-            entity.Property(e => e.LastRenewalDate).HasColumnType("datetime");
             entity.Property(e => e.StartDate).HasColumnType("datetime");
-            entity.Property(e => e.Status)
-                .IsRequired()
-                .HasMaxLength(50);
+
+            entity.HasOne(d => d.Account).WithMany(p => p.UserMemberships)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_UserMembership_Account");
+
+            entity.HasOne(d => d.Membership).WithMany(p => p.UserMemberships)
+                .HasForeignKey(d => d.MembershipId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_UserMembership_Membership");
         });
 
         modelBuilder.Entity<VaccinationAppointment>(entity =>
         {
-            entity.HasKey(e => e.AppointmentId);
+            entity.HasKey(e => e.AppointmentId).HasName("PK__Vaccinat__8ECDFCC24051D7DC");
 
-            entity.Property(e => e.AppointmentDate).HasColumnType("datetime");
+            entity.ToTable("VaccinationAppointment");
+
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Note)
+                .IsRequired()
+                .HasMaxLength(255);
             entity.Property(e => e.Status)
                 .IsRequired()
-                .HasMaxLength(50);
+                .HasMaxLength(255);
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Child).WithMany(p => p.VaccinationAppointments)
+                .HasForeignKey(d => d.ChildId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccinationAppointment_Child");
+
+            entity.HasOne(d => d.Order).WithMany(p => p.VaccinationAppointments)
+                .HasForeignKey(d => d.OrderId)
+                .HasConstraintName("FK_VaccinationAppointment_Order");
+
+            entity.HasOne(d => d.Schedule).WithMany(p => p.VaccinationAppointments)
+                .HasForeignKey(d => d.ScheduleId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccinationAppointment_Schedule");
+        });
+
+        modelBuilder.Entity<VaccinationAppointmentDetail>(entity =>
+        {
+            entity.HasKey(e => e.DetailId).HasName("PK__Vaccinat__135C314D331DED69");
+
+            entity.ToTable("VaccinationAppointmentDetail");
+
+            entity.Property(e => e.DetailId).HasColumnName("DetailID");
+            entity.Property(e => e.AppointmentId).HasColumnName("AppointmentID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.DoseNumber).HasMaxLength(50);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Appointment).WithMany(p => p.VaccinationAppointmentDetails)
+                .HasForeignKey(d => d.AppointmentId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccinationAppointmentDetail_Appointment");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.VaccinationAppointmentDetails)
+                .HasForeignKey(d => d.VaccineId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccinationAppointmentDetail_Vaccine");
         });
 
         modelBuilder.Entity<VaccinationFacility>(entity =>
         {
-            entity.HasKey(e => e.FacilityId);
+            entity.HasKey(e => e.FacilityId).HasName("PK__Vaccinat__5FB08A748B40C165");
+
+            entity.ToTable("VaccinationFacility");
 
             entity.Property(e => e.Address)
                 .IsRequired()
                 .HasMaxLength(255);
-            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.Email)
                 .IsRequired()
                 .HasMaxLength(255);
-            entity.Property(e => e.LicenseNumber)
-                .IsRequired()
-                .HasMaxLength(50)
-                .IsUnicode(false);
-            entity.Property(e => e.Name)
+            entity.Property(e => e.FacilityName)
                 .IsRequired()
                 .HasMaxLength(255);
-            entity.Property(e => e.Phone)
-                .IsRequired()
-                .HasMaxLength(20)
-                .IsUnicode(false);
-            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<Vaccine>(entity =>
         {
-            entity.Property(e => e.Description).IsRequired();
+            entity.HasKey(e => e.VaccineId).HasName("PK__Vaccine__45DC6889B11BD29B");
+
+            entity.ToTable("Vaccine");
+
+            entity.Property(e => e.AgeGroup)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.Category)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.Contraindications)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Description)
+                .IsRequired()
+                .HasMaxLength(255);
             entity.Property(e => e.Manufacturer)
                 .IsRequired()
                 .HasMaxLength(255);
             entity.Property(e => e.Name)
                 .IsRequired()
                 .HasMaxLength(255);
+            entity.Property(e => e.Price).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.SideEffects).HasMaxLength(255);
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
         });
 
-        modelBuilder.Entity<VaccineSchedule>(entity =>
+        modelBuilder.Entity<VaccineDisease>(entity =>
         {
-            entity.HasKey(e => e.ScheduleId);
+            entity.HasKey(e => e.VaccineDiseaseId).HasName("PK__VaccineD__02EF30FB2DF5253F");
 
+            entity.ToTable("VaccineDisease");
+
+            entity.Property(e => e.VaccineDiseaseId).HasColumnName("VaccineDiseaseID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.DiseaseId).HasColumnName("DiseaseID");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+            entity.Property(e => e.VaccineId).HasColumnName("VaccineID");
+
+            entity.HasOne(d => d.Disease).WithMany(p => p.VaccineDiseases)
+                .HasForeignKey(d => d.DiseaseId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccineDisease_Disease");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.VaccineDiseases)
+                .HasForeignKey(d => d.VaccineId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccineDisease_Vaccine");
+        });
+
+        modelBuilder.Entity<VaccinePackage>(entity =>
+        {
+            entity.HasKey(e => e.PackageId).HasName("PK__VaccineP__322035CCB7D91918");
+
+            entity.ToTable("VaccinePackage");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.Description).IsRequired();
+            entity.Property(e => e.Name)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.Price).HasColumnType("decimal(8, 2)");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Facility).WithMany(p => p.VaccinePackages)
+                .HasForeignKey(d => d.FacilityId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccinePackage_Facility");
+        });
+
+        modelBuilder.Entity<VaccineTemplate>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PK__VaccineT__3214EC077133EBA8");
+
+            entity.ToTable("VaccineTemplate");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Description)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.Priority)
+                .IsRequired()
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Disease).WithMany(p => p.VaccineTemplates)
+                .HasForeignKey(d => d.DiseaseId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_VaccineTemplate_Disease");
         });
 
         OnModelCreatingPartial(modelBuilder);

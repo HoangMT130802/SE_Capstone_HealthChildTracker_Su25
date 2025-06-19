@@ -9,13 +9,9 @@ public partial class Child
 {
     public int ChildId { get; set; }
 
-    public int UserId { get; set; }
+    public int MemberId { get; set; }
 
     public string FullName { get; set; }
-
-    public string ParentName { get; set; }
-
-    public string ParentNumber { get; set; }
 
     public DateTime BirthDate { get; set; }
 
@@ -25,11 +21,21 @@ public partial class Child
 
     public string AllergiesNotes { get; set; }
 
-    public bool Status { get; set; }
-
     public string MedicalHistory { get; set; }
+
+    public bool Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
-    public DateTime UpdatedAt { get; set; }
+    public DateTime UpdateAt { get; set; }
+
+    public virtual ICollection<ChildVaccineProfile> ChildVaccineProfiles { get; set; } = new List<ChildVaccineProfile>();
+
+    public virtual ICollection<DailyRecord> DailyRecords { get; set; } = new List<DailyRecord>();
+
+    public virtual ICollection<GrowthRecord> GrowthRecords { get; set; } = new List<GrowthRecord>();
+
+    public virtual Member Member { get; set; }
+
+    public virtual ICollection<VaccinationAppointment> VaccinationAppointments { get; set; } = new List<VaccinationAppointment>();
 }

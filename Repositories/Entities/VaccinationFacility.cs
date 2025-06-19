@@ -9,19 +9,33 @@ public partial class VaccinationFacility
 {
     public int FacilityId { get; set; }
 
-    public string Name { get; set; }
+    public string FacilityName { get; set; }
+
+    public int LicenseNumber { get; set; }
 
     public string Address { get; set; }
 
-    public string Phone { get; set; }
+    public int Phone { get; set; }
 
     public string Email { get; set; }
 
-    public string LicenseNumber { get; set; }
+    public long Description { get; set; }
 
-    public bool Status { get; set; }
+    public long Status { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public long CreatedAt { get; set; }
 
-    public DateTime UpdatedAt { get; set; }
+    public long UpdatedAt { get; set; }
+
+    public virtual ICollection<AppointmentSchedule> AppointmentSchedules { get; set; } = new List<AppointmentSchedule>();
+
+    public virtual ICollection<FacilityMembershipSubscription> FacilityMembershipSubscriptions { get; set; } = new List<FacilityMembershipSubscription>();
+
+    public virtual ICollection<FacilityRating> FacilityRatings { get; set; } = new List<FacilityRating>();
+
+    public virtual ICollection<FacilityStaff> FacilityStaffs { get; set; } = new List<FacilityStaff>();
+
+    public virtual ICollection<FacilityVaccine> FacilityVaccines { get; set; } = new List<FacilityVaccine>();
+
+    public virtual ICollection<VaccinePackage> VaccinePackages { get; set; } = new List<VaccinePackage>();
 }

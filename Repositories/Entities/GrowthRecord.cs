@@ -24,4 +24,6 @@ public partial class GrowthRecord
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    public virtual Child Child { get; set; }
 }

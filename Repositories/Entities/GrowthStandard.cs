@@ -7,7 +7,7 @@ namespace Repositories.Entities;
 
 public partial class GrowthStandard
 {
-    public int StandardId { get; set; }
+    public int Id { get; set; }
 
     public string Gender { get; set; }
 

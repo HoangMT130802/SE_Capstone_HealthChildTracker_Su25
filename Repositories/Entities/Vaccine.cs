@@ -15,5 +15,35 @@ public partial class Vaccine
 
     public string Manufacturer { get; set; }
 
-    public bool Status { get; set; }
+    public string Category { get; set; }
+
+    public string AgeGroup { get; set; }
+
+    public int NumberOfDoses { get; set; }
+
+    public int MinIntervalBetweenDoses { get; set; }
+
+    public string SideEffects { get; set; }
+
+    public string Contraindications { get; set; }
+
+    public decimal Price { get; set; }
+
+    public string Status { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+
+    public virtual ICollection<ChildVaccineProfile> ChildVaccineProfiles { get; set; } = new List<ChildVaccineProfile>();
+
+    public virtual ICollection<FacilityVaccine> FacilityVaccines { get; set; } = new List<FacilityVaccine>();
+
+    public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
+
+    public virtual ICollection<PackageVaccine> PackageVaccines { get; set; } = new List<PackageVaccine>();
+
+    public virtual ICollection<VaccinationAppointmentDetail> VaccinationAppointmentDetails { get; set; } = new List<VaccinationAppointmentDetail>();
+
+    public virtual ICollection<VaccineDisease> VaccineDiseases { get; set; } = new List<VaccineDisease>();
 }

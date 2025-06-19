@@ -5,9 +5,11 @@ using System.Collections.Generic;
 
 namespace Repositories.Entities;
 
-public partial class Membership
+public partial class VaccinePackage
 {
-    public int MembershipId { get; set; }
+    public int PackageId { get; set; }
+
+    public int FacilityId { get; set; }
 
     public string Name { get; set; }
 
@@ -17,13 +19,15 @@ public partial class Membership
 
     public decimal Price { get; set; }
 
-    public string Benefits { get; set; }
-
-    public bool Status { get; set; }
+    public string Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 
-    public virtual ICollection<UserMembership> UserMemberships { get; set; } = new List<UserMembership>();
+    public virtual VaccinationFacility Facility { get; set; }
+
+    public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
+
+    public virtual ICollection<PackageVaccine> PackageVaccines { get; set; } = new List<PackageVaccine>();
 }

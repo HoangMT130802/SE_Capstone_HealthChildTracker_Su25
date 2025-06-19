@@ -9,7 +9,7 @@ public partial class UserMembership
 {
     public int UserMembershipId { get; set; }
 
-    public int UserId { get; set; }
+    public int AccountId { get; set; }
 
     public int MembershipId { get; set; }
 
@@ -17,7 +17,13 @@ public partial class UserMembership
 
     public DateTime EndDate { get; set; }
 
-    public string Status { get; set; }
+    public bool Status { get; set; }
 
-    public DateTime LastRenewalDate { get; set; }
+    public long RemainingConsultations { get; set; }
+
+    public DateOnly LastRenewalDate { get; set; }
+
+    public virtual Account Account { get; set; }
+
+    public virtual Membership Membership { get; set; }
 }
