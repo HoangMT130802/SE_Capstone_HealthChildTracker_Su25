@@ -10,8 +10,8 @@ namespace Contracts.DTOs.Authentication
     public class RegisterRequestDTO
     {
         [Required(ErrorMessage = "AccountName không được để trống")]
-        [StringLength(50, MinimumLength = 3, ErrorMessage = "Username phải từ 3-50 ký tự")]
-        public string Username { get; set; }
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "AccountName phải từ 3-50 ký tự")]
+        public string AccountName { get; set; }
 
         [Required(ErrorMessage = "Password không được để trống")]
         [MinLength(6, ErrorMessage = "Password phải có ít nhất 6 ký tự")]

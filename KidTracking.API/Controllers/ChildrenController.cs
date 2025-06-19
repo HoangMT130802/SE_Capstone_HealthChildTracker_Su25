@@ -23,11 +23,23 @@ namespace KidTracking.API.Controllers
 
         private int GetCurrentAccountId()
         {
+            // Log all claims for debugging
+            _logger.LogInformation($"All user claims: {string.Join(", ", User.Claims.Select(c => $"{c.Type}={c.Value}"))}");
+            
             var accountIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            _logger.LogInformation($"NameIdentifier claim: {accountIdClaim}");
+            
+            // Also try custom AccountId claim
+            var customAccountIdClaim = User.FindFirst("AccountId")?.Value;
+            _logger.LogInformation($"Custom AccountId claim: {customAccountIdClaim}");
+            
             if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
             {
+                _logger.LogError($"Failed to parse AccountId from claims. NameIdentifier: {accountIdClaim}");
                 throw new UnauthorizedAccessException("Không thể xác định account ID từ token");
             }
+            
+            _logger.LogInformation($"Successfully extracted AccountId: {accountId}");
             return accountId;
         }
 
@@ -49,6 +61,27 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError(ex, "Error getting children for current account");
                 return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        // Debug endpoint để test token đơn giản
+        [HttpGet("debug/test-auth")]
+        public IActionResult TestAuth()
+        {
+            try
+            {
+                var accountId = GetCurrentAccountId();
+                return Ok(new
+                {
+                    message = "Authentication successful!",
+                    accountId = accountId,
+                    userClaims = User.Claims.Select(c => new { c.Type, c.Value }).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Auth test failed");
+                return BadRequest(new { message = ex.Message, details = ex.ToString() });
             }
         }
 

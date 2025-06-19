@@ -2,6 +2,8 @@
 using Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using BCrypt.Net;
+using Repositories.Interfaces;
 
 namespace KidTracking.API.Controllers
 {
@@ -64,6 +66,65 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError($"Registration error: {ex.Message}");
                 return BadRequest(new { message = "Đã có lỗi xảy ra khi đăng ký" });
+            }
+        }
+
+        [HttpPost("debug/test-password")]
+        [AllowAnonymous]
+        public IActionResult TestPasswordHash([FromBody] dynamic request)
+        {
+            try
+            {
+                string password = request.password;
+                string hash = BCrypt.Net.BCrypt.HashPassword(password);
+                bool verification = BCrypt.Net.BCrypt.Verify(password, hash);
+                
+                return Ok(new
+                {
+                    original = password,
+                    hashed = hash,
+                    verification = verification
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("debug/check-member")]
+        [Authorize]
+        public async Task<IActionResult> CheckMember()
+        {
+            try
+            {
+                var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(accountIdClaim, out int accountId))
+                {
+                    return BadRequest(new { message = "Invalid AccountId in token" });
+                }
+
+                // Check Account exists
+                var unitOfWork = HttpContext.RequestServices.GetRequiredService<IUnitOfWork>();
+                var accountRepo = unitOfWork.GetRepository<Repositories.Entities.Account>();
+                var account = await accountRepo.GetAsync(a => a.AccountId == accountId);
+
+                // Check Member exists  
+                var memberRepo = unitOfWork.GetRepository<Repositories.Entities.Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                return Ok(new
+                {
+                    accountId = accountId,
+                    accountExists = account != null,
+                    accountInfo = account != null ? new { account.AccountName, account.Email, account.Role } : null,
+                    memberExists = member != null,
+                    memberInfo = member != null ? new { member.MemberId, member.FullName, member.PhoneNumber } : null
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message, details = ex.ToString() });
             }
         }
     }

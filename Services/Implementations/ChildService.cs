@@ -29,18 +29,25 @@ namespace Services.Implementations
         {
             try
             {
+                _logger.LogInformation($"ChildService: Getting children for AccountId: {accountId}");
+                
                 // Lấy Member từ AccountId
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
+                _logger.LogInformation($"ChildService: Member lookup result: {(member != null ? $"Found MemberId {member.MemberId}" : "Not found")}");
+
                 if (member == null)
                 {
+                    _logger.LogWarning($"ChildService: No member found for AccountId {accountId}");
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
                 // Lấy tất cả children của member này
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var children = await childRepository.FindAsync(c => c.MemberId == member.MemberId && c.Status == true);
+                
+                _logger.LogInformation($"ChildService: Found {children.Count()} children for MemberId {member.MemberId}");
                 
                 return _mapper.Map<IEnumerable<ChildDTO>>(children);
             }

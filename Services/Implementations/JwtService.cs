@@ -24,10 +24,12 @@ namespace Services.Implementations
 
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()), // Đây chính là AccountId
                 new Claim(ClaimTypes.Name, account.AccountName),
                 new Claim(ClaimTypes.Email, account.Email),
-                new Claim(ClaimTypes.Role, account.Role)
+                new Claim(ClaimTypes.Role, account.Role),
+                // Thêm custom claim để debug
+                new Claim("AccountId", account.AccountId.ToString())
             };
 
             var credentials = new SigningCredentials(

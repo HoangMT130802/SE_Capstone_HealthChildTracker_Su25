@@ -41,8 +41,33 @@ namespace Services.Implementations
                     (u.AccountName.ToLower() == request.AccountName.ToLower() ||
                      u.Email.ToLower() == request.AccountName.ToLower()));
 
-                if (account == null || !BC.Verify(request.Password, account.Password))
+                _logger.LogInformation($"Login attempt for: {request.AccountName}");
+                
+                if (account == null)
                 {
+                    _logger.LogWarning($"Account not found: {request.AccountName}");
+                    throw new UnauthorizedAccessException("Thông tin đăng nhập không chính xác");
+                }
+
+                _logger.LogInformation($"Account found: {account.AccountName}, checking password...");
+                
+                // Debug password verification
+                _logger.LogInformation($"Raw password length: {request.Password?.Length}");
+                _logger.LogInformation($"Stored hash length: {account.Password?.Length}");
+                _logger.LogInformation($"Raw password: '{request.Password}'");
+                _logger.LogInformation($"Stored hash starts with: '{account.Password?.Substring(0, Math.Min(20, account.Password?.Length ?? 0))}'");
+                
+                // Trim stored password to handle FixedLength padding
+                string trimmedStoredPassword = account.Password?.Trim();
+                _logger.LogInformation($"Trimmed hash length: {trimmedStoredPassword?.Length}");
+                
+                bool isPasswordValid = BC.Verify(request.Password, trimmedStoredPassword);
+                _logger.LogInformation($"BCrypt verification result: {isPasswordValid}");
+                
+                if (!isPasswordValid)
+                {
+                    _logger.LogWarning($"Password verification failed for: {account.AccountName}");
+                    _logger.LogWarning($"Expected to verify: '{request.Password}' against hash: '{account.Password}'");
                     throw new UnauthorizedAccessException("Thông tin đăng nhập không chính xác");
                 }
 
@@ -52,9 +77,29 @@ namespace Services.Implementations
                 }
 
                 var response = _mapper.Map<UserResponseDTO>(account);
+
+                // Load additional info based on role
+                if (account.Role == "Member")
+                {
+                    var memberRepository = _unitOfWork.GetRepository<Member>();
+                    var member = await memberRepository.GetAsync(m => m.AccountId == account.AccountId);
+                    if (member != null)
+                    {
+                        response.FullName = member.FullName;
+                        response.Phone = member.PhoneNumber;
+                        response.Address = member.Address;
+                    }
+                }
+                else if (account.Role == "FacilityStaff" || account.Role == "Doctor" || account.Role == "Manager")
+                {
+                    // TODO: Load FacilityStaff info when needed
+                    // var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    // var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
+                }
+
                 response.Token = _jwtService.GenerateToken(account);
 
-                _logger.LogInformation($"User {account.AccountName} logged in successfully");
+                _logger.LogInformation($"User {account.AccountName} with role {account.Role} logged in successfully");
                 return response;
             }
             catch (Exception ex)
@@ -70,24 +115,71 @@ namespace Services.Implementations
             {
                 await ValidateRegistrationRequest(request);
 
-                // Hash mật khẩu
-                var hashedPassword = BC.HashPassword(request.Password);
+                // Begin transaction for account + member creation
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
                 
-                var accountRepository = _unitOfWork.GetRepository<Account>();
-                var newAccount = _mapper.Map<Account>(request);
-                newAccount.Password = hashedPassword;
-                newAccount.CreatedAt = DateTime.UtcNow;
-                newAccount.UpdatedAt = DateTime.UtcNow;
-                newAccount.Status = true;
+                try
+                {
+                    // Hash mật khẩu
+                    _logger.LogInformation($"Register - Raw password: '{request.Password}' (length: {request.Password?.Length})");
+                    var hashedPassword = BC.HashPassword(request.Password);
+                    _logger.LogInformation($"Register - Hashed password: '{hashedPassword}' (length: {hashedPassword?.Length})");
+                    
+                    // Test hash immediately  
+                    bool immediateVerification = BC.Verify(request.Password, hashedPassword);
+                    _logger.LogInformation($"Register - Immediate verification test: {immediateVerification}");
+                    
+                    // Tạo Account
+                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    var newAccount = _mapper.Map<Account>(request);
+                    newAccount.Password = hashedPassword;
+                    newAccount.CreatedAt = DateTime.UtcNow;
+                    newAccount.UpdatedAt = DateTime.UtcNow;
+                    newAccount.Status = true;
+                    newAccount.Role = "Member"; // Default registration role
 
-                await accountRepository.AddAsync(newAccount);
-                await _unitOfWork.SaveChangesAsync();
+                    await accountRepository.AddAsync(newAccount);
+                    await _unitOfWork.SaveChangesAsync(); // AccountId sẽ được generate ở đây
 
-                var response = _mapper.Map<UserResponseDTO>(newAccount);
-                response.Token = _jwtService.GenerateToken(newAccount);
+                    // Debug log để kiểm tra AccountId
+                    _logger.LogInformation($"Account created with ID: {newAccount.AccountId}");
 
-                _logger.LogInformation($"User {newAccount.AccountName} registered successfully");
-                return response;
+                    // Tạo Member record nếu role là Member
+                    if (newAccount.Role == "Member")
+                    {
+                        var memberRepository = _unitOfWork.GetRepository<Member>();
+                        var newMember = new Member
+                        {
+                            AccountId = newAccount.AccountId, // Bây giờ sẽ có ID đúng
+                            FullName = request.FullName,
+                            PhoneNumber = request.Phone,
+                            Address = request.Address,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        await memberRepository.AddAsync(newMember);
+                        await _unitOfWork.SaveChangesAsync();
+                        
+                        _logger.LogInformation($"Member created for AccountId: {newAccount.AccountId}");
+                    }
+
+                    await transaction.CommitAsync();
+
+                    var response = _mapper.Map<UserResponseDTO>(newAccount);
+                    response.FullName = request.FullName;
+                    response.Phone = request.Phone;
+                    response.Address = request.Address;
+                    response.Token = _jwtService.GenerateToken(newAccount);
+
+                    _logger.LogInformation($"User {newAccount.AccountName} registered successfully with role {newAccount.Role}");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -100,9 +192,9 @@ namespace Services.Implementations
         {
             var accountRepository = _unitOfWork.GetRepository<Account>();
 
-            if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
+            if (string.IsNullOrEmpty(request.AccountName) || string.IsNullOrEmpty(request.Password))
             {
-                throw new ArgumentException("Username và password không được để trống");
+                throw new ArgumentException("AccountName và password không được để trống");
             }
 
             if (!IsValidEmail(request.Email))
@@ -111,10 +203,10 @@ namespace Services.Implementations
             }
 
             var existingUsername = await accountRepository.GetAsync(u => 
-                u.AccountName.ToLower() == request.Username.ToLower());
+                u.AccountName.ToLower() == request.AccountName.ToLower());
             if (existingUsername != null)
             {
-                throw new InvalidOperationException("Username đã tồn tại");
+                throw new InvalidOperationException("AccountName đã tồn tại");
             }
 
             var existingEmail = await accountRepository.GetAsync(u => 

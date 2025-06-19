@@ -114,12 +114,10 @@ public partial class HealthChildTrackerContext : DbContext
             entity.Property(e => e.Email)
                 .IsRequired()
                 .HasMaxLength(255)
-                .IsFixedLength()
                 .HasColumnName("email");
             entity.Property(e => e.Password)
                 .IsRequired()
                 .HasMaxLength(255)
-                .IsFixedLength()
                 .HasColumnName("password");
             entity.Property(e => e.Role)
                 .IsRequired()
