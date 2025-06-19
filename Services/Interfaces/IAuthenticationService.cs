@@ -1,6 +1,6 @@
-﻿using BusinessLogic.DTOs.Authentication;
+﻿using Contracts.DTOs.Authentication;
 
-namespace BusinessLogic.Services.Interfaces
+namespace Services.Interfaces
 {
     public interface IAuthenticationService
     {

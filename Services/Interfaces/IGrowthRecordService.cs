@@ -1,11 +1,11 @@
-﻿using BusinessLogic.DTOs.GrowthRecord;
+﻿using Contracts.DTOs.GrowthRecord;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BusinessLogic.Services.Interfaces
+namespace Services.Interfaces
 {
     public interface IGrowthRecordService
     {

@@ -1,11 +1,11 @@
 using System.Security.Claims;
-using DataAccess.Entities;
+using Repositories.Entities;
 
-namespace BusinessLogic.Services.Interfaces
+namespace Services.Interfaces
 {
     public interface IJwtService
     {
-        string GenerateToken(User user);
+        string GenerateToken(Account account);
         ClaimsPrincipal ValidateToken(string token);
     }
 } 

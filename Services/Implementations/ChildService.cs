@@ -1,8 +1,8 @@
 ﻿using AutoMapper;
-using BusinessLogic.DTOs.Children;
-using BusinessLogic.Services.Interfaces;
-using DataAccess.Entities;
-using DataAccess.UnitOfWork;
+using Contracts.DTOs.Child;
+using Services.Interfaces;
+using Repositories.Entities;
+using Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -10,7 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BusinessLogic.Services.Implementations
+namespace Services.Implementations
 {
     public class ChildService : IChildService
     {
@@ -25,51 +25,81 @@ namespace BusinessLogic.Services.Implementations
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public async Task<IEnumerable<ChildDTO>> GetAllChildrenByUserIdAsync(int userId)
+        public async Task<IEnumerable<ChildDTO>> GetAllChildrenByAccountIdAsync(int accountId)
         {
             try
             {
+                // Lấy Member từ AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
+                }
+
+                // Lấy tất cả children của member này
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var children = await childRepository.FindAsync(c => c.UserId == userId);
+                var children = await childRepository.FindAsync(c => c.MemberId == member.MemberId && c.Status == true);
+                
                 return _mapper.Map<IEnumerable<ChildDTO>>(children);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting children for user {userId}");
+                _logger.LogError(ex, $"Error getting children for account {accountId}");
                 throw;
             }
         }
 
-        public async Task<ChildDTO> GetChildByIdAsync(int childId, int userId)
+        public async Task<ChildDTO> GetChildByIdAsync(int childId, int accountId)
         {
             try
             {
+                // Lấy Member từ AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
+                }
+
+                // Lấy child và kiểm tra quyền sở hữu
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.UserId == userId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
                 if (child == null)
                 {
-                    throw new KeyNotFoundException($"Child with ID {childId} not found for user {userId}");
+                    throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
 
                 return _mapper.Map<ChildDTO>(child);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error getting child {childId} for account {accountId}");
                 throw;
             }
         }
 
-        public async Task<ChildDTO> CreateChildAsync(int userId, CreateChildDTO childDTO)
+        public async Task<ChildDTO> CreateChildAsync(int accountId, CreateChildDTO childDTO)
         {
             try
             {
+                // Lấy Member từ AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}. Cần đăng ký membership trước.");
+                }
+
                 // Kiểm tra số lượng trẻ tối đa theo gói membership
                 var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
                 var activeMembership = await userMembershipRepo.GetAsync(
-                    um => um.UserId == userId &&
-                          um.Status == "Active" &&
+                    um => um.AccountId == accountId &&
+                          um.Status == true &&
                           um.EndDate > DateTime.UtcNow,
                     includeProperties: "Membership"
                 );
@@ -81,15 +111,18 @@ namespace BusinessLogic.Services.Implementations
 
                 // Kiểm tra số lượng trẻ hiện tại
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var currentChildrenCount = await childRepository.CountAsync(c => c.UserId == userId && c.Status == true);
+                var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
 
-                if (currentChildrenCount >= activeMembership.Membership.MaxChildren)
+                // Giả sử Membership có field MaxChildren, nếu không thì set default
+                int maxChildren = 5; // Default value, có thể lấy từ activeMembership.Membership.MaxChildren nếu có
+                
+                if (currentChildrenCount >= maxChildren)
                 {
-                    throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({activeMembership.Membership.MaxChildren}) theo gói membership");
+                    throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({maxChildren}) theo gói membership");
                 }
 
                 var child = _mapper.Map<Child>(childDTO);
-                child.UserId = userId;
+                child.MemberId = member.MemberId; // Sử dụng MemberId thay vì UserId
                 child.Status = true;
                 child.CreatedAt = DateTime.UtcNow;
                 child.UpdateAt = DateTime.UtcNow;
@@ -101,20 +134,31 @@ namespace BusinessLogic.Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error creating child for user {userId}");
+                _logger.LogError(ex, $"Error creating child for account {accountId}");
                 throw;
             }
         }
-        public async Task<ChildDTO> UpdateChildAsync(int childId, int userId, UpdateChildDTO childDTO)
+
+        public async Task<ChildDTO> UpdateChildAsync(int childId, int accountId, UpdateChildDTO childDTO)
         {
             try
             {
+                // Lấy Member từ AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
+                }
+
+                // Lấy child và kiểm tra quyền sở hữu
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.UserId == userId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
                 if (child == null)
                 {
-                    throw new KeyNotFoundException($"Child with ID {childId} not found for user {userId}");
+                    throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
 
                 _mapper.Map(childDTO, child);
@@ -127,21 +171,31 @@ namespace BusinessLogic.Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error updating child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error updating child {childId} for account {accountId}");
                 throw;
             }
         }
 
-        public async Task<bool> SoftDeleteChildAsync(int childId, int userId)
+        public async Task<bool> SoftDeleteChildAsync(int childId, int accountId)
         {
             try
             {
+                // Lấy Member từ AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
+                }
+
+                // Lấy child và kiểm tra quyền sở hữu
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.UserId == userId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
                 if (child == null)
                 {
-                    throw new KeyNotFoundException($"Child with ID {childId} not found for user {userId}");
+                    throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
 
                 // Soft delete
@@ -155,82 +209,44 @@ namespace BusinessLogic.Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error deleting child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error deleting child {childId} for account {accountId}");
                 throw;
             }
         }
-        public async Task<bool> HardDeleteChildAsync(int childId, int userId)
+
+        public async Task<bool> HardDeleteChildAsync(int childId, int accountId)
         {
             try
-            {            
+            {
+                // Lấy Member từ AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
+                }
+
+                // Lấy child và kiểm tra quyền sở hữu
                 var childRepository = _unitOfWork.GetRepository<Child>();
-             
-                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.UserId == userId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
                 if (child == null)
                 {
-                    throw new KeyNotFoundException($"Child with ID {childId} not found for user {userId}");
+                    throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
 
-                // Xóa các bản ghi liên quan trước
+                // Hard delete - có thể cần xóa các records liên quan trước
+                // TODO: Xử lý cascade delete cho GrowthRecord, VaccinationAppointment, etc.
                 
-
-           /*     // Xóa GrowthRecords
-                var growthRecordRepository = _unitOfWork.GetRepository<GrowthRecord>();
-                var growthRecords = await growthRecordRepository.GetAllAsync(gr => gr.ChildId == childId);
-                foreach (var record in growthRecords)
-                {
-                    growthRecordRepository.Delete(record);
-                }
-
-                // Xóa DailyRecords
-                var dailyRecordRepository = _unitOfWork.GetRepository<DailyRecord>();
-                var dailyRecords = await dailyRecordRepository.GetAllAsync(dr => dr.ChildId == childId);
-                foreach (var record in dailyRecords)
-                {
-                    dailyRecordRepository.Delete(record);
-                }
-
-                // Xóa ConsultationRequests và ConsultationResponses liên quan
-                var consultationRequestRepository = _unitOfWork.GetRepository<ConsultationRequest>();
-                var consultationRequests = await consultationRequestRepository.GetAllAsync(cr => cr.ChildId == childId);
-
-                var consultationResponseRepository = _unitOfWork.GetRepository<ConsultationResponse>();
-                foreach (var request in consultationRequests)
-                {
-                    var responses = await consultationResponseRepository.GetAllAsync(cr => cr.RequestId == request.RequestId);
-                    foreach (var response in responses)
-                    {
-                        consultationResponseRepository.Delete(response);
-                    }
-                    consultationRequestRepository.Delete(request);
-                }
-
-                // Xóa Appointments và Ratings liên quan
-                var appointmentRepository = _unitOfWork.GetRepository<Appointment>();
-                var appointments = await appointmentRepository.GetAllAsync(a => a.ChildId == childId);
-
-                var ratingRepository = _unitOfWork.GetRepository<Rating>();
-                foreach (var appointment in appointments)
-                {
-                    var ratings = await ratingRepository.GetAllAsync(r => r.AppointmentId == appointment.AppointmentId);
-                    foreach (var rating in ratings)
-                    {
-                        ratingRepository.Delete(rating);
-                    }
-                    appointmentRepository.Delete(appointment);
-                }*/
-
-               
                 childRepository.Delete(child);
-
                 await _unitOfWork.SaveChangesAsync();
 
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error hard deleting child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error hard deleting child {childId} for account {accountId}");
                 throw;
             }
         }

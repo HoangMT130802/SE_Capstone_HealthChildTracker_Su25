@@ -1,16 +1,16 @@
 ﻿using AutoMapper;
-using BusinessLogic.DTOs.GrowthRecord;
-using BusinessLogic.Services.Interfaces;
-using DataAccess.Entities;
-using DataAccess.UnitOfWork;
+using Services.Interfaces;
+using Contracts.DTOs.GrowthRecord;
 using Microsoft.Extensions.Logging;
+using Repositories.Entities;
+using Repositories.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BusinessLogic.Services.Implementations
+namespace Services.Implementations
 {
     public class GrowthRecordService : IGrowthRecordService
     {

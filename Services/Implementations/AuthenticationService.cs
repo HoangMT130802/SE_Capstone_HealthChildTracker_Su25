@@ -1,12 +1,12 @@
 ﻿using AutoMapper;
-using BusinessLogic.DTOs.Authentication;
-using BusinessLogic.Services.Interfaces;
-using DataAccess.Entities;
-using DataAccess.UnitOfWork;
+using Contracts.DTOs.Authentication;
+using Services.Interfaces;
+using Repositories.Entities;
+using Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 using BC = BCrypt.Net.BCrypt;
 
-namespace BusinessLogic.Services.Implementations
+namespace Services.Implementations
 {
     public class AuthenticationService : IAuthenticationService
     {
@@ -31,30 +31,30 @@ namespace BusinessLogic.Services.Implementations
         {
             try
             {
-                if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
+                if (string.IsNullOrEmpty(request.AccountName) || string.IsNullOrEmpty(request.Password))
                 {
-                    throw new ArgumentException("Username và mật khẩu không được để trống");
+                    throw new ArgumentException("AccountName và mật khẩu không được để trống");
                 }
 
-                var userRepository = _unitOfWork.GetRepository<User>();
-                var user = await userRepository.GetAsync(u =>
-                    (u.Username.ToLower() == request.Username.ToLower() ||
-                     u.Email.ToLower() == request.Username.ToLower()));
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepository.GetAsync(u =>
+                    (u.AccountName.ToLower() == request.AccountName.ToLower() ||
+                     u.Email.ToLower() == request.AccountName.ToLower()));
 
-                if (user == null || !BC.Verify(request.Password, user.Password))
+                if (account == null || !BC.Verify(request.Password, account.Password))
                 {
                     throw new UnauthorizedAccessException("Thông tin đăng nhập không chính xác");
                 }
 
-                if (!user.Status)
+                if (!account.Status)
                 {
                     throw new UnauthorizedAccessException("Tài khoản đã bị vô hiệu hóa");
                 }
 
-                var response = _mapper.Map<UserResponseDTO>(user);
-                response.Token = _jwtService.GenerateToken(user);
+                var response = _mapper.Map<UserResponseDTO>(account);
+                response.Token = _jwtService.GenerateToken(account);
 
-                _logger.LogInformation($"User {user.Username} logged in successfully");
+                _logger.LogInformation($"User {account.AccountName} logged in successfully");
                 return response;
             }
             catch (Exception ex)
@@ -73,20 +73,20 @@ namespace BusinessLogic.Services.Implementations
                 // Hash mật khẩu
                 var hashedPassword = BC.HashPassword(request.Password);
                 
-                var userRepository = _unitOfWork.GetRepository<User>();
-                var newUser = _mapper.Map<User>(request);
-                newUser.Password = hashedPassword;
-                newUser.CreatedAt = DateTime.UtcNow;
-                newUser.UpdatedAt = DateTime.UtcNow;
-                newUser.Status = true;
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var newAccount = _mapper.Map<Account>(request);
+                newAccount.Password = hashedPassword;
+                newAccount.CreatedAt = DateTime.UtcNow;
+                newAccount.UpdatedAt = DateTime.UtcNow;
+                newAccount.Status = true;
 
-                await userRepository.AddAsync(newUser);
+                await accountRepository.AddAsync(newAccount);
                 await _unitOfWork.SaveChangesAsync();
 
-                var response = _mapper.Map<UserResponseDTO>(newUser);
-                response.Token = _jwtService.GenerateToken(newUser);
+                var response = _mapper.Map<UserResponseDTO>(newAccount);
+                response.Token = _jwtService.GenerateToken(newAccount);
 
-                _logger.LogInformation($"User {newUser.Username} registered successfully");
+                _logger.LogInformation($"User {newAccount.AccountName} registered successfully");
                 return response;
             }
             catch (Exception ex)
@@ -98,7 +98,7 @@ namespace BusinessLogic.Services.Implementations
 
         private async Task ValidateRegistrationRequest(RegisterRequestDTO request)
         {
-            var userRepository = _unitOfWork.GetRepository<User>();
+            var accountRepository = _unitOfWork.GetRepository<Account>();
 
             if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
             {
@@ -110,14 +110,14 @@ namespace BusinessLogic.Services.Implementations
                 throw new ArgumentException("Email không hợp lệ");
             }
 
-            var existingUsername = await userRepository.GetAsync(u => 
-                u.Username.ToLower() == request.Username.ToLower());
+            var existingUsername = await accountRepository.GetAsync(u => 
+                u.AccountName.ToLower() == request.Username.ToLower());
             if (existingUsername != null)
             {
                 throw new InvalidOperationException("Username đã tồn tại");
             }
 
-            var existingEmail = await userRepository.GetAsync(u => 
+            var existingEmail = await accountRepository.GetAsync(u => 
                 u.Email.ToLower() == request.Email.ToLower());
             if (existingEmail != null)
             {

@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Repositories.Common;
 using Repositories.Entities;
 using Repositories.Interfaces;
 using Repositories.Models.QueryModels;
@@ -12,43 +11,83 @@ using System.Threading.Tasks;
 
 namespace Repositories.Repositories
 {
-    public abstract class GenericRepository<TEntity> : IGenericRepository<TEntity> where TEntity : BaseEntity
+    public class GenericRepository<TEntity> : IGenericRepository<TEntity> where TEntity : class
     {
-        protected DbSet<TEntity> _dbSet;
-        private readonly IClaimsService _claimsService;
+        protected readonly HealthChildTrackerContext _context;
+        protected readonly DbSet<TEntity> _dbSet;
 
-        public GenericRepository(AppDbContext dbContext, IClaimsService claimsService)
+        public GenericRepository(HealthChildTrackerContext context)
         {
-            _dbSet = dbContext.Set<TEntity>();
-            _claimsService = claimsService;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _dbSet = context.Set<TEntity>();
         }
 
-        public virtual async Task<TEntity?> GetAsync(Guid id, string include = "")
+        #region Helper Methods
+        private IQueryable<TEntity> IncludeProperties(IQueryable<TEntity> query, string includeProperties)
+        {
+            if (!string.IsNullOrWhiteSpace(includeProperties))
+            {
+                foreach (var includeProperty in includeProperties.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    query = query.Include(includeProperty.Trim());
+                }
+            }
+            return query;
+        }
+        #endregion
+
+        #region Query Methods
+        public virtual IQueryable<TEntity> GetAllQueryable(string includeProperties = "")
         {
             IQueryable<TEntity> query = _dbSet;
-
-            foreach (var includeProperty in include.Split
-                         (new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                query = query.Include(includeProperty.Trim());
-            }
-
-            var result = await query.FirstOrDefaultAsync(x => x.Id == id);
-
-            // todo: throw exception when result is not found
-            return result;
+            return IncludeProperties(query, includeProperties);
         }
 
-        public virtual async Task<List<TEntity>> GetAllAsync(string include = "")
+        public virtual async Task<TEntity> GetByIdAsync(int id)
+        {
+            return await _dbSet.FindAsync(id);
+        }
+
+        public virtual async Task<int> CountAsync(Expression<Func<TEntity, bool>> predicate = null)
+        {
+            try
+            {
+                IQueryable<TEntity> query = _dbSet;
+                if (predicate != null)
+                {
+                    query = query.Where(predicate);
+                }
+                return await query.CountAsync();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Couldn't retrieve count of entities: {ex.Message}");
+            }
+        }
+
+        public virtual async Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate)
+        {
+            return await _dbSet.AnyAsync(predicate);
+        }
+
+        public virtual async Task<TEntity?> GetAsync(Expression<Func<TEntity, bool>> predicate, string includeProperties = "")
         {
             IQueryable<TEntity> query = _dbSet;
+            query = IncludeProperties(query, includeProperties);
+            return await query.FirstOrDefaultAsync(predicate);
+        }
 
-            foreach (var includeProperty in include.Split
-                         (new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                query = query.Include(includeProperty.Trim());
-            }
+        public virtual async Task<List<TEntity>> FindAsync(Expression<Func<TEntity, bool>> predicate, string includeProperties = "")
+        {
+            IQueryable<TEntity> query = _dbSet;
+            query = IncludeProperties(query, includeProperties);
+            return await query.Where(predicate).ToListAsync();
+        }
 
+        public virtual async Task<IEnumerable<TEntity>> GetAllAsync(string includeProperties = "")
+        {
+            IQueryable<TEntity> query = _dbSet;
+            query = IncludeProperties(query, includeProperties);
             return await query.ToListAsync();
         }
 
@@ -67,12 +106,7 @@ namespace Repositories.Repositories
             }
 
             int totalCount = await query.CountAsync();
-
-            foreach (var includeProperty in include.Split
-                         (new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                query = query.Include(includeProperty.Trim());
-            }
+            query = IncludeProperties(query, include);
 
             if (orderBy != null)
             {
@@ -82,10 +116,7 @@ namespace Repositories.Repositories
             if (pageIndex.HasValue && pageSize.HasValue)
             {
                 int validPageIndex = pageIndex.Value > 0 ? pageIndex.Value - 1 : 0;
-                int validPageSize =
-                    pageSize.Value > 0
-                        ? pageSize.Value
-                        : PaginationConstant.DEFAULT_MIN_PAGE_SIZE;
+                int validPageSize = pageSize.Value > 0 ? pageSize.Value : 10;
 
                 query = query.Skip(validPageIndex * validPageSize).Take(validPageSize);
             }
@@ -96,85 +127,41 @@ namespace Repositories.Repositories
                 Data = await query.ToListAsync(),
             };
         }
+        #endregion
 
+        #region Add Methods
         public virtual async Task AddAsync(TEntity entity)
         {
-            entity.CreationDate = DateTime.Now;
-            entity.CreatedBy = _claimsService.GetCurrentUserId;
             await _dbSet.AddAsync(entity);
         }
 
         public virtual async Task AddRangeAsync(List<TEntity> entities)
         {
-            foreach (var entity in entities)
-            {
-                entity.CreationDate = DateTime.Now;
-                entity.CreatedBy = _claimsService.GetCurrentUserId;
-            }
-
             await _dbSet.AddRangeAsync(entities);
         }
 
+        public virtual async Task AddRangeAsync(IEnumerable<TEntity> entities)
+        {
+            await _dbSet.AddRangeAsync(entities);
+        }
+        #endregion
+
+        #region Update Methods
         public virtual void Update(TEntity entity)
         {
-            entity.ModificationDate = DateTime.Now;
-            entity.ModifiedBy = _claimsService.GetCurrentUserId;
             _dbSet.Update(entity);
         }
 
         public virtual void UpdateRange(List<TEntity> entities)
         {
-            foreach (var entity in entities)
-            {
-                entity.ModificationDate = DateTime.Now;
-                entity.ModifiedBy = _claimsService.GetCurrentUserId;
-            }
-
             _dbSet.UpdateRange(entities);
         }
+        #endregion
 
-        public virtual void SoftDelete(TEntity entity)
+        #region Delete Methods
+        public virtual void Delete(TEntity entity)
         {
-            entity.IsDeleted = true;
-            entity.DeletionDate = DateTime.Now;
-            entity.DeletedBy = _claimsService.GetCurrentUserId;
-            _dbSet.Update(entity);
-        }
-
-        public virtual void SoftDeleteRange(List<TEntity> entities)
-        {
-            foreach (var entity in entities)
-            {
-                entity.IsDeleted = true;
-                entity.DeletionDate = DateTime.Now;
-                entity.DeletedBy = _claimsService.GetCurrentUserId;
-            }
-
-            _dbSet.UpdateRange(entities);
-        }
-
-        public virtual void Restore(TEntity entity)
-        {
-            entity.IsDeleted = false;
-            entity.DeletionDate = null;
-            entity.DeletedBy = null;
-            entity.ModificationDate = DateTime.Now;
-            entity.ModifiedBy = _claimsService.GetCurrentUserId;
-            _dbSet.Update(entity);
-        }
-
-        public virtual void RestoreRange(List<TEntity> entities)
-        {
-            foreach (var entity in entities)
-            {
-                entity.IsDeleted = false;
-                entity.DeletionDate = null;
-                entity.DeletedBy = null;
-                entity.ModificationDate = DateTime.Now;
-                entity.ModifiedBy = _claimsService.GetCurrentUserId;
-            }
-
-            _dbSet.UpdateRange(entities);
+            _dbSet.Remove(entity);
         }
 
         public virtual void HardDelete(TEntity entity)
@@ -186,5 +173,6 @@ namespace Repositories.Repositories
         {
             _dbSet.RemoveRange(entities);
         }
+        #endregion
     }
 }

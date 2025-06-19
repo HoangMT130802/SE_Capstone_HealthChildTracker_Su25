@@ -1,8 +1,8 @@
-﻿using BusinessLogic.DTOs.GrowthRecord;
-using BusinessLogic.Services.Interfaces;
+﻿using Contracts.DTOs.GrowthRecord;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Services.Interfaces;
 using System.Security.Claims;
 
 namespace HealthChildTracker_API.Controllers

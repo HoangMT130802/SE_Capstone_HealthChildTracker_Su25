@@ -17,6 +17,11 @@
     <Folder Include="DTOs\Transaction\" />
     <Folder Include="DTOs\Order\" />
     <Folder Include="DTOs\Vaccine\" />
+    <Folder Include="MapperProfiles\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Repositories\Repositories.csproj" />
   </ItemGroup>
 
 </Project>

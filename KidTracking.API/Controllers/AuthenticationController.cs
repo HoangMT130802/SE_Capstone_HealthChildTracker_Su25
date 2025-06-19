@@ -1,9 +1,9 @@
-﻿using BusinessLogic.DTOs.Authentication;
-using BusinessLogic.Services.Interfaces;
+﻿using Contracts.DTOs.Authentication;
+using Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace HealthChildTrackerAPI.Controllers
+namespace KidTracking.API.Controllers
 {
     [ApiController]
     [Route("api/auth")]

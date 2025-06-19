@@ -1,11 +1,11 @@
-﻿using BusinessLogic.DTOs.Children;
-using BusinessLogic.Services.Interfaces;
+﻿using Contracts.DTOs.Child;
+using Services.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 
-namespace HealthChildTracker_API.Controllers
+namespace KidTracking.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -21,150 +21,172 @@ namespace HealthChildTracker_API.Controllers
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        private bool ValidateUserAccess(int userId)
+        private int GetCurrentAccountId()
         {
-            var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+            var accountIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
             {
-                return false;
+                throw new UnauthorizedAccessException("Không thể xác định account ID từ token");
             }
-            return currentUserId == userId || User.IsInRole("Admin") || User.IsInRole("Doctor");
+            return accountId;
         }
 
-        [HttpGet("{userId}/Get children by userId")]
-        public async Task<IActionResult> GetAllChildrenByUserId(int userId)
+        private bool ValidateAdminAccess()
+        {
+            return User.IsInRole("Admin") || User.IsInRole("Manager");
+        }
+
+        [HttpGet("my-children")]
+        public async Task<IActionResult> GetMyChildren()
         {
             try
             {
-                if (!ValidateUserAccess(userId))
-                {
-                    return Forbid("Bạn không có quyền xem thông tin này");
-                }
-
-                var children = await _childService.GetAllChildrenByUserIdAsync(userId);
+                var accountId = GetCurrentAccountId();
+                var children = await _childService.GetAllChildrenByAccountIdAsync(accountId);
                 return Ok(children);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting children for user {userId}");
+                _logger.LogError(ex, "Error getting children for current account");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpGet("{childId}/user/{userId}/Get child by childId")]
-        public async Task<IActionResult> GetChildById(int childId, int userId)
+        [HttpGet("{childId}")]
+        public async Task<IActionResult> GetChildById(int childId)
         {
             try
             {
-                if (!ValidateUserAccess(userId))
-                {
-                    return Forbid("Bạn không có quyền xem thông tin này");
-                }
-
-                var child = await _childService.GetChildByIdAsync(childId, userId);
+                var accountId = GetCurrentAccountId();
+                var child = await _childService.GetChildByIdAsync(childId, accountId);
                 return Ok(child);
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error getting child {childId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpPost("user/{userId}/Create new child")]
-        public async Task<IActionResult> CreateChild(int userId, [FromBody] CreateChildDTO childDTO)
+        [HttpPost]
+        public async Task<IActionResult> CreateChild([FromBody] CreateChildDTO childDTO)
         {
             try
             {
-                if (!ValidateUserAccess(userId))
-                {
-                    return Forbid("Bạn không có quyền thực hiện hành động này");
-                }
-
-                var child = await _childService.CreateChildAsync(userId, childDTO);
-                return CreatedAtAction(nameof(GetChildById), new { childId = child.ChildId, userId }, child);
+                var accountId = GetCurrentAccountId();
+                var child = await _childService.CreateChildAsync(accountId, childDTO);
+                return CreatedAtAction(nameof(GetChildById), new { childId = child.ChildId }, child);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error creating child for user {userId}");
+                _logger.LogError(ex, "Error creating child");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpPut("{childId}/user/{userId}/Update child")]
-        public async Task<IActionResult> UpdateChild(int childId, int userId, [FromBody] UpdateChildDTO childDTO)
+        [HttpPut("{childId}")]
+        public async Task<IActionResult> UpdateChild(int childId, [FromBody] UpdateChildDTO childDTO)
         {
             try
             {
-                if (!ValidateUserAccess(userId))
-                {
-                    return Forbid("Bạn không có quyền thực hiện hành động này");
-                }
-
-                var child = await _childService.UpdateChildAsync(childId, userId, childDTO);
+                var accountId = GetCurrentAccountId();
+                var child = await _childService.UpdateChildAsync(childId, accountId, childDTO);
                 return Ok(child);
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error updating child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error updating child {childId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpDelete("SoftDelete{childId}/user/{userId}")]
-        public async Task<IActionResult> DeleteChild(int childId, int userId)
+        [HttpDelete("{childId}")]
+        public async Task<IActionResult> SoftDeleteChild(int childId)
         {
             try
             {
-                if (!ValidateUserAccess(userId))
-                {
-                    return Forbid("Bạn không có quyền thực hiện hành động này");
-                }
-
-                var result = await _childService.SoftDeleteChildAsync(childId, userId);
-                return Ok(new { success = result });
+                var accountId = GetCurrentAccountId();
+                var result = await _childService.SoftDeleteChildAsync(childId, accountId);
+                return Ok(new { success = result, message = "Child đã được soft delete" });
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error deleting child {childId} for user {userId}");
+                _logger.LogError(ex, $"Error soft deleting child {childId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpDelete("harddelete/{childId}/user/{userId}")]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> HardDeleteChild(int childId, int userId)
+        [HttpDelete("{childId}/hard")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> HardDeleteChild(int childId)
         {
             try
             {
-                if (!ValidateUserAccess(userId))
-                {
-                    return Forbid("Bạn không có quyền thực hiện hành động này");
-                }
-
-                var result = await _childService.HardDeleteChildAsync(childId, userId);
-                return Ok(new { success = result, message = "Child record has been permanently deleted" });
+                var accountId = GetCurrentAccountId();
+                var result = await _childService.HardDeleteChildAsync(childId, accountId);
+                return Ok(new { success = result, message = "Child record đã được xóa vĩnh viễn" });
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error hard deleting child {childId} for user {userId}");
-                return StatusCode(500, new { message = "Internal server error occurred while trying to delete the child record" });
+                _logger.LogError(ex, $"Error hard deleting child {childId}");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        // Admin endpoints
+        [HttpGet("admin/account/{accountId}")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> GetChildrenByAccountId(int accountId)
+        {
+            try
+            {
+                var children = await _childService.GetAllChildrenByAccountIdAsync(accountId);
+                return Ok(children);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting children for account {accountId}");
+                return StatusCode(500, new { message = "Internal server error" });
             }
         }
     }

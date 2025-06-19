@@ -1,9 +1,5 @@
 ﻿using AutoMapper;
-using BusinessLogic.DTOs.GrowthAssessment;
-using BusinessLogic.DTOs.GrowthRecord;
-using BusinessLogic.Services.Interfaces;
-using DataAccess.Entities;
-using DataAccess.UnitOfWork;
+using Services.Interfaces;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -11,8 +7,11 @@ using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Repositories.Interfaces;
+using DTOs.GrowthAssessment;
+using Repositories.Entities;
 
-namespace BusinessLogic.Services.Implementations
+namespace Services.Implementations
 {
     public class GrowthAssessmentService : IGrowthAssessmentService
     {

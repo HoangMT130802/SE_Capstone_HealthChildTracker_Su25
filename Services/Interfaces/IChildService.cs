@@ -1,19 +1,19 @@
-﻿using BusinessLogic.DTOs.Children;
+﻿using Contracts.DTOs.Child;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BusinessLogic.Services.Interfaces
+namespace Services.Interfaces
 {
     public interface IChildService
     {
-        Task<IEnumerable<ChildDTO>> GetAllChildrenByUserIdAsync(int userId);
-        Task<ChildDTO> GetChildByIdAsync(int childId, int userId);
-        Task<ChildDTO> CreateChildAsync(int userId, CreateChildDTO childDTO);
-        Task<ChildDTO> UpdateChildAsync(int childId, int userId, UpdateChildDTO childDTO);
-        Task<bool> SoftDeleteChildAsync(int childId, int userId);
-        Task<bool> HardDeleteChildAsync(int childId, int userId);
+        Task<IEnumerable<ChildDTO>> GetAllChildrenByAccountIdAsync(int accountId);
+        Task<ChildDTO> GetChildByIdAsync(int childId, int accountId);
+        Task<ChildDTO> CreateChildAsync(int accountId, CreateChildDTO childDTO);
+        Task<ChildDTO> UpdateChildAsync(int childId, int accountId, UpdateChildDTO childDTO);
+        Task<bool> SoftDeleteChildAsync(int childId, int accountId);
+        Task<bool> HardDeleteChildAsync(int childId, int accountId);
     }
 }

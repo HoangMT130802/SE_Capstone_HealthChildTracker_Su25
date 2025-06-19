@@ -1,5 +1,4 @@
-﻿using Repositories.Entities;
-using Repositories.Models.QueryModels;
+﻿using Repositories.Models.QueryModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,10 +8,18 @@ using System.Threading.Tasks;
 
 namespace Repositories.Interfaces
 {
-    public interface IGenericRepository<TEntity> where TEntity : BaseEntity
+    public interface IGenericRepository<TEntity> where TEntity : class
     {
-        Task<TEntity?> GetAsync(Guid id, string include = "");
-        Task<List<TEntity>> GetAllAsync(string include = "");
+        // Query methods từ code cũ
+        IQueryable<TEntity> GetAllQueryable(string includeProperties = "");
+        Task<TEntity> GetByIdAsync(int id);
+        Task<int> CountAsync(Expression<Func<TEntity, bool>> predicate = null);
+        Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate);
+        
+        // Get methods
+        Task<TEntity?> GetAsync(Expression<Func<TEntity, bool>> predicate, string includeProperties = "");
+        Task<List<TEntity>> FindAsync(Expression<Func<TEntity, bool>> predicate, string includeProperties = "");
+        Task<IEnumerable<TEntity>> GetAllAsync(string includeProperties = "");
 
         Task<QueryResultModel<List<TEntity>>> GetAllAsync(
             Expression<Func<TEntity, bool>>? filter = null,
@@ -22,14 +29,17 @@ namespace Repositories.Interfaces
             int? pageSize = null
         );
 
+        // Add methods
         Task AddAsync(TEntity entity);
         Task AddRangeAsync(List<TEntity> entities);
+        Task AddRangeAsync(IEnumerable<TEntity> entities);
+        
+        // Update methods
         void Update(TEntity entity);
         void UpdateRange(List<TEntity> entities);
-        void SoftDelete(TEntity entity);
-        void SoftDeleteRange(List<TEntity> entities);
-        void Restore(TEntity entity);
-        void RestoreRange(List<TEntity> entities);
+        
+        // Delete methods
+        void Delete(TEntity entity);
         void HardDelete(TEntity entity);
         void HardDeleteRange(List<TEntity> entities);
     }

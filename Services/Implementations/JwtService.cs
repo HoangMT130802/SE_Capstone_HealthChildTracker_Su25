@@ -3,10 +3,10 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using BusinessLogic.Services.Interfaces;
-using DataAccess.Entities;
+using Services.Interfaces;
+using Repositories.Entities;
 
-namespace BusinessLogic.Services.Implementations
+namespace Services.Implementations
 {
     public class JwtService : IJwtService
     {
@@ -17,17 +17,17 @@ namespace BusinessLogic.Services.Implementations
             _configuration = configuration;
         }
 
-        public string GenerateToken(User user)
+        public string GenerateToken(Account account)
         {
             var jwtSettings = _configuration.GetSection("JwtSettings");
             var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]);
 
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Role, user.Role)
+                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()),
+                new Claim(ClaimTypes.Name, account.AccountName),
+                new Claim(ClaimTypes.Email, account.Email),
+                new Claim(ClaimTypes.Role, account.Role)
             };
 
             var credentials = new SigningCredentials(

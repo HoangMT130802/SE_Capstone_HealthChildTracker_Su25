@@ -1,13 +1,12 @@
-﻿using BusinessLogic.DTOs.GrowthAssessment;
-using BusinessLogic.DTOs.GrowthRecord;
-using DataAccess.Entities;
+﻿using DTOs.GrowthAssessment;
+using Repositories.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BusinessLogic.Services.Interfaces
+namespace Services.Interfaces
 {
     public interface IGrowthAssessmentService
     {
