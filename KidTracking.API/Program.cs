@@ -165,11 +165,22 @@ namespace KidTracking.API
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
+            
+            // Error handling
+            if (!app.Environment.IsDevelopment())
             {
-                app.UseSwagger();
-                app.UseSwaggerUI();
+                app.UseExceptionHandler("/error");
+                app.UseHsts();
             }
+
+            // Enable Swagger for all environments (including Production)
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "Health Child Tracker API V1");
+                c.RoutePrefix = string.Empty; // Swagger UI tại root URL
+                c.DocumentTitle = "Health Child Tracker API";
+            });
 
             app.UseHttpsRedirection();
 
