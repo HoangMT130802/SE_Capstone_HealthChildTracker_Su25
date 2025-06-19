@@ -20,15 +20,14 @@ namespace Services.Implementations
         public string GenerateToken(Account account)
         {
             var jwtSettings = _configuration.GetSection("JwtSettings");
-            var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]);
+            var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey not configured"));
 
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()), // Đây chính là AccountId
-                new Claim(ClaimTypes.Name, account.AccountName),
-                new Claim(ClaimTypes.Email, account.Email),
-                new Claim(ClaimTypes.Role, account.Role),
-                // Thêm custom claim để debug
+                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()),
+                new Claim(ClaimTypes.Name, account.AccountName?.Trim() ?? ""),
+                new Claim(ClaimTypes.Email, account.Email?.Trim() ?? ""),
+                new Claim(ClaimTypes.Role, account.Role?.Trim() ?? ""),
                 new Claim("AccountId", account.AccountId.ToString())
             };
 
@@ -41,17 +40,17 @@ namespace Services.Implementations
                 issuer: jwtSettings["Issuer"],
                 audience: jwtSettings["Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(jwtSettings["ExpirationInMinutes"])),
+                expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(jwtSettings["ExpirationInMinutes"] ?? "60")),
                 signingCredentials: credentials
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        public ClaimsPrincipal ValidateToken(string token)
+        public ClaimsPrincipal? ValidateToken(string token)
         {
             var jwtSettings = _configuration.GetSection("JwtSettings");
-            var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]);
+            var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey not configured"));
 
             var tokenHandler = new JwtSecurityTokenHandler();
             try
@@ -64,7 +63,9 @@ namespace Services.Implementations
                     ValidateAudience = true,
                     ValidIssuer = jwtSettings["Issuer"],
                     ValidAudience = jwtSettings["Audience"],
-                    ClockSkew = TimeSpan.Zero
+                    ClockSkew = TimeSpan.Zero,
+                    ValidateLifetime = true,
+                    RequireExpirationTime = true
                 }, out SecurityToken validatedToken);
 
                 return principal;

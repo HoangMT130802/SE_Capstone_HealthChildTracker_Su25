@@ -23,7 +23,14 @@ namespace KidTracking.API
 
             // Cấu hình JWT
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-            var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]);
+            var secretKeyString = jwtSettings["SecretKey"];
+            
+            if (string.IsNullOrEmpty(secretKeyString))
+            {
+                throw new InvalidOperationException("JWT SecretKey is not configured!");
+            }
+            
+            var secretKey = Encoding.UTF8.GetBytes(secretKeyString);
 
             builder.Services.AddAuthentication(options =>
             {
@@ -45,6 +52,51 @@ namespace KidTracking.API
                     ClockSkew = TimeSpan.Zero,
                     ValidateLifetime = true,
                     RequireExpirationTime = true,
+                };
+                
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var authHeader = context.Request.Headers["Authorization"].ToString();
+                        if (!string.IsNullOrEmpty(authHeader))
+                        {
+                            // Nếu header không bắt đầu bằng "Bearer ", thêm vào
+                            if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                            {
+                                context.Token = authHeader.Trim();
+                            }
+                            else
+                            {
+                                context.Token = authHeader.Substring("Bearer ".Length).Trim();
+                            }
+                            Console.WriteLine($"Token processed: {!string.IsNullOrEmpty(context.Token)}");
+                        }
+                        return Task.CompletedTask;
+                    },
+                    OnTokenValidated = context =>
+                    {
+                        Console.WriteLine("=== JWT Token Validated ===");
+                        Console.WriteLine($"User: {context.Principal?.Identity?.Name}");
+                        Console.WriteLine($"Claims: {string.Join(", ", context.Principal?.Claims?.Select(c => $"{c.Type}={c.Value}") ?? new string[0])}");
+                        return Task.CompletedTask;
+                    },
+                    OnAuthenticationFailed = context =>
+                    {
+                        Console.WriteLine("=== JWT Authentication Failed ===");
+                        Console.WriteLine($"Exception: {context.Exception?.Message}");
+                        Console.WriteLine($"Exception type: {context.Exception?.GetType().Name}");
+                        Console.WriteLine($"Stack trace: {context.Exception?.StackTrace}");
+                        return Task.CompletedTask;
+                    },
+                    OnChallenge = context =>
+                    {
+                        Console.WriteLine("=== JWT Challenge ===");
+                        Console.WriteLine($"Error: {context.Error}");
+                        Console.WriteLine($"ErrorDescription: {context.ErrorDescription}");
+                        context.Response.Headers.Add("Token-Error", "Invalid token or no token provided");
+                        return Task.CompletedTask;
+                    }
                 };
             });
 
@@ -91,9 +143,12 @@ namespace KidTracking.API
             builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IChildService, ChildService>();
+            builder.Services.AddScoped<IGrowthStandardService, GrowthStandardService>();
+            builder.Services.AddScoped<IGrowthRecordService, GrowthRecordService>();
+            builder.Services.AddScoped<IGrowthAssessmentService, GrowthAssessmentService>();
 
             // Đăng ký automapper
-            builder.Services.AddAutoMapper(typeof(AuthenticationProfile), typeof(ChildProfile), typeof(MemberProfile));
+            builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);
 
             // Cấu hình CORS
             builder.Services.AddCors(options =>

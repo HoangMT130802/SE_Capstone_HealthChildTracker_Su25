@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Repositories.Interfaces;
-using DTOs.GrowthAssessment;
+using Contracts.DTOs.GrowthAssessment;
 using Repositories.Entities;
 
 namespace Services.Implementations
@@ -107,6 +107,7 @@ namespace Services.Implementations
             if (height <= standard.Sd3neg) return "Thấp còi nặng";
             if (height <= standard.Sd2neg) return "Thấp còi";
             if (height <= standard.Sd1neg) return "Nguy cơ thấp còi";
+            if (height <= standard.Median) return "Bình thường thấp";
             if (height <= standard.Sd1pos) return "Bình thường";
             if (height <= standard.Sd2pos) return "Chiều cao trung bình khá";
             if (height <= standard.Sd3pos) return "Cao";
@@ -120,6 +121,7 @@ namespace Services.Implementations
             if (value <= standard.Sd3neg) return "Suy dinh dưỡng nặng";
             if (value <= standard.Sd2neg) return "Suy dinh dưỡng";
             if (value <= standard.Sd1neg) return "Nguy cơ suy dinh dưỡng";
+            if (value <= standard.Median) return "Bình thường thấp";
             if (value <= standard.Sd1pos) return "Bình thường";
             if (value <= standard.Sd2pos) return "Nguy cơ thừa cân/béo phì";
             if (value <= standard.Sd3pos) return "Béo phì";
@@ -132,7 +134,8 @@ namespace Services.Implementations
 
             if (headCircumference <= standard.Sd3neg) return "Đầu rất nhỏ (Microcephaly)";
             if (headCircumference <= standard.Sd2neg) return "Đầu hơi nhỏ";
-            if (headCircumference <= standard.Sd1neg) return "Bình thường thấp";
+            if (headCircumference <= standard.Sd1neg) return "Bình thường nhỏ";
+            if (headCircumference <= standard.Median) return "Bình thường thấp";
             if (headCircumference <= standard.Sd1pos) return "Bình thường";
             if (headCircumference <= standard.Sd2pos) return "Bình thường lớn";
             if (headCircumference <= standard.Sd3pos) return "Đầu hơi to";

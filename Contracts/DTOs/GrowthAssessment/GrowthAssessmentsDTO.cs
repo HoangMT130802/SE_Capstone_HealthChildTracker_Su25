@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DTOs.GrowthAssessment
+namespace Contracts.DTOs.GrowthAssessment
 {
     public class GrowthAssessmentsDTO
     {

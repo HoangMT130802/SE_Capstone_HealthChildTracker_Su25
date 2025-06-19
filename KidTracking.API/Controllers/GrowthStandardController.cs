@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Contracts.DTOs.GrowthStandard;
-namespace HealthChildTracker_API.Controllers
+namespace KidTracking.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]

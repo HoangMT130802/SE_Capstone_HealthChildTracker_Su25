@@ -6,6 +6,6 @@ namespace Services.Interfaces
     public interface IJwtService
     {
         string GenerateToken(Account account);
-        ClaimsPrincipal ValidateToken(string token);
+        ClaimsPrincipal? ValidateToken(string token);
     }
 } 

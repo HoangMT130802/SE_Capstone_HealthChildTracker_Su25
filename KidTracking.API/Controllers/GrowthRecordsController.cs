@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 using System.Security.Claims;
 
-namespace HealthChildTracker_API.Controllers
+namespace KidTracking.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -72,7 +72,7 @@ namespace HealthChildTracker_API.Controllers
             }
         }
 
-        [HttpGet("Get {recordId}")]
+        [HttpGet("{recordId}")]
         public async Task<IActionResult> GetGrowthRecordById(int recordId)
         {
             try
@@ -97,7 +97,7 @@ namespace HealthChildTracker_API.Controllers
             }
         }
 
-        [HttpPost("Create new record")]
+        [HttpPost]
         public async Task<IActionResult> CreateGrowthRecord([FromBody] CreateGrowthRecordDTO recordDTO)
         {
             try
@@ -121,7 +121,7 @@ namespace HealthChildTracker_API.Controllers
             }
         }
 
-        [HttpPut("{recordId}/Update record")]
+        [HttpPut("{recordId}")]
         public async Task<IActionResult> UpdateGrowthRecord(int recordId, [FromBody] UpdateGrowthRecordDTO recordDTO)
         {
             try
@@ -146,7 +146,7 @@ namespace HealthChildTracker_API.Controllers
             }
         }
 
-        [HttpDelete("{recordId}/Delete")]
+        [HttpDelete("{recordId}")]
         public async Task<IActionResult> DeleteGrowthRecord(int recordId)
         {
             try

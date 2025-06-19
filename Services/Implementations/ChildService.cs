@@ -102,30 +102,17 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}. Cần đăng ký membership trước.");
                 }
 
-                // Kiểm tra số lượng trẻ tối đa theo gói membership
-                var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
-                var activeMembership = await userMembershipRepo.GetAsync(
-                    um => um.AccountId == accountId &&
-                          um.Status == true &&
-                          um.EndDate > DateTime.UtcNow,
-                    includeProperties: "Membership"
-                );
-
-                if (activeMembership == null)
-                {
-                    throw new InvalidOperationException("Bạn cần có gói membership active để thêm trẻ");
-                }
-
-                // Kiểm tra số lượng trẻ hiện tại
+                // TODO: Kiểm tra membership validation khi production
+                // Tạm thời bỏ membership validation cho development phase
                 var childRepository = _unitOfWork.GetRepository<Child>();
+                
+                // Basic limit check - tối đa 10 trẻ per member
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
-
-                // Giả sử Membership có field MaxChildren, nếu không thì set default
-                int maxChildren = 5; // Default value, có thể lấy từ activeMembership.Membership.MaxChildren nếu có
+                int maxChildren = 10; // Basic limit for development
                 
                 if (currentChildrenCount >= maxChildren)
                 {
-                    throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({maxChildren}) theo gói membership");
+                    throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({maxChildren})");
                 }
 
                 var child = _mapper.Map<Child>(childDTO);
