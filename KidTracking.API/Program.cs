@@ -9,6 +9,7 @@ using Repositories.Common;
 using Services.Interfaces;
 using Services.Implementations;
 using Contracts.MapperProfiles;
+using Microsoft.AspNetCore.Mvc;
 
 namespace KidTracking.API
 {
@@ -18,8 +19,27 @@ namespace KidTracking.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
-            builder.Services.AddControllers();
+            
+            builder.Services.AddControllers(options =>
+            {
+                options.ModelValidatorProviders.Clear();
+            })
+            .ConfigureApiBehaviorOptions(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var errors = context.ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .SelectMany(x => x.Value.Errors.Select(e => e.ErrorMessage))
+                        .ToArray();
+
+                    return new BadRequestObjectResult(new
+                    {
+                        message = "Dữ liệu không hợp lệ",
+                        errors = errors
+                    });
+                };
+            });
 
             // Cấu hình JWT
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -61,7 +81,7 @@ namespace KidTracking.API
                         var authHeader = context.Request.Headers["Authorization"].ToString();
                         if (!string.IsNullOrEmpty(authHeader))
                         {
-                            // Nếu header không bắt đầu bằng "Bearer ", thêm vào
+                        
                             if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                             {
                                 context.Token = authHeader.Trim();
@@ -131,7 +151,6 @@ namespace KidTracking.API
                 });
             });
 
-            // Add HttpContextAccessor
             builder.Services.AddHttpContextAccessor();
 
             // Đăng ký db context
@@ -164,30 +183,44 @@ namespace KidTracking.API
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
-            
-            // Error handling
-            if (!app.Environment.IsDevelopment())
-            {
-                app.UseExceptionHandler("/error");
-                app.UseHsts();
-            }
+         
+            app.UseExceptionHandler("/error");
+            app.UseHsts();
 
             // Enable Swagger for all environments (including Production)
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
                 c.SwaggerEndpoint("/swagger/v1/swagger.json", "Health Child Tracker API V1");
-                c.RoutePrefix = string.Empty; // Swagger UI tại root URL
+                
+                
+                if (app.Environment.IsDevelopment())
+                {
+                    c.RoutePrefix = "swagger"; // Local development: /swagger
+                }
+                else
+                {
+                    c.RoutePrefix = string.Empty; // Production: root URL
+                }
+                
                 c.DocumentTitle = "Health Child Tracker API";
             });
 
+        
+            if (!app.Environment.IsDevelopment())
+            {
+                app.Use(async (context, next) =>
+                {
+                    Console.WriteLine($"Request: {context.Request.Method} {context.Request.Path}");
+                    await next();
+                    Console.WriteLine($"Response: {context.Response.StatusCode}");
+                });
+            }
+
             app.UseHttpsRedirection();
 
-            // Thêm CORS middleware
             app.UseCors("AllowAll");
 
-            // Thêm Authentication middleware
             app.UseAuthentication();
             app.UseAuthorization();
 
