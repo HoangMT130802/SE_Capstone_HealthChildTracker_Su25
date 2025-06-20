@@ -64,7 +64,7 @@ namespace Services.Implementations
         {
             try
             {
-                // Validate child exists
+             
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == recordDTO.ChildId);
 
@@ -73,7 +73,7 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Child with ID {recordDTO.ChildId} not found");
                 }
 
-                // Validate ngày sinh của trẻ
+                
                 var birthDate = child.BirthDate.Date;
                 var currentDate = DateTime.UtcNow.Date;
 
@@ -82,7 +82,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không thể tạo record trước ngày sinh của trẻ. Ngày sinh: {child.BirthDate:dd/MM/yyyy}");
                 }
 
-                // Kiểm tra UpdatedAt mới có vượt quá currentDate không
+               
                 var newUpdatedAt = DateTime.UtcNow;
                 if (newUpdatedAt.Date > currentDate)
                 {
@@ -92,8 +92,7 @@ namespace Services.Implementations
                 var recordRepository = _unitOfWork.GetRepository<GrowthRecord>();
                 var record = _mapper.Map<GrowthRecord>(recordDTO);
 
-                // Calculate BMI: weight (kg) / (height (m) * height (m))
-                // Convert height from cm to m
+             
                 decimal heightInMeters = recordDTO.Height / 100;
                 record.Bmi = Math.Round(recordDTO.Weight / (heightInMeters * heightInMeters), 2);
                 record.UpdatedAt = newUpdatedAt;
@@ -102,7 +101,6 @@ namespace Services.Implementations
                 await recordRepository.AddAsync(record);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Lấy lại record với Child để tính tuổi
                 var savedRecord = await recordRepository.GetAsync(
                     r => r.RecordId == record.RecordId,
                     includeProperties: "Child"
@@ -132,7 +130,7 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Growth record with ID {recordId} not found");
                 }
 
-                // Validate ngày sinh của trẻ
+          
                 var birthDate = record.Child.BirthDate.Date;
                 var currentDate = DateTime.UtcNow.Date;
 
@@ -141,7 +139,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không thể cập nhật record trước ngày sinh của trẻ. Ngày sinh: {record.Child.BirthDate:dd/MM/yyyy}");
                 }
 
-                // Kiểm tra UpdatedAt mới có vượt quá currentDate không
+               
                 var newUpdatedAt = DateTime.UtcNow;
                 if (newUpdatedAt.Date > currentDate)
                 {
@@ -150,7 +148,7 @@ namespace Services.Implementations
 
                 _mapper.Map(recordDTO, record);
 
-                // Recalculate BMI
+             
                 decimal heightInMeters = record.Height / 100;
                 record.Bmi = Math.Round(record.Weight / (heightInMeters * heightInMeters), 2);
 
@@ -160,7 +158,6 @@ namespace Services.Implementations
                 recordRepository.Update(record);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Lấy lại record với Child để tính tuổi
                 var updatedRecord = await recordRepository.GetAsync(
                     r => r.RecordId == recordId,
                     includeProperties: "Child"

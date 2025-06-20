@@ -51,13 +51,13 @@ namespace Services.Implementations
 
                 _logger.LogInformation($"Account found: {account.AccountName}, checking password...");
                 
-                // Debug password verification
+              
                 _logger.LogInformation($"Raw password length: {request.Password?.Length}");
                 _logger.LogInformation($"Stored hash length: {account.Password?.Length}");
                 _logger.LogInformation($"Raw password: '{request.Password}'");
                 _logger.LogInformation($"Stored hash starts with: '{account.Password?.Substring(0, Math.Min(20, account.Password?.Length ?? 0))}'");
                 
-                // Trim stored password to handle FixedLength padding
+          
                 string trimmedStoredPassword = account.Password?.Trim();
                 _logger.LogInformation($"Trimmed hash length: {trimmedStoredPassword?.Length}");
                 
@@ -78,7 +78,7 @@ namespace Services.Implementations
 
                 var response = _mapper.Map<UserResponseDTO>(account);
 
-                // Load additional info based on role
+               
                 if (account.Role == "Member")
                 {
                     var memberRepository = _unitOfWork.GetRepository<Member>();
@@ -92,7 +92,7 @@ namespace Services.Implementations
                 }
                 else if (account.Role == "FacilityStaff" || account.Role == "Doctor" || account.Role == "Manager")
                 {
-                    // TODO: Load FacilityStaff info when needed
+                    // TODO: Làm role facility
                     // var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                     // var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
                 }
@@ -115,7 +115,7 @@ namespace Services.Implementations
             {
                 await ValidateRegistrationRequest(request);
 
-                // Begin transaction for account + member creation
+             
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
                 
                 try
@@ -125,7 +125,7 @@ namespace Services.Implementations
                     var hashedPassword = BC.HashPassword(request.Password);
                     _logger.LogInformation($"Register - Hashed password: '{hashedPassword}' (length: {hashedPassword?.Length})");
                     
-                    // Test hash immediately  
+                   
                     bool immediateVerification = BC.Verify(request.Password, hashedPassword);
                     _logger.LogInformation($"Register - Immediate verification test: {immediateVerification}");
                     
@@ -136,21 +136,20 @@ namespace Services.Implementations
                     newAccount.CreatedAt = DateTime.UtcNow;
                     newAccount.UpdatedAt = DateTime.UtcNow;
                     newAccount.Status = true;
-                    newAccount.Role = "Member"; // Default registration role
+                    newAccount.Role = "Member"; 
 
                     await accountRepository.AddAsync(newAccount);
-                    await _unitOfWork.SaveChangesAsync(); // AccountId sẽ được generate ở đây
+                    await _unitOfWork.SaveChangesAsync(); 
 
-                    // Debug log để kiểm tra AccountId
+                  
                     _logger.LogInformation($"Account created with ID: {newAccount.AccountId}");
 
-                    // Tạo Member record nếu role là Member
                     if (newAccount.Role == "Member")
                     {
                         var memberRepository = _unitOfWork.GetRepository<Member>();
                         var newMember = new Member
                         {
-                            AccountId = newAccount.AccountId, // Bây giờ sẽ có ID đúng
+                            AccountId = newAccount.AccountId, 
                             FullName = request.FullName,
                             PhoneNumber = request.Phone,
                             Address = request.Address,

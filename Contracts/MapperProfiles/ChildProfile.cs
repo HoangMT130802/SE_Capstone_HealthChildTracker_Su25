@@ -29,10 +29,10 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.AllergiesNotes, opt => opt.MapFrom(src => src.AllergiesNotes))
                 .ForMember(dest => dest.MedicalHistory, opt => opt.MapFrom(src => src.MedicalHistory))
                 .ForMember(dest => dest.ChildId, opt => opt.Ignore())
-                .ForMember(dest => dest.MemberId, opt => opt.Ignore()) // Set trong service
-                .ForMember(dest => dest.Status, opt => opt.Ignore()) // Set trong service
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) // Set trong service
-                .ForMember(dest => dest.UpdateAt, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.MemberId, opt => opt.Ignore()) 
+                .ForMember(dest => dest.Status, opt => opt.Ignore()) 
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdateAt, opt => opt.Ignore()) 
                 .ForMember(dest => dest.Member, opt => opt.Ignore())
                 .ForMember(dest => dest.ChildVaccineProfiles, opt => opt.Ignore())
                 .ForMember(dest => dest.DailyRecords, opt => opt.Ignore())
@@ -48,9 +48,9 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.MedicalHistory, opt => opt.MapFrom(src => src.MedicalHistory))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
                 .ForMember(dest => dest.ChildId, opt => opt.Ignore())
-                .ForMember(dest => dest.MemberId, opt => opt.Ignore()) // Không thay đổi
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) // Không thay đổi
-                .ForMember(dest => dest.UpdateAt, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.MemberId, opt => opt.Ignore()) 
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdateAt, opt => opt.Ignore()) 
                 .ForMember(dest => dest.Member, opt => opt.Ignore())
                 .ForMember(dest => dest.ChildVaccineProfiles, opt => opt.Ignore())
                 .ForMember(dest => dest.DailyRecords, opt => opt.Ignore())

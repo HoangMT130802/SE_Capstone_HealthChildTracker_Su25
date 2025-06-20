@@ -31,7 +31,7 @@ namespace Services.Implementations
             {
                 _logger.LogInformation($"ChildService: Getting children for AccountId: {accountId}");
                 
-                // Lấy Member từ AccountId
+              
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -43,7 +43,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                // Lấy tất cả children của member này
+               
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var children = await childRepository.FindAsync(c => c.MemberId == member.MemberId && c.Status == true);
                 
@@ -62,7 +62,7 @@ namespace Services.Implementations
         {
             try
             {
-                // Lấy Member từ AccountId
+              
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -71,7 +71,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                // Lấy child và kiểm tra quyền sở hữu
+                
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -93,7 +93,7 @@ namespace Services.Implementations
         {
             try
             {
-                // Lấy Member từ AccountId
+               
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -108,7 +108,7 @@ namespace Services.Implementations
                 
                 // Basic limit check - tối đa 10 trẻ per member
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                int maxChildren = 10; // Basic limit for development
+                int maxChildren = 10; 
                 
                 if (currentChildrenCount >= maxChildren)
                 {
@@ -116,7 +116,7 @@ namespace Services.Implementations
                 }
 
                 var child = _mapper.Map<Child>(childDTO);
-                child.MemberId = member.MemberId; // Sử dụng MemberId thay vì UserId
+                child.MemberId = member.MemberId; 
                 child.Status = true;
                 child.CreatedAt = DateTime.UtcNow;
                 child.UpdateAt = DateTime.UtcNow;
@@ -137,7 +137,7 @@ namespace Services.Implementations
         {
             try
             {
-                // Lấy Member từ AccountId
+                
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -146,7 +146,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                // Lấy child và kiểm tra quyền sở hữu
+                
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -174,7 +174,7 @@ namespace Services.Implementations
         {
             try
             {
-                // Lấy Member từ AccountId
+                
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -183,7 +183,6 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                // Lấy child và kiểm tra quyền sở hữu
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -192,7 +191,6 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
 
-                // Soft delete
                 child.Status = false;
                 child.UpdateAt = DateTime.UtcNow;
 
@@ -212,7 +210,6 @@ namespace Services.Implementations
         {
             try
             {
-                // Lấy Member từ AccountId
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -221,7 +218,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                // Lấy child và kiểm tra quyền sở hữu
+              
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -231,7 +228,7 @@ namespace Services.Implementations
                 }
 
                 // Hard delete - có thể cần xóa các records liên quan trước
-                // TODO: Xử lý cascade delete cho GrowthRecord, VaccinationAppointment, etc.
+                // TODO: Xử lý cascade delete cho GrowthRecord, VaccinationAppointment, ..
                 
                 childRepository.Delete(child);
                 await _unitOfWork.SaveChangesAsync();

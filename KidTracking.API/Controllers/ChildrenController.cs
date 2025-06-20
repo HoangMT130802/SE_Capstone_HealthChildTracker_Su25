@@ -31,7 +31,7 @@ namespace KidTracking.API.Controllers
                 _logger.LogInformation($"User.Identity.Name: {User.Identity?.Name}");
                 _logger.LogInformation($"Claims count: {User.Claims?.Count()}");
                 
-                // Log all claims for debugging
+         
                 if (User.Claims?.Any() == true)
                 {
                     _logger.LogInformation($"All user claims: {string.Join(", ", User.Claims.Select(c => $"{c.Type}={c.Value}"))}");
@@ -44,7 +44,7 @@ namespace KidTracking.API.Controllers
                 var accountIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 _logger.LogInformation($"NameIdentifier claim: {accountIdClaim}");
                 
-                // Also try custom AccountId claim
+        
                 var customAccountIdClaim = User.FindFirst("AccountId")?.Value;
                 _logger.LogInformation($"Custom AccountId claim: {customAccountIdClaim}");
                 

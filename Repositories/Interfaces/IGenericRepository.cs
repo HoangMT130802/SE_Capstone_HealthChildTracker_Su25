@@ -10,17 +10,14 @@ namespace Repositories.Interfaces
 {
     public interface IGenericRepository<TEntity> where TEntity : class
     {
-        // Query methods từ code cũ
+        // Get methods
         IQueryable<TEntity> GetAllQueryable(string includeProperties = "");
         Task<TEntity> GetByIdAsync(int id);
         Task<int> CountAsync(Expression<Func<TEntity, bool>> predicate = null);
-        Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate);
-        
-        // Get methods
+        Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate);       
         Task<TEntity?> GetAsync(Expression<Func<TEntity, bool>> predicate, string includeProperties = "");
         Task<List<TEntity>> FindAsync(Expression<Func<TEntity, bool>> predicate, string includeProperties = "");
         Task<IEnumerable<TEntity>> GetAllAsync(string includeProperties = "");
-
         Task<QueryResultModel<List<TEntity>>> GetAllAsync(
             Expression<Func<TEntity, bool>>? filter = null,
             Func<IQueryable<TEntity>, IOrderedQueryable<TEntity>>? orderBy = null,

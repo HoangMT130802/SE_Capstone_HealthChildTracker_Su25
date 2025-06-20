@@ -36,14 +36,14 @@ namespace Services.Implementations
 
             try
             {
-                // Lấy thông tin trẻ
+              
                 var childRepo = _unitOfWork.GetRepository<Child>();
                 var child = await childRepo.GetAsync(c => c.ChildId == record.ChildId);
 
                 if (child == null)
                     throw new KeyNotFoundException($"Không tìm thấy trẻ với ID {record.ChildId}");
 
-                // Chuẩn hóa giới tính
+                
                 string gender = child.Gender?.Trim().ToUpper();
                 if (string.IsNullOrEmpty(gender) || (gender != "MALE" && gender != "FEMALE"))
                 {
@@ -51,10 +51,10 @@ namespace Services.Implementations
                 }
                 gender = char.ToUpper(gender[0]) + gender.Substring(1).ToLower();
 
-                // Tính tuổi tại thời điểm đo (tính theo tháng)
+                
                 int ageInMonths = (int)((decimal)(record.CreatedAt - child.BirthDate).TotalDays / 30.44M);
 
-                // Lấy dữ liệu chuẩn theo độ tuổi và giới tính
+                
                 var standardRepo = _unitOfWork.GetRepository<GrowthStandard>();
                 var standards = await standardRepo.FindAsync(s =>
                     s.Gender == gender &&

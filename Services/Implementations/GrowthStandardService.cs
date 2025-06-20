@@ -36,7 +36,7 @@ namespace Services.Implementations
                          (!ageInMonths.HasValue || x.AgeInMonths == ageInMonths.Value)
                 );
 
-                // Sắp xếp sau khi lấy dữ liệu
+            
                 return _mapper.Map<IEnumerable<GrowthStandardDTO>>(
                     standards.OrderBy(x => x.AgeInMonths)
                 );

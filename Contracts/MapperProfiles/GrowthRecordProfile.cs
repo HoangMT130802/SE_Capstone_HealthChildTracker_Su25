@@ -31,8 +31,8 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
                 .ForMember(dest => dest.RecordId, opt => opt.Ignore())
-                .ForMember(dest => dest.Bmi, opt => opt.Ignore()) // Calculated in service
-                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore()) // Set in service
+                .ForMember(dest => dest.Bmi, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore()) 
                 .ForMember(dest => dest.Child, opt => opt.Ignore());
 
             CreateMap<UpdateGrowthRecordDTO, GrowthRecord>()
@@ -41,10 +41,10 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.HeadCircumference, opt => opt.MapFrom(src => src.HeadCircumference))
                 .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
                 .ForMember(dest => dest.RecordId, opt => opt.Ignore())
-                .ForMember(dest => dest.ChildId, opt => opt.Ignore()) // Cannot change
-                .ForMember(dest => dest.Bmi, opt => opt.Ignore()) // Calculated in service
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) // Cannot change
-                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore()) // Set in service
+                .ForMember(dest => dest.ChildId, opt => opt.Ignore()) 
+                .ForMember(dest => dest.Bmi, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore()) 
                 .ForMember(dest => dest.Child, opt => opt.Ignore());
         }
     }
