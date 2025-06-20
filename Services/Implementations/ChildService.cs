@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.Child;
+using Contracts.DTOs.GrowthRecord;
 using Services.Interfaces;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -92,11 +93,9 @@ namespace Services.Implementations
         public async Task<ChildDTO> CreateChildAsync(int accountId, CreateChildDTO childDTO)
         {
             try
-            {
-                // Validation đầu vào
+            {        
                 ValidateCreateChildData(childDTO);
-
-                // Tìm member
+               
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -109,7 +108,7 @@ namespace Services.Implementations
                 // Tạm thời bỏ membership validation cho development phase
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 
-                // Basic limit check - tối đa 10 trẻ per member
+              
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
                 int maxChildren = 10; 
                 
@@ -120,7 +119,7 @@ namespace Services.Implementations
 
                 var child = _mapper.Map<Child>(childDTO);
                 
-                // Chuẩn hóa dữ liệu
+             
                 child.Gender = NormalizeGender(childDTO.Gender);
                 child.BloodType = NormalizeBloodType(childDTO.BloodType);
                 child.MemberId = member.MemberId; 
@@ -144,10 +143,9 @@ namespace Services.Implementations
         {
             try
             {
-                // Validation đầu vào
+               
                 ValidateUpdateChildData(childDTO);
 
-                // Tìm member
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -156,7 +154,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                // Tìm child
+            
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -167,7 +165,7 @@ namespace Services.Implementations
 
                 _mapper.Map(childDTO, child);
                 
-                // Chuẩn hóa dữ liệu
+             
                 child.Gender = NormalizeGender(childDTO.Gender);
                 child.BloodType = NormalizeBloodType(childDTO.BloodType);
                 child.UpdateAt = DateTime.UtcNow;
@@ -258,11 +256,163 @@ namespace Services.Implementations
 
         #region Private Validation Methods
 
-        private void ValidateCreateChildData(CreateChildDTO childDTO)
+        public async Task<ChildWithGrowthRecordResponseDTO> CreateChildWithGrowthRecordAsync(int accountId, CreateChildWithGrowthRecordDTO createDTO)
+        {
+            try
+            {
+               
+                ValidateCreateChildWithGrowthRecordData(createDTO);
+
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+
+                if (member == null)
+                {
+                    throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}. Cần đăng ký membership trước.");
+                }
+
+                var childRepository = _unitOfWork.GetRepository<Child>();
+                
+                // Basic limit check - tối đa 10 trẻ per member
+                var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
+                int maxChildren = 10; 
+                
+                if (currentChildrenCount >= maxChildren)
+                {
+                    throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({maxChildren})");
+                }
+
+                // Tạo child trước
+                var child = new Child
+                {
+                    FullName = createDTO.FullName?.Trim(),
+                    BirthDate = createDTO.BirthDate,
+                    Gender = NormalizeGender(createDTO.Gender),
+                    BloodType = NormalizeBloodType(createDTO.BloodType),
+                    AllergiesNotes = createDTO.AllergiesNotes?.Trim(),
+                    MedicalHistory = createDTO.MedicalHistory?.Trim(),
+                    MemberId = member.MemberId,
+                    Status = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdateAt = DateTime.UtcNow
+                };
+
+                await childRepository.AddAsync(child);
+                await _unitOfWork.SaveChangesAsync();
+
+               
+                var growthRecordRepository = _unitOfWork.GetRepository<GrowthRecord>();
+                
+                // Tính BMI
+                decimal heightInMeters = createDTO.Height / 100;
+                decimal bmi = Math.Round(createDTO.Weight / (heightInMeters * heightInMeters), 2);
+
+                var growthRecord = new GrowthRecord
+                {
+                    ChildId = child.ChildId,
+                    Height = createDTO.Height,
+                    Weight = createDTO.Weight,
+                    HeadCircumference = createDTO.HeadCircumference ?? 0,
+                    Bmi = bmi,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    Note = createDTO.GrowthNote?.Trim()
+                };
+
+                await growthRecordRepository.AddAsync(growthRecord);
+                await _unitOfWork.SaveChangesAsync();
+
+               
+                var savedChild = await childRepository.GetAsync(c => c.ChildId == child.ChildId);
+                var savedGrowthRecord = await growthRecordRepository.GetAsync(
+                    r => r.RecordId == growthRecord.RecordId,
+                    includeProperties: "Child"
+                );
+
+              
+                var childDTO = _mapper.Map<ChildDTO>(savedChild);
+                var growthRecordDTO = _mapper.Map<GrowthRecordDTO>(savedGrowthRecord);
+
+                return new ChildWithGrowthRecordResponseDTO
+                {
+                    Child = childDTO,
+                    GrowthRecord = growthRecordDTO,
+                    Message = "Trẻ em và bản ghi tăng trưởng đã được tạo thành công"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error creating child with growth record for account {accountId}");
+                throw;
+            }
+        }
+
+        private void ValidateCreateChildWithGrowthRecordData(CreateChildWithGrowthRecordDTO createDTO)
         {
             var errors = new List<string>();
 
-            // Kiểm tra tên
+            if (string.IsNullOrWhiteSpace(createDTO.FullName))
+            {
+                errors.Add("Tên đầy đủ là bắt buộc");
+            }
+            else if (createDTO.FullName.Trim().Length < 2 || createDTO.FullName.Trim().Length > 100)
+            {
+                errors.Add("Tên phải từ 2-100 ký tự");
+            }
+
+            if (createDTO.BirthDate == default)
+            {
+                errors.Add("Ngày sinh là bắt buộc");
+            }
+            else if (createDTO.BirthDate > DateTime.Now)
+            {
+                errors.Add("Ngày sinh không thể là tương lai");
+            }
+            else if (createDTO.BirthDate < DateTime.Now.AddYears(-18))
+            {
+                errors.Add("Trẻ em phải dưới 18 tuổi");
+            }
+
+            if (string.IsNullOrWhiteSpace(createDTO.Gender))
+            {
+                errors.Add("Giới tính là bắt buộc");
+            }
+            else if (!IsValidGender(createDTO.Gender))
+            {
+                errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
+            }
+
+            if (!string.IsNullOrWhiteSpace(createDTO.BloodType) && !IsValidBloodType(createDTO.BloodType))
+            {
+                errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
+            }
+
+            if (createDTO.Height <= 0 || createDTO.Height < 30 || createDTO.Height > 250)
+            {
+                errors.Add("Chiều cao phải từ 30-250 cm");
+            }
+
+            if (createDTO.Weight <= 0 || createDTO.Weight < 0.5m || createDTO.Weight > 200)
+            {
+                errors.Add("Cân nặng phải từ 0.5-200 kg");
+            }
+
+            if (createDTO.HeadCircumference.HasValue && 
+                (createDTO.HeadCircumference.Value < 20 || createDTO.HeadCircumference.Value > 80))
+            {
+                errors.Add("Vòng đầu phải từ 20-80 cm");
+            }
+
+            if (errors.Any())
+            {
+                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+            }
+        }
+
+        private void ValidateCreateChildData(CreateChildDTO childDTO)
+        {
+            var errors = new List<string>();
+         
             if (string.IsNullOrWhiteSpace(childDTO.FullName))
             {
                 errors.Add("Tên đầy đủ là bắt buộc");
@@ -271,8 +421,7 @@ namespace Services.Implementations
             {
                 errors.Add("Tên phải từ 2-100 ký tự");
             }
-
-            // Kiểm tra ngày sinh
+            
             if (childDTO.BirthDate == default)
             {
                 errors.Add("Ngày sinh là bắt buộc");
@@ -286,7 +435,6 @@ namespace Services.Implementations
                 errors.Add("Trẻ em phải dưới 18 tuổi");
             }
 
-            // Kiểm tra giới tính
             if (string.IsNullOrWhiteSpace(childDTO.Gender))
             {
                 errors.Add("Giới tính là bắt buộc");
@@ -296,7 +444,7 @@ namespace Services.Implementations
                 errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
             }
 
-            // Kiểm tra nhóm máu (không bắt buộc)
+            
             if (!string.IsNullOrWhiteSpace(childDTO.BloodType) && !IsValidBloodType(childDTO.BloodType))
             {
                 errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
@@ -312,7 +460,7 @@ namespace Services.Implementations
         {
             var errors = new List<string>();
 
-            // Kiểm tra tên
+            
             if (string.IsNullOrWhiteSpace(childDTO.FullName))
             {
                 errors.Add("Tên đầy đủ là bắt buộc");
@@ -322,7 +470,7 @@ namespace Services.Implementations
                 errors.Add("Tên phải từ 2-100 ký tự");
             }
 
-            // Kiểm tra ngày sinh
+           
             if (childDTO.BirthDate == default)
             {
                 errors.Add("Ngày sinh là bắt buộc");
@@ -336,7 +484,6 @@ namespace Services.Implementations
                 errors.Add("Trẻ em phải dưới 18 tuổi");
             }
 
-            // Kiểm tra giới tính
             if (string.IsNullOrWhiteSpace(childDTO.Gender))
             {
                 errors.Add("Giới tính là bắt buộc");
@@ -346,7 +493,7 @@ namespace Services.Implementations
                 errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
             }
 
-            // Kiểm tra nhóm máu (không bắt buộc)
+           
             if (!string.IsNullOrWhiteSpace(childDTO.BloodType) && !IsValidBloodType(childDTO.BloodType))
             {
                 errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
@@ -368,7 +515,7 @@ namespace Services.Implementations
 
         private bool IsValidBloodType(string bloodType)
         {
-            if (string.IsNullOrWhiteSpace(bloodType)) return true; // Không bắt buộc
+            if (string.IsNullOrWhiteSpace(bloodType)) return true; 
             
             var normalizedBloodType = bloodType.Trim().ToUpperInvariant();
             var validBloodTypes = new[] { "A", "B", "AB", "O", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-" };

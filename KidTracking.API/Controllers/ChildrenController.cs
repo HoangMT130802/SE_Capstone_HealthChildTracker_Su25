@@ -128,6 +128,30 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        [HttpPost("with-growth-record")]
+        public async Task<IActionResult> CreateChildWithGrowthRecord([FromBody] CreateChildWithGrowthRecordDTO createDTO)
+        {
+            try
+            {
+                var accountId = GetCurrentAccountId();
+                var result = await _childService.CreateChildWithGrowthRecordAsync(accountId, createDTO);
+                return CreatedAtAction(nameof(GetChildById), new { childId = result.Child.ChildId }, result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating child with growth record");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
         [HttpPut("{childId}")]
         public async Task<IActionResult> UpdateChild(int childId, [FromBody] UpdateChildDTO childDTO)
         {

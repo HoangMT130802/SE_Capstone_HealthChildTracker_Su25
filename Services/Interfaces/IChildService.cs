@@ -15,5 +15,8 @@ namespace Services.Interfaces
         Task<ChildDTO> UpdateChildAsync(int childId, int accountId, UpdateChildDTO childDTO);
         Task<bool> SoftDeleteChildAsync(int childId, int accountId);
         Task<bool> HardDeleteChildAsync(int childId, int accountId);
+
+        // New combined method
+        Task<ChildWithGrowthRecordResponseDTO> CreateChildWithGrowthRecordAsync(int accountId, CreateChildWithGrowthRecordDTO createDTO);
     }
 }
