@@ -35,14 +35,10 @@ namespace KidTracking.API.Controllers
                 {
                     return false;
                 }
-
-                // Admin và Doctor có quyền truy cập tất cả
                 if (User.IsInRole("Admin") || User.IsInRole("Doctor"))
                 {
                     return true;
-                }
-
-                // User thường chỉ xem được thông tin của con mình
+                }             
                 var child = await _childService.GetChildByIdAsync(childId, currentUserId);
                 return child != null;
             }
@@ -97,17 +93,17 @@ namespace KidTracking.API.Controllers
             }
         }
 
-        [HttpPost]
-        public async Task<IActionResult> CreateGrowthRecord([FromBody] CreateGrowthRecordDTO recordDTO)
+        [HttpPost("{childId}")]
+        public async Task<IActionResult> CreateGrowthRecord(int childId, [FromBody] CreateGrowthRecordDTO recordDTO)
         {
             try
             {
-                if (!await ValidateChildAccess(recordDTO.ChildId))
+                if (!await ValidateChildAccess(childId))
                 {
                     return Forbid("Bạn không có quyền thực hiện hành động này");
                 }
 
-                var record = await _growthRecordService.CreateGrowthRecordAsync(recordDTO);
+                var record = await _growthRecordService.CreateGrowthRecordAsync(childId, recordDTO);
                 return CreatedAtAction(nameof(GetGrowthRecordById), new { recordId = record.RecordId }, record);
             }
             catch (KeyNotFoundException ex)
@@ -116,7 +112,7 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error creating growth record for child {recordDTO.ChildId}");
+                _logger.LogError(ex, $"Error creating growth record for child {childId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }

@@ -9,7 +9,6 @@ namespace Contracts.DTOs.GrowthRecord
 {
     public class CreateGrowthRecordDTO
     {
-        public int ChildId { get; set; }
         [Required]
         [Range(30, 200, ErrorMessage = "Chiều cao phải từ 30cm đến 200cm")]
         public decimal Height { get; set; }
