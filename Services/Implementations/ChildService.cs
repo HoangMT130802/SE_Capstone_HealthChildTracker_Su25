@@ -93,7 +93,10 @@ namespace Services.Implementations
         {
             try
             {
-               
+                // Validation đầu vào
+                ValidateCreateChildData(childDTO);
+
+                // Tìm member
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -116,6 +119,10 @@ namespace Services.Implementations
                 }
 
                 var child = _mapper.Map<Child>(childDTO);
+                
+                // Chuẩn hóa dữ liệu
+                child.Gender = NormalizeGender(childDTO.Gender);
+                child.BloodType = NormalizeBloodType(childDTO.BloodType);
                 child.MemberId = member.MemberId; 
                 child.Status = true;
                 child.CreatedAt = DateTime.UtcNow;
@@ -137,7 +144,10 @@ namespace Services.Implementations
         {
             try
             {
-                
+                // Validation đầu vào
+                ValidateUpdateChildData(childDTO);
+
+                // Tìm member
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -146,7 +156,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                
+                // Tìm child
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -156,6 +166,10 @@ namespace Services.Implementations
                 }
 
                 _mapper.Map(childDTO, child);
+                
+                // Chuẩn hóa dữ liệu
+                child.Gender = NormalizeGender(childDTO.Gender);
+                child.BloodType = NormalizeBloodType(childDTO.BloodType);
                 child.UpdateAt = DateTime.UtcNow;
 
                 childRepository.Update(child);
@@ -241,5 +255,143 @@ namespace Services.Implementations
                 throw;
             }
         }
+
+        #region Private Validation Methods
+
+        private void ValidateCreateChildData(CreateChildDTO childDTO)
+        {
+            var errors = new List<string>();
+
+            // Kiểm tra tên
+            if (string.IsNullOrWhiteSpace(childDTO.FullName))
+            {
+                errors.Add("Tên đầy đủ là bắt buộc");
+            }
+            else if (childDTO.FullName.Trim().Length < 2 || childDTO.FullName.Trim().Length > 100)
+            {
+                errors.Add("Tên phải từ 2-100 ký tự");
+            }
+
+            // Kiểm tra ngày sinh
+            if (childDTO.BirthDate == default)
+            {
+                errors.Add("Ngày sinh là bắt buộc");
+            }
+            else if (childDTO.BirthDate > DateTime.Now)
+            {
+                errors.Add("Ngày sinh không thể là tương lai");
+            }
+            else if (childDTO.BirthDate < DateTime.Now.AddYears(-18))
+            {
+                errors.Add("Trẻ em phải dưới 18 tuổi");
+            }
+
+            // Kiểm tra giới tính
+            if (string.IsNullOrWhiteSpace(childDTO.Gender))
+            {
+                errors.Add("Giới tính là bắt buộc");
+            }
+            else if (!IsValidGender(childDTO.Gender))
+            {
+                errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
+            }
+
+            // Kiểm tra nhóm máu (không bắt buộc)
+            if (!string.IsNullOrWhiteSpace(childDTO.BloodType) && !IsValidBloodType(childDTO.BloodType))
+            {
+                errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
+            }
+
+            if (errors.Any())
+            {
+                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+            }
+        }
+
+        private void ValidateUpdateChildData(UpdateChildDTO childDTO)
+        {
+            var errors = new List<string>();
+
+            // Kiểm tra tên
+            if (string.IsNullOrWhiteSpace(childDTO.FullName))
+            {
+                errors.Add("Tên đầy đủ là bắt buộc");
+            }
+            else if (childDTO.FullName.Trim().Length < 2 || childDTO.FullName.Trim().Length > 100)
+            {
+                errors.Add("Tên phải từ 2-100 ký tự");
+            }
+
+            // Kiểm tra ngày sinh
+            if (childDTO.BirthDate == default)
+            {
+                errors.Add("Ngày sinh là bắt buộc");
+            }
+            else if (childDTO.BirthDate > DateTime.Now)
+            {
+                errors.Add("Ngày sinh không thể là tương lai");
+            }
+            else if (childDTO.BirthDate < DateTime.Now.AddYears(-18))
+            {
+                errors.Add("Trẻ em phải dưới 18 tuổi");
+            }
+
+            // Kiểm tra giới tính
+            if (string.IsNullOrWhiteSpace(childDTO.Gender))
+            {
+                errors.Add("Giới tính là bắt buộc");
+            }
+            else if (!IsValidGender(childDTO.Gender))
+            {
+                errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
+            }
+
+            // Kiểm tra nhóm máu (không bắt buộc)
+            if (!string.IsNullOrWhiteSpace(childDTO.BloodType) && !IsValidBloodType(childDTO.BloodType))
+            {
+                errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
+            }
+
+            if (errors.Any())
+            {
+                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+            }
+        }
+
+        private bool IsValidGender(string gender)
+        {
+            if (string.IsNullOrWhiteSpace(gender)) return false;
+            
+            var normalizedGender = gender.Trim().ToLowerInvariant();
+            return normalizedGender == "male" || normalizedGender == "female";
+        }
+
+        private bool IsValidBloodType(string bloodType)
+        {
+            if (string.IsNullOrWhiteSpace(bloodType)) return true; // Không bắt buộc
+            
+            var normalizedBloodType = bloodType.Trim().ToUpperInvariant();
+            var validBloodTypes = new[] { "A", "B", "AB", "O", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-" };
+            
+            return validBloodTypes.Contains(normalizedBloodType);
+        }
+
+        private string NormalizeGender(string gender)
+        {
+            if (string.IsNullOrWhiteSpace(gender)) return null;
+            
+            var normalizedGender = gender.Trim().ToLowerInvariant();
+            return normalizedGender == "male" ? "Male" : 
+                   normalizedGender == "female" ? "Female" : gender;
+        }
+
+        private string NormalizeBloodType(string bloodType)
+        {
+            if (string.IsNullOrWhiteSpace(bloodType)) return null;
+            
+            return bloodType.Trim().ToUpperInvariant();
+        }
+
+        #endregion
     }
 }
