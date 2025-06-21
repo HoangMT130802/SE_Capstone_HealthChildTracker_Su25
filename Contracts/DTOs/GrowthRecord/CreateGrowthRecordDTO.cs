@@ -22,7 +22,7 @@ namespace Contracts.DTOs.GrowthRecord
         [Range(30, 100, ErrorMessage = "Chu vi đầu phải từ 30cm đến 100cm")]
         public decimal HeadCircumference { get; set; }
         [Required]
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }  
         public string Note { get; set; }
     }
 }
