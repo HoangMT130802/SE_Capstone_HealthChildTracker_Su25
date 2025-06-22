@@ -12,7 +12,7 @@ namespace Contracts.DTOs.GrowthRecord
         [Required]
         [Range(30, 200, ErrorMessage = "Chiều cao phải từ 30cm đến 200cm")]
         public decimal Height { get; set; }
-        
+
         [Required]
         [Range(2, 100, ErrorMessage = "Cân nặng phải từ 2kg đến 100kg")]
         public decimal Weight { get; set; }
@@ -20,8 +20,10 @@ namespace Contracts.DTOs.GrowthRecord
         [Required]
         [Range(30, 100, ErrorMessage = "Chu vi đầu phải từ 30cm đến 100cm")]
         public decimal HeadCircumference { get; set; }
+        
         [Required]
-        public DateTime CreatedAt { get; set; }  
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow.Date;
+        
         public string Note { get; set; }
     }
 }
