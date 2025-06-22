@@ -11,7 +11,7 @@ namespace Services.Interfaces
     {
         Task<IEnumerable<GrowthRecordDTO>> GetAllGrowthRecordsByChildIdAsync(int childId);
         Task<GrowthRecordDTO> GetGrowthRecordByIdAsync(int recordId);
-        Task<GrowthRecordDTO> CreateGrowthRecordAsync(CreateGrowthRecordDTO recordDTO);
+        Task<GrowthRecordDTO> CreateGrowthRecordAsync(int childId, CreateGrowthRecordDTO recordDTO);
         Task<GrowthRecordDTO> UpdateGrowthRecordAsync(int recordId, UpdateGrowthRecordDTO recordDTO);
         Task<bool> DeleteGrowthRecordAsync(int recordId);
     }

@@ -24,12 +24,12 @@ namespace Contracts.MapperProfiles
                     (int)(src.CreatedAt - src.Child.BirthDate).TotalDays : 0));
 
             CreateMap<CreateGrowthRecordDTO, GrowthRecord>()
-                .ForMember(dest => dest.ChildId, opt => opt.MapFrom(src => src.ChildId))
                 .ForMember(dest => dest.Height, opt => opt.MapFrom(src => src.Height))
                 .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.Weight))
                 .ForMember(dest => dest.HeadCircumference, opt => opt.MapFrom(src => src.HeadCircumference))
                 .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
+                .ForMember(dest => dest.ChildId, opt => opt.Ignore())
                 .ForMember(dest => dest.RecordId, opt => opt.Ignore())
                 .ForMember(dest => dest.Bmi, opt => opt.Ignore()) 
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore()) 

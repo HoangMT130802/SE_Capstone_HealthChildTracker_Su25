@@ -60,21 +60,40 @@ namespace Services.Implementations
                 throw;
             }
         }
-        public async Task<GrowthRecordDTO> CreateGrowthRecordAsync(CreateGrowthRecordDTO recordDTO)
+        public async Task<GrowthRecordDTO> CreateGrowthRecordAsync(int childId, CreateGrowthRecordDTO recordDTO)
         {
             try
-            {
+            {            
+             
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var child = await childRepository.GetAsync(c => c.ChildId == recordDTO.ChildId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId);
 
                 if (child == null)
                 {
-                    throw new KeyNotFoundException($"Child with ID {recordDTO.ChildId} not found");
+                    throw new KeyNotFoundException($"Child with ID {childId} not found");
+       
+                var birthDate = child.BirthDate.Date;
+                var currentDate = DateTime.UtcNow.Date;
+
+                if (currentDate < birthDate)
+                {
+                    throw new InvalidOperationException($"Không thể tạo record trước ngày sinh của trẻ. Ngày sinh: {child.BirthDate:dd/MM/yyyy}");
+                }
+               
+                var newUpdatedAt = DateTime.UtcNow;
+                if (newUpdatedAt.Date > currentDate)
+                {
+                    throw new InvalidOperationException($"Không thể tạo record trong tương lai. Ngày tạo: {newUpdatedAt:dd/MM/yyyy}");
                 }
 
-                var recordRepository = _unitOfWork.GetRepository<GrowthRecord>();
+                    throw new InvalidOperationException($"Không thể tạo record trong tương lai. Ngày tạo: {newUpdatedAt:dd/MM/yyyy}");
+                }
+
+                record.ChildId = childId;
+        
                 var record = _mapper.Map<GrowthRecord>(recordDTO);
 
+             
                 decimal heightInMeters = recordDTO.Height / 100;
                 record.Bmi = Math.Round(recordDTO.Weight / (heightInMeters * heightInMeters), 2);
                 record.CreatedAt = recordDTO.CreatedAt; // Đảm bảo CreatedAt được gán từ DTO
@@ -93,7 +112,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error creating growth record for child {recordDTO.ChildId}");
+                _logger.LogError(ex, $"Error creating growth record for child {childId}");
                 throw;
             }
         }
