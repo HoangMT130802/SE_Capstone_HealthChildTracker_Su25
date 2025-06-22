@@ -21,14 +21,14 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.ChildName, opt => opt.MapFrom(src => src.Child != null ? src.Child.FullName : ""))
                 .ForMember(dest => dest.AgeInDays, opt => opt.MapFrom(src => 
                     src.Child != null ? 
-                    (int)(src.CreatedAt - src.Child.BirthDate).TotalDays : 0));
+                    (int)(src.CreatedAt.Date - src.Child.BirthDate.Date).TotalDays : 0));
 
             CreateMap<CreateGrowthRecordDTO, GrowthRecord>()
                 .ForMember(dest => dest.Height, opt => opt.MapFrom(src => src.Height))
                 .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.Weight))
                 .ForMember(dest => dest.HeadCircumference, opt => opt.MapFrom(src => src.HeadCircumference))
                 .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
-                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.ChildId, opt => opt.Ignore())
                 .ForMember(dest => dest.RecordId, opt => opt.Ignore())
                 .ForMember(dest => dest.Bmi, opt => opt.Ignore()) 
@@ -40,10 +40,10 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.Weight))
                 .ForMember(dest => dest.HeadCircumference, opt => opt.MapFrom(src => src.HeadCircumference))
                 .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.RecordId, opt => opt.Ignore())
                 .ForMember(dest => dest.ChildId, opt => opt.Ignore()) 
                 .ForMember(dest => dest.Bmi, opt => opt.Ignore())
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore()) 
                 .ForMember(dest => dest.Child, opt => opt.Ignore());
         }
