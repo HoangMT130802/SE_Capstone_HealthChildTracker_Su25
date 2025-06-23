@@ -117,7 +117,6 @@ namespace Services.Implementations
             }
         }
 
-
         public async Task<GrowthRecordDTO> UpdateGrowthRecordAsync(int recordId, UpdateGrowthRecordDTO recordDTO)
         {
             try
