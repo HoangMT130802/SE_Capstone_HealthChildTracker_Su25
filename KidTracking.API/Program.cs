@@ -168,6 +168,7 @@ namespace KidTracking.API
             builder.Services.AddScoped<IDailyRecordService, DailyRecordService>();
             builder.Services.AddScoped<IDiseaseService, DiseaseService>();
             builder.Services.AddScoped<IVaccineService, VaccineService>();
+            builder.Services.AddScoped<IChildVaccineProfileService, ChildVaccineProfileService>();
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);
 
