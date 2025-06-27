@@ -6,5 +6,7 @@ namespace Services.Interfaces
     {
         Task<UserResponseDTO> LoginAsync(LoginRequestDTO request);
         Task<UserResponseDTO> RegisterAsync(RegisterRequestDTO request);
+        Task<StaffResponseDTO> CreateManagerAsync(CreateManagerDTO request, int adminAccountId);
+        Task<StaffResponseDTO> CreateStaffAsync(CreateStaffDTO request, int managerAccountId);
     }
 }

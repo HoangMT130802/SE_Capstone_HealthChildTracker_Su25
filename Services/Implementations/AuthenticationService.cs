@@ -228,5 +228,200 @@ namespace Services.Implementations
                 return false;
             }
         }
+
+        public async Task<StaffResponseDTO> CreateManagerAsync(CreateManagerDTO request, int adminAccountId)
+        {
+            try
+            {
+                // Validate admin account
+                var adminAccountRepository = _unitOfWork.GetRepository<Account>();
+                var adminAccount = await adminAccountRepository.GetAsync(a => a.AccountId == adminAccountId);
+                
+                if (adminAccount == null || adminAccount.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền tạo tài khoản Manager");
+                }
+
+                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone);
+
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                
+                try
+                {
+                    // Hash password
+                    var hashedPassword = BC.HashPassword(request.Password);
+                    
+                    // Create Account
+                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    var newAccount = _mapper.Map<Account>(request);
+                    newAccount.Password = hashedPassword;
+                    newAccount.CreatedAt = DateTime.UtcNow;
+                    newAccount.UpdatedAt = DateTime.UtcNow;
+
+                    await accountRepository.AddAsync(newAccount);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    // Create FacilityStaff
+                    var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var newStaff = _mapper.Map<FacilityStaff>(request);
+                    newStaff.AccountId = newAccount.AccountId;
+                    newStaff.Email = request.Email;
+                    newStaff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
+                        (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
+                    newStaff.CreatedAt = DateTime.UtcNow;
+                    newStaff.UpdatedAt = DateTime.UtcNow;
+
+                    await staffRepository.AddAsync(newStaff);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    // Prepare response
+                    var staffWithAccount = await staffRepository.GetAsync(
+                        s => s.StaffId == newStaff.StaffId, 
+                        includeProperties: "Account"
+                    );
+
+                    var response = _mapper.Map<StaffResponseDTO>(staffWithAccount);
+                    response.Token = _jwtService.GenerateToken(newAccount);
+
+                    _logger.LogInformation($"Manager {newAccount.AccountName} created successfully by Admin {adminAccount.AccountName}");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Create manager failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<StaffResponseDTO> CreateStaffAsync(CreateStaffDTO request, int managerAccountId)
+        {
+            try
+            {
+                // Validate manager account and facility access
+                var managerAccountRepository = _unitOfWork.GetRepository<Account>();
+                var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
+                
+                if (managerAccount == null || managerAccount.Role != "Manager")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Manager mới có quyền tạo tài khoản Staff/Doctor");
+                }
+
+                // Check if manager belongs to the same facility
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                var managerStaff = await staffRepository.GetAsync(s => s.AccountId == managerAccountId);
+                
+                if (managerStaff == null || managerStaff.FacilityId != request.FacilityId)
+                {
+                    throw new UnauthorizedAccessException("Manager chỉ có thể tạo tài khoản cho cơ sở y tế mà mình quản lý");
+                }
+
+                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone);
+
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                
+                try
+                {
+                    // Hash password
+                    var hashedPassword = BC.HashPassword(request.Password);
+                    
+                    // Create Account
+                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    var newAccount = _mapper.Map<Account>(request);
+                    newAccount.Password = hashedPassword;
+                    newAccount.CreatedAt = DateTime.UtcNow;
+                    newAccount.UpdatedAt = DateTime.UtcNow;
+
+                    await accountRepository.AddAsync(newAccount);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    // Create FacilityStaff
+                    var newStaff = _mapper.Map<FacilityStaff>(request);
+                    newStaff.AccountId = newAccount.AccountId;
+                    newStaff.Email = request.Email;
+                    newStaff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
+                        (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
+                    newStaff.CreatedAt = DateTime.UtcNow;
+                    newStaff.UpdatedAt = DateTime.UtcNow;
+
+                    await staffRepository.AddAsync(newStaff);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    // Prepare response
+                    var staffWithAccount = await staffRepository.GetAsync(
+                        s => s.StaffId == newStaff.StaffId, 
+                        includeProperties: "Account"
+                    );
+
+                    var response = _mapper.Map<StaffResponseDTO>(staffWithAccount);
+                    response.Token = _jwtService.GenerateToken(newAccount);
+
+                    _logger.LogInformation($"{request.Role} {newAccount.AccountName} created successfully by Manager {managerAccount.AccountName}");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Create staff failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        private async Task ValidateStaffCreationRequest(string accountName, string email)
+        {
+            var accountRepository = _unitOfWork.GetRepository<Account>();
+
+            if (string.IsNullOrEmpty(accountName))
+            {
+                throw new ArgumentException("Tên tài khoản không được để trống");
+            }
+
+            if (!IsValidEmail(email))
+            {
+                throw new ArgumentException("Email không hợp lệ");
+            }
+
+            // Check if account name already exists
+            var existingAccountByName = await accountRepository.GetAsync(u => u.AccountName.ToLower() == accountName.ToLower());
+            if (existingAccountByName != null)
+            {
+                throw new InvalidOperationException("Tên tài khoản đã tồn tại");
+            }
+
+            // Check if email already exists
+            var existingAccountByEmail = await accountRepository.GetAsync(u => u.Email.ToLower() == email.ToLower());
+            if (existingAccountByEmail != null)
+            {
+                throw new InvalidOperationException("Email đã được sử dụng");
+            }
+        }
+
+        private async Task ValidateStaffCreationRequestWithPhone(string accountName, string email, string phone)
+        {
+            await ValidateStaffCreationRequest(accountName, email);
+
+            // Validate phone format if provided
+            if (!string.IsNullOrEmpty(phone))
+            {
+                if (!int.TryParse(phone, out _))
+                {
+                    throw new ArgumentException("Số điện thoại không hợp lệ - chỉ được chứa số");
+                }
+            }
+        }
     }
 }

@@ -22,19 +22,80 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
 
             CreateMap<RegisterRequestDTO, Account>()
-                .ForMember(dest => dest.AccountName, opt => opt.MapFrom(src => src.AccountName))
-                .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
-                .ForMember(dest => dest.Password, opt => opt.Ignore()) 
-                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => "Member")) 
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
-                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
-                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
                 .ForMember(dest => dest.AccountId, opt => opt.Ignore())
+                .ForMember(dest => dest.Password, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.Ignore())
+                .ForMember(dest => dest.Status, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.FacilityStaffs, opt => opt.Ignore())
                 .ForMember(dest => dest.Members, opt => opt.Ignore())
                 .ForMember(dest => dest.UserMemberships, opt => opt.Ignore());
 
+            // Mapper cho CreateManagerDTO
+            CreateMap<CreateManagerDTO, Account>()
+                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
+                .ForMember(dest => dest.Password, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => "Manager"))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.FacilityStaffs, opt => opt.Ignore())
+                .ForMember(dest => dest.Members, opt => opt.Ignore())
+                .ForMember(dest => dest.UserMemberships, opt => opt.Ignore());
 
+            CreateMap<CreateManagerDTO, FacilityStaff>()
+                .ForMember(dest => dest.StaffId, opt => opt.Ignore())
+                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
+                .ForMember(dest => dest.Phone, opt => opt.Ignore())
+                .ForMember(dest => dest.Email, opt => opt.Ignore())
+                .ForMember(dest => dest.Position, opt => opt.MapFrom(src => "Manager"))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.Account, opt => opt.Ignore())
+                .ForMember(dest => dest.DoctorProfile, opt => opt.Ignore())
+                .ForMember(dest => dest.Facility, opt => opt.Ignore());
+
+            // Mapper cho CreateStaffDTO
+            CreateMap<CreateStaffDTO, Account>()
+                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
+                .ForMember(dest => dest.Password, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.FacilityStaffs, opt => opt.Ignore())
+                .ForMember(dest => dest.Members, opt => opt.Ignore())
+                .ForMember(dest => dest.UserMemberships, opt => opt.Ignore());
+
+            CreateMap<CreateStaffDTO, FacilityStaff>()
+                .ForMember(dest => dest.StaffId, opt => opt.Ignore())
+                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
+                .ForMember(dest => dest.Phone, opt => opt.Ignore())
+                .ForMember(dest => dest.Email, opt => opt.Ignore())
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.Account, opt => opt.Ignore())
+                .ForMember(dest => dest.DoctorProfile, opt => opt.Ignore())
+                .ForMember(dest => dest.Facility, opt => opt.Ignore());
+
+            // Mapper cho response
+            CreateMap<FacilityStaff, StaffResponseDTO>()
+                .ForMember(dest => dest.AccountId, opt => opt.MapFrom(src => src.AccountId))
+                .ForMember(dest => dest.StaffId, opt => opt.MapFrom(src => src.StaffId))
+                .ForMember(dest => dest.AccountName, opt => opt.MapFrom(src => src.Account.AccountName))
+                .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Account.Email))
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Account.Role))
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
+                .ForMember(dest => dest.Phone, opt => opt.MapFrom(src => src.Phone.HasValue ? src.Phone.Value.ToString() : ""))
+                .ForMember(dest => dest.FacilityId, opt => opt.MapFrom(src => src.FacilityId))
+                .ForMember(dest => dest.Position, opt => opt.MapFrom(src => src.Position))
+                .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.Token, opt => opt.Ignore());
         }
     }
 } 

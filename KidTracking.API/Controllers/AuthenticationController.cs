@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using BCrypt.Net;
 using Repositories.Interfaces;
+using System.Security.Claims;
 
 namespace KidTracking.API.Controllers
 {
@@ -66,6 +67,80 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError($"Registration error: {ex.Message}");
                 return BadRequest(new { message = "Đã có lỗi xảy ra khi đăng ký" });
+            }
+        }
+
+        [HttpPost("create-manager")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<StaffResponseDTO>> CreateManager([FromBody] CreateManagerDTO request)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var response = await _authService.CreateManagerAsync(request, currentUserId);
+                return CreatedAtAction(nameof(Login), new { accountName = response.AccountName }, response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Create manager unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Create manager validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Create manager failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Create manager error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo tài khoản Manager" });
+            }
+        }
+
+        [HttpPost("create-staff")]
+        [Authorize(Roles = "Manager")]
+        public async Task<ActionResult<StaffResponseDTO>> CreateStaff([FromBody] CreateStaffDTO request)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var response = await _authService.CreateStaffAsync(request, currentUserId);
+                return CreatedAtAction(nameof(Login), new { accountName = response.AccountName }, response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Create staff unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Create staff validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Create staff failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Create staff error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo tài khoản Staff/Doctor" });
             }
         }
     }

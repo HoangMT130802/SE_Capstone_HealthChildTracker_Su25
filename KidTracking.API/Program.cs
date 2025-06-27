@@ -44,10 +44,22 @@ namespace KidTracking.API
             // Cấu hình JWT
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");
             var secretKeyString = jwtSettings["SecretKey"];
+            var issuer = jwtSettings["Issuer"];
+            var audience = jwtSettings["Audience"];
             
             if (string.IsNullOrEmpty(secretKeyString))
             {
                 throw new InvalidOperationException("JWT SecretKey is not configured!");
+            }
+            
+            if (string.IsNullOrEmpty(issuer))
+            {
+                throw new InvalidOperationException("JWT Issuer is not configured!");
+            }
+            
+            if (string.IsNullOrEmpty(audience))
+            {
+                throw new InvalidOperationException("JWT Audience is not configured!");
             }
             
             var secretKey = Encoding.UTF8.GetBytes(secretKeyString);
@@ -67,8 +79,8 @@ namespace KidTracking.API
                     IssuerSigningKey = new SymmetricSecurityKey(secretKey),
                     ValidateIssuer = true,
                     ValidateAudience = true,
-                    ValidIssuer = jwtSettings["Issuer"],
-                    ValidAudience = jwtSettings["Audience"],
+                    ValidIssuer = issuer,
+                    ValidAudience = audience,
                     ClockSkew = TimeSpan.Zero,
                     ValidateLifetime = true,
                     RequireExpirationTime = true,
@@ -114,7 +126,7 @@ namespace KidTracking.API
                         Console.WriteLine("=== JWT Challenge ===");
                         Console.WriteLine($"Error: {context.Error}");
                         Console.WriteLine($"ErrorDescription: {context.ErrorDescription}");
-                        context.Response.Headers.Add("Token-Error", "Invalid token or no token provided");
+                        context.Response.Headers["Token-Error"] = "Invalid token or no token provided";
                         return Task.CompletedTask;
                     }
                 };
