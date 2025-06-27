@@ -5,10 +5,7 @@ using Repositories.Entities;
 using Repositories.Interfaces;
 using Services.Interfaces;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Services.Implementations
@@ -17,13 +14,15 @@ namespace Services.Implementations
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
-        private readonly ILogger _logger;
+        private readonly ILogger<ChildVaccineProfileService> _logger;
+
         public ChildVaccineProfileService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<ChildVaccineProfileService> logger)
         {
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
+
         public async Task<IEnumerable<ChildVaccineProfileDTO>> GetAllChildVaccineProfilesByChildIdAsync(int childId)
         {
             try
@@ -34,16 +33,17 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Lỗi khi lấy hồ sơ tiêm chủng cho trẻ {childId}");
+                _logger.LogError(ex, $"Error getting vaccine profiles for child {childId}");
                 throw;
             }
         }
+
         public async Task<ChildVaccineProfileDTO> GetChildVaccineProfileByIdAsync(int profileId)
         {
             try
             {
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
-                var profile = await profileRepository.GetAsync(r => r.VaccineProfileId == profileId, includeProperties: "Child,Vaccine");
+                var profile = await profileRepository.GetAsync(r => r.VaccineProfileId == profileId, includeProperties: "Child,Vaccine,Disease");
 
                 if (profile == null)
                 {
@@ -77,6 +77,14 @@ namespace Services.Implementations
                 if (vaccine == null)
                 {
                     throw new KeyNotFoundException($"Vaccine with ID {profileDTO.VaccineId} not found");
+                }
+
+                // Validate disease exists
+                var diseaseRepository = _unitOfWork.GetRepository<Disease>();
+                var disease = await diseaseRepository.GetAsync(d => d.DiseaseId == profileDTO.DiseaseId);
+                if (disease == null)
+                {
+                    throw new KeyNotFoundException($"Disease with ID {profileDTO.DiseaseId} not found");
                 }
 
                 // Validate expected date
@@ -121,8 +129,9 @@ namespace Services.Implementations
                 await _unitOfWork.SaveChangesAsync();
 
                 var savedProfile = await profileRepository.GetAsync(
-    p => p.VaccineProfileId == profile.VaccineProfileId
-);
+                    p => p.VaccineProfileId == profile.VaccineProfileId,
+                    includeProperties: "Child,Vaccine,Disease"
+                );
 
                 return _mapper.Map<ChildVaccineProfileDTO>(savedProfile);
             }
@@ -140,7 +149,7 @@ namespace Services.Implementations
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
                 var profile = await profileRepository.GetAsync(
                     p => p.VaccineProfileId == profileId,
-                    includeProperties: "Child,Vaccine"
+                    includeProperties: "Child,Vaccine,Disease"
                 );
 
                 if (profile == null)
@@ -170,6 +179,17 @@ namespace Services.Implementations
                     }
                 }
 
+                // Validate disease if provided
+                if (profileDTO.DiseaseId.HasValue)
+                {
+                    var diseaseRepository = _unitOfWork.GetRepository<Disease>();
+                    var disease = await diseaseRepository.GetAsync(d => d.DiseaseId == profileDTO.DiseaseId.Value);
+                    if (disease == null)
+                    {
+                        throw new KeyNotFoundException($"Disease with ID {profileDTO.DiseaseId} not found");
+                    }
+                }
+
                 _mapper.Map(profileDTO, profile);
                 profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -178,7 +198,7 @@ namespace Services.Implementations
 
                 var updatedProfile = await profileRepository.GetAsync(
                     p => p.VaccineProfileId == profileId,
-                    includeProperties: "Child,Vaccine"
+                    includeProperties: "Child,Vaccine,Disease"
                 );
 
                 return _mapper.Map<ChildVaccineProfileDTO>(updatedProfile);
@@ -213,7 +233,5 @@ namespace Services.Implementations
                 throw;
             }
         }
-
-       
     }
 }

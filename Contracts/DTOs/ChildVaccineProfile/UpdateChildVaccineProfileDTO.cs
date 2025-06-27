@@ -10,6 +10,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
 {
     public class UpdateChildVaccineProfileDTO
     {
+        public int? DiseaseId { get; set; }
         [SwaggerSchema("The expected date of vaccination in format yyyy-MM-dd")]
         [Required]
         public DateOnly ExpectedDate { get; set; }

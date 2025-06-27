@@ -12,6 +12,8 @@ namespace Contracts.DTOs.ChildVaccineProfile
     {
         [Required] 
         public int ChildId { get; set; }
+        [Required]
+        public int DiseaseId { get; set; }
         public int? AppointmentId { get; set; }
         [Required]
         public int VaccineId { get; set; }

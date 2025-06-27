@@ -10,6 +10,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
     {
         public int VaccineProfileId { get; set; }
         public int ChildId { get; set; }
+        public int DiseaseId { get; set; }
         public int? AppointmentId { get; set; }
         public int VaccineId { get; set; }
         public int DoseNum { get; set; }
@@ -18,7 +19,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
         public string Status { get; set; }
         public bool IsRequired { get; set; }
         public string Priority { get; set; }
-        public long CreatedAt { get; set; }
-        public long UpdatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
     }
 }
