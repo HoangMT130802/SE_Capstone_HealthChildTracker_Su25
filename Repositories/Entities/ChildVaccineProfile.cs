@@ -13,7 +13,7 @@ public partial class ChildVaccineProfile
 
     public int DiseaseId { get; set; }
 
-    public int AppointmentId { get; set; }
+    public int? AppointmentId { get; set; }
 
     public int VaccineId { get; set; }
 
