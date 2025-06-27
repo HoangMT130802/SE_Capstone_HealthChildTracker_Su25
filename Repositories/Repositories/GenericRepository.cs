@@ -151,7 +151,11 @@ namespace Repositories.Repositories
         {
             _dbSet.Update(entity);
         }
-
+        public async Task DeleteAsync(TEntity entity)
+        {
+            _dbSet.Remove(entity);
+            await Task.CompletedTask; 
+        }
         public virtual void UpdateRange(List<TEntity> entities)
         {
             _dbSet.UpdateRange(entities);

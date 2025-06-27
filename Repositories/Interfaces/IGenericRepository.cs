@@ -1,4 +1,5 @@
-﻿using Repositories.Models.QueryModels;
+﻿using Microsoft.EntityFrameworkCore;
+using Repositories.Models.QueryModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,5 +40,6 @@ namespace Repositories.Interfaces
         void Delete(TEntity entity);
         void HardDelete(TEntity entity);
         void HardDeleteRange(List<TEntity> entities);
+        Task DeleteAsync(TEntity entity);
     }
 }

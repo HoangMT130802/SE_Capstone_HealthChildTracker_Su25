@@ -16,7 +16,6 @@
     <Folder Include="DTOs\Survey\" />
     <Folder Include="DTOs\Transaction\" />
     <Folder Include="DTOs\Order\" />
-    <Folder Include="DTOs\Vaccine\" />
   </ItemGroup>
 
   <ItemGroup>
