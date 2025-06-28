@@ -1,4 +1,6 @@
 ﻿using Contracts.DTOs.Authentication;
+using Contracts.DTOs.Member;
+using Contracts.DTOs.FacilityStaff;
 
 namespace Services.Interfaces
 {
@@ -8,5 +10,9 @@ namespace Services.Interfaces
         Task<UserResponseDTO> RegisterAsync(RegisterRequestDTO request);
         Task<StaffResponseDTO> CreateManagerAsync(CreateManagerDTO request, int adminAccountId);
         Task<StaffResponseDTO> CreateStaffAsync(CreateStaffDTO request, int managerAccountId);
+        Task<MemberInfoResponseDTO> UpdateMemberInfoAsync(UpdateMemberInfoDTO request, int currentUserId);
+        Task<FacilityStaffInfoResponseDTO> UpdateFacilityStaffInfoAsync(UpdateFacilityStaffInfoDTO request, int currentUserId);
+        Task<UserResponseDTO> BanUserAsync(BanUserRequestDTO request, int currentUserId);
+        Task<bool> DeleteStaffAsync(int staffId, int managerAccountId);
     }
 }

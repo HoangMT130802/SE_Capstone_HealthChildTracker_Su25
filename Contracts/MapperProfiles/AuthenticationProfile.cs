@@ -1,5 +1,7 @@
 using AutoMapper;
 using Contracts.DTOs.Authentication;
+using Contracts.DTOs.Member;
+using Contracts.DTOs.FacilityStaff;
 using Repositories.Entities;
 
 namespace Contracts.MapperProfiles
@@ -96,6 +98,34 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.Token, opt => opt.Ignore());
+
+            // Mapper cho MemberInfoResponseDTO
+            CreateMap<Member, MemberInfoResponseDTO>()
+                .ForMember(dest => dest.MemberId, opt => opt.MapFrom(src => src.MemberId))
+                .ForMember(dest => dest.AccountId, opt => opt.MapFrom(src => src.AccountId))
+                .ForMember(dest => dest.AccountName, opt => opt.MapFrom(src => src.Account.AccountName))
+                .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Account.Email))
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
+                .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
+                .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Account.Role))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Account.Status))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
+
+            // Mapper cho FacilityStaffInfoResponseDTO
+            CreateMap<FacilityStaff, FacilityStaffInfoResponseDTO>()
+                .ForMember(dest => dest.StaffId, opt => opt.MapFrom(src => src.StaffId))
+                .ForMember(dest => dest.AccountId, opt => opt.MapFrom(src => src.AccountId))
+                .ForMember(dest => dest.AccountName, opt => opt.MapFrom(src => src.Account.AccountName))
+                .ForMember(dest => dest.FacilityId, opt => opt.MapFrom(src => src.FacilityId))
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
+                .ForMember(dest => dest.Phone, opt => opt.MapFrom(src => src.Phone.HasValue ? src.Phone.Value.ToString() : ""))
+                .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
+                .ForMember(dest => dest.Position, opt => opt.MapFrom(src => src.Position))
+                .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Account.Role))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
         }
     }
 } 

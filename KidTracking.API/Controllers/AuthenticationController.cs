@@ -1,4 +1,6 @@
 ﻿using Contracts.DTOs.Authentication;
+using Contracts.DTOs.Member;
+using Contracts.DTOs.FacilityStaff;
 using Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -141,6 +143,158 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError($"Create staff error: {ex.Message}");
                 return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo tài khoản Staff/Doctor" });
+            }
+        }
+
+        [HttpPut("update-member-profile")]
+        [Authorize(Roles = "Member")]
+        public async Task<ActionResult<MemberInfoResponseDTO>> UpdateMemberInfo([FromBody] UpdateMemberInfoDTO request)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var response = await _authService.UpdateMemberInfoAsync(request, currentUserId);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Update user info unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Update user info validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Update user info failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Update user info error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi cập nhật thông tin người dùng" });
+            }
+        }
+
+        [HttpPut("update-facility-staff-info")]
+        [Authorize(Roles = "Admin,Manager,Doctor,Staff")]
+        public async Task<ActionResult<FacilityStaffInfoResponseDTO>> UpdateFacilityStaffInfo([FromBody] UpdateFacilityStaffInfoDTO request)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var response = await _authService.UpdateFacilityStaffInfoAsync(request, currentUserId);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Update staff info unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Update staff info validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Update staff info failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Update staff info error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi cập nhật thông tin staff" });
+            }
+        }
+
+        [HttpPut("ban-user")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<UserResponseDTO>> BanUser([FromBody] BanUserRequestDTO request)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var response = await _authService.BanUserAsync(request, currentUserId);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Ban user unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Ban user validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Ban user failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Ban user error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi ban/unban tài khoản" });
+            }
+        }
+
+        [HttpDelete("delete-staff/{staffId}")]
+        [Authorize(Roles = "Manager")]
+        public async Task<ActionResult> DeleteStaff(int staffId)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var result = await _authService.DeleteStaffAsync(staffId, currentUserId);
+                if (result)
+                {
+                    return Ok(new { message = "Xóa staff/doctor thành công" });
+                }
+                return BadRequest(new { message = "Không thể xóa staff/doctor" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Delete staff unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Delete staff validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Delete staff failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Delete staff error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi xóa staff/doctor" });
             }
         }
     }

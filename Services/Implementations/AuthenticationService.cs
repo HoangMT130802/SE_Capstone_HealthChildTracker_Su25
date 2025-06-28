@@ -1,5 +1,7 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.Authentication;
+using Contracts.DTOs.Member;
+using Contracts.DTOs.FacilityStaff;
 using Services.Interfaces;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -421,6 +423,247 @@ namespace Services.Implementations
                 {
                     throw new ArgumentException("Số điện thoại không hợp lệ - chỉ được chứa số");
                 }
+            }
+        }
+
+        public async Task<MemberInfoResponseDTO> UpdateMemberInfoAsync(UpdateMemberInfoDTO request, int currentUserId)
+        {
+            try
+            {
+                var memberRepository = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepository.GetAsync(m => m.AccountId == currentUserId, includeProperties: "Account");
+                
+                if (member == null)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản Member không tồn tại");
+                }
+
+                // Validate email uniqueness (exclude current user)
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var existingAccountByEmail = await accountRepository.GetAsync(u => 
+                    u.Email.ToLower() == request.Email.ToLower() && u.AccountId != currentUserId);
+                if (existingAccountByEmail != null)
+                {
+                    throw new InvalidOperationException("Email đã được sử dụng");
+                }
+
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                
+                try
+                {
+                    // Update account email
+                    member.Account.Email = request.Email;
+                    member.Account.UpdatedAt = DateTime.UtcNow;
+                    accountRepository.Update(member.Account);
+
+                    // Update member info
+                    member.FullName = request.FullName;
+                    member.PhoneNumber = request.PhoneNumber;
+                    member.Address = request.Address;
+                    member.UpdatedAt = DateTime.UtcNow;
+                    memberRepository.Update(member);
+
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var response = _mapper.Map<MemberInfoResponseDTO>(member);
+                    
+                    _logger.LogInformation($"Member {member.FullName} updated their info successfully");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Update member info failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<FacilityStaffInfoResponseDTO> UpdateFacilityStaffInfoAsync(UpdateFacilityStaffInfoDTO request, int currentUserId)
+        {
+            try
+            {
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                var staff = await staffRepository.GetAsync(s => s.StaffId == request.StaffId, includeProperties: "Account");
+                
+                if (staff == null)
+                {
+                    throw new ArgumentException("Staff không tồn tại");
+                }
+
+                // Check permission: Admin can update all, Manager can update in their facility, user can update themselves
+                var currentAccountRepository = _unitOfWork.GetRepository<Account>();
+                var currentAccount = await currentAccountRepository.GetAsync(a => a.AccountId == currentUserId);
+                
+                if (currentAccount == null)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản không hợp lệ");
+                }
+
+                if (currentAccount.Role == "Admin")
+                {
+                    // Admin can update all
+                }
+                else if (currentAccount.Role == "Manager")
+                {
+                    // Manager can only update staff in their facility
+                    var managerStaff = await staffRepository.GetAsync(s => s.AccountId == currentUserId);
+                    if (managerStaff == null || managerStaff.FacilityId != staff.FacilityId)
+                    {
+                        throw new UnauthorizedAccessException("Manager chỉ có thể cập nhật thông tin staff trong cơ sở y tế của mình");
+                    }
+                }
+                else if (staff.AccountId != currentUserId)
+                {
+                    // Other users can only update themselves
+                    throw new UnauthorizedAccessException("Bạn chỉ có thể cập nhật thông tin của chính mình");
+                }
+
+                // Validate email uniqueness (exclude current staff)
+                var staffWithSameEmail = await staffRepository.GetAsync(s => 
+                    s.Email.ToLower() == request.Email.ToLower() && s.StaffId != request.StaffId);
+                if (staffWithSameEmail != null)
+                {
+                    throw new InvalidOperationException("Email đã được sử dụng bởi staff khác");
+                }
+
+                // Update staff info
+                staff.FullName = request.FullName;
+                staff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
+                    (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
+                staff.Email = request.Email;
+                staff.Position = request.Position;
+                staff.Description = request.Description;
+                staff.Status = request.Status;
+                staff.UpdatedAt = DateTime.UtcNow;
+
+                staffRepository.Update(staff);
+                await _unitOfWork.SaveChangesAsync();
+
+                var response = _mapper.Map<FacilityStaffInfoResponseDTO>(staff);
+                
+                _logger.LogInformation($"Staff {staff.FullName} info updated successfully by user {currentAccount.AccountName}");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Update staff info failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<UserResponseDTO> BanUserAsync(BanUserRequestDTO request, int currentUserId)
+        {
+            try
+            {
+                var currentAccountRepository = _unitOfWork.GetRepository<Account>();
+                var currentAccount = await currentAccountRepository.GetAsync(a => a.AccountId == currentUserId);
+                
+                if (currentAccount == null || currentAccount.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền ban/unban tài khoản");
+                }
+
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var targetAccount = await accountRepository.GetAsync(a => a.AccountId == request.AccountId);
+                
+                if (targetAccount == null)
+                {
+                    throw new ArgumentException("Tài khoản không tồn tại");
+                }
+
+                if (targetAccount.AccountId == currentUserId)
+                {
+                    throw new InvalidOperationException("Không thể ban chính mình");
+                }
+
+                // Update account status
+                targetAccount.Status = request.Status;
+                targetAccount.UpdatedAt = DateTime.UtcNow;
+
+                accountRepository.Update(targetAccount);
+                await _unitOfWork.SaveChangesAsync();
+
+                var response = _mapper.Map<UserResponseDTO>(targetAccount);
+                
+                string action = request.Status ? "unban" : "ban";
+                _logger.LogInformation($"Admin {currentAccount.AccountName} {action} user {targetAccount.AccountName}. Reason: {request.Reason}");
+                
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Ban user failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<bool> DeleteStaffAsync(int staffId, int managerAccountId)
+        {
+            try
+            {
+                var managerAccountRepository = _unitOfWork.GetRepository<Account>();
+                var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
+                
+                if (managerAccount == null || managerAccount.Role != "Manager")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Manager mới có quyền xóa staff/doctor");
+                }
+
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                var staff = await staffRepository.GetAsync(s => s.StaffId == staffId, includeProperties: "Account");
+                
+                if (staff == null)
+                {
+                    throw new ArgumentException("Staff không tồn tại");
+                }
+
+                // Check if manager belongs to the same facility
+                var managerStaff = await staffRepository.GetAsync(s => s.AccountId == managerAccountId);
+                if (managerStaff == null || managerStaff.FacilityId != staff.FacilityId)
+                {
+                    throw new UnauthorizedAccessException("Manager chỉ có thể xóa staff/doctor trong cơ sở y tế của mình");
+                }
+
+                // Cannot delete manager
+                if (staff.Position == "Manager")
+                {
+                    throw new InvalidOperationException("Không thể xóa tài khoản Manager");
+                }
+
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                
+                try
+                {
+                    // Delete FacilityStaff first
+                    staffRepository.Delete(staff);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    // Then delete Account
+                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    accountRepository.Delete(staff.Account);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    _logger.LogInformation($"Manager {managerAccount.AccountName} deleted {staff.Position} {staff.FullName} (StaffId: {staffId})");
+                    return true;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Delete staff failed: {ex.Message}");
+                throw;
             }
         }
     }
