@@ -27,12 +27,8 @@ namespace Contracts.DTOs.Authentication
         public int FacilityId { get; set; }
 
         [Required(ErrorMessage = "Vị trí không được để trống")]
-        [StringLength(50, ErrorMessage = "Vị trí không được vượt quá 50 ký tự")]
+        [RegularExpression("^(Doctor|Staff)$", ErrorMessage = "Vị trí phải là Doctor hoặc Staff")]
         public string Position { get; set; }
-
-        [Required(ErrorMessage = "Vai trò không được để trống")]
-        [RegularExpression("^(Doctor|Staff)$", ErrorMessage = "Vai trò phải là Doctor hoặc Staff")]
-        public string Role { get; set; }
 
         public string Description { get; set; }
     }

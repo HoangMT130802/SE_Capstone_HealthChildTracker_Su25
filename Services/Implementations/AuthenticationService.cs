@@ -311,16 +311,21 @@ namespace Services.Implementations
                 var managerAccountRepository = _unitOfWork.GetRepository<Account>();
                 var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
                 
-                if (managerAccount == null || managerAccount.Role != "Manager")
+                if (managerAccount == null)
                 {
-                    throw new UnauthorizedAccessException("Chỉ Manager mới có quyền tạo tài khoản Staff/Doctor");
+                    throw new UnauthorizedAccessException("Tài khoản Manager không tồn tại");
                 }
 
-                // Check if manager belongs to the same facility
+                // Check if manager belongs to the same facility and has Manager position
                 var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var managerStaff = await staffRepository.GetAsync(s => s.AccountId == managerAccountId);
                 
-                if (managerStaff == null || managerStaff.FacilityId != request.FacilityId)
+                if (managerStaff == null || managerStaff.Position != "Manager")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Manager mới có quyền tạo tài khoản Staff/Doctor");
+                }
+                
+                if (managerStaff.FacilityId != request.FacilityId)
                 {
                     throw new UnauthorizedAccessException("Manager chỉ có thể tạo tài khoản cho cơ sở y tế mà mình quản lý");
                 }
@@ -367,7 +372,7 @@ namespace Services.Implementations
                     var response = _mapper.Map<StaffResponseDTO>(staffWithAccount);
                     response.Token = _jwtService.GenerateToken(newAccount);
 
-                    _logger.LogInformation($"{request.Role} {newAccount.AccountName} created successfully by Manager {managerAccount.AccountName}");
+                    _logger.LogInformation($"{request.Position} {newAccount.AccountName} created successfully by Manager {managerAccount.AccountName}");
                     return response;
                 }
                 catch
@@ -509,19 +514,23 @@ namespace Services.Implementations
                 {
                     // Admin can update all
                 }
-                else if (currentAccount.Role == "Manager")
+                else
                 {
-                    // Manager can only update staff in their facility
-                    var managerStaff = await staffRepository.GetAsync(s => s.AccountId == currentUserId);
-                    if (managerStaff == null || managerStaff.FacilityId != staff.FacilityId)
+                    // Check if current user is Manager
+                    var currentStaff = await staffRepository.GetAsync(s => s.AccountId == currentUserId);
+                    if (currentStaff != null && currentStaff.Position == "Manager")
                     {
-                        throw new UnauthorizedAccessException("Manager chỉ có thể cập nhật thông tin staff trong cơ sở y tế của mình");
+                        // Manager can only update staff in their facility
+                        if (currentStaff.FacilityId != staff.FacilityId)
+                        {
+                            throw new UnauthorizedAccessException("Manager chỉ có thể cập nhật thông tin staff trong cơ sở y tế của mình");
+                        }
                     }
-                }
-                else if (staff.AccountId != currentUserId)
-                {
-                    // Other users can only update themselves
-                    throw new UnauthorizedAccessException("Bạn chỉ có thể cập nhật thông tin của chính mình");
+                    else if (staff.AccountId != currentUserId)
+                    {
+                        // Other users can only update themselves
+                        throw new UnauthorizedAccessException("Bạn chỉ có thể cập nhật thông tin của chính mình");
+                    }
                 }
 
                 // Validate email uniqueness (exclude current staff)
@@ -610,22 +619,27 @@ namespace Services.Implementations
                 var managerAccountRepository = _unitOfWork.GetRepository<Account>();
                 var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
                 
-                if (managerAccount == null || managerAccount.Role != "Manager")
+                if (managerAccount == null)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản Manager không tồn tại");
+                }
+
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                
+                // Check if manager has Manager position
+                var managerStaff = await staffRepository.GetAsync(s => s.AccountId == managerAccountId);
+                if (managerStaff == null || managerStaff.Position != "Manager")
                 {
                     throw new UnauthorizedAccessException("Chỉ Manager mới có quyền xóa staff/doctor");
                 }
 
-                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var staff = await staffRepository.GetAsync(s => s.StaffId == staffId, includeProperties: "Account");
                 
                 if (staff == null)
                 {
                     throw new ArgumentException("Staff không tồn tại");
                 }
-
-                // Check if manager belongs to the same facility
-                var managerStaff = await staffRepository.GetAsync(s => s.AccountId == managerAccountId);
-                if (managerStaff == null || managerStaff.FacilityId != staff.FacilityId)
+                if (managerStaff.FacilityId != staff.FacilityId)
                 {
                     throw new UnauthorizedAccessException("Manager chỉ có thể xóa staff/doctor trong cơ sở y tế của mình");
                 }

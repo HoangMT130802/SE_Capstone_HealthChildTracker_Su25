@@ -19,6 +19,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
         public string Status { get; set; }
         public bool IsRequired { get; set; }
         public string Priority { get; set; }
+        public string Note { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

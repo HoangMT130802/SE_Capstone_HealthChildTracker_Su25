@@ -73,7 +73,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPost("create-manager")]
-        [Authorize(Roles = "Admin")]
+      
         public async Task<ActionResult<StaffResponseDTO>> CreateManager([FromBody] CreateManagerDTO request)
         {
             try

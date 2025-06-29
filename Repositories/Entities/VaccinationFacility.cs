@@ -19,7 +19,7 @@ public partial class VaccinationFacility
 
     public string Email { get; set; }
 
-    public long Description { get; set; }
+    public string Description { get; set; }
 
     public long Status { get; set; }
 
