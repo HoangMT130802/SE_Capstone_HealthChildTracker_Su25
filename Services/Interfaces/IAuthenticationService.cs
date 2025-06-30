@@ -7,6 +7,7 @@ namespace Services.Interfaces
     public interface IAuthenticationService
     {
         Task<UserResponseDTO> LoginAsync(LoginRequestDTO request);
+        Task<StaffResponseDTO> LoginStaffAsync(LoginRequestDTO request);
         Task<UserResponseDTO> RegisterAsync(RegisterRequestDTO request);
         Task<StaffResponseDTO> CreateManagerAsync(CreateManagerDTO request, int adminAccountId);
         Task<StaffResponseDTO> CreateStaffAsync(CreateStaffDTO request, int managerAccountId);

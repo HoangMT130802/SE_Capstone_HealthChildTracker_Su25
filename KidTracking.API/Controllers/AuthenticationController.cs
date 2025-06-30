@@ -46,6 +46,27 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        [HttpPost("login-staff")]
+        [AllowAnonymous]
+        public async Task<ActionResult<StaffResponseDTO>> LoginStaff([FromBody] LoginRequestDTO request)
+        {
+            try
+            {
+                var response = await _authService.LoginStaffAsync(request);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Staff login failed: {ex.Message}");
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Staff login error: {ex.Message}");
+                return BadRequest(new { message = "Đã có lỗi xảy ra khi đăng nhập" });
+            }
+        }
+
         [HttpPost("register")]
         [AllowAnonymous]
         public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterRequestDTO request)

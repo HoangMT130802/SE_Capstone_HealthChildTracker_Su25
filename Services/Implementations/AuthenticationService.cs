@@ -94,9 +94,17 @@ namespace Services.Implementations
                 }
                 else if (account.Role == "FacilityStaff" || account.Role == "Doctor" || account.Role == "Manager")
                 {
-                    // TODO: Làm role facility
-                    // var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                    // var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
+                    var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId, 
+                        includeProperties: "Account,Facility");
+                    if (staff != null)
+                    {
+                        response.FullName = staff.FullName;
+                        response.Phone = staff.Phone?.ToString();
+                        response.StaffId = staff.StaffId;
+                        response.Position = staff.Position;
+                        response.FacilityId = staff.FacilityId;
+                    }
                 }
 
                 response.Token = _jwtService.GenerateToken(account);
@@ -107,6 +115,79 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError($"Login failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<StaffResponseDTO> LoginStaffAsync(LoginRequestDTO request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.AccountName) || string.IsNullOrEmpty(request.Password))
+                {
+                    throw new ArgumentException("AccountName và mật khẩu không được để trống");
+                }
+
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepository.GetAsync(u =>
+                    (u.AccountName.ToLower() == request.AccountName.ToLower() ||
+                     u.Email.ToLower() == request.AccountName.ToLower()));
+
+                _logger.LogInformation($"Staff login attempt for: {request.AccountName}");
+                
+                if (account == null)
+                {
+                    _logger.LogWarning($"Account not found: {request.AccountName}");
+                    throw new UnauthorizedAccessException("Thông tin đăng nhập không chính xác");
+                }
+
+                // Kiểm tra role có phải FacilityStaff không
+                if (account.Role != "FacilityStaff" && account.Role != "Doctor" && account.Role != "Manager")
+                {
+                    throw new UnauthorizedAccessException("Tài khoản này không phải là nhân viên cơ sở");
+                }
+
+                _logger.LogInformation($"Staff account found: {account.AccountName}, checking password...");
+                
+                string trimmedStoredPassword = account.Password?.Trim();
+                bool isPasswordValid = BC.Verify(request.Password, trimmedStoredPassword);
+                _logger.LogInformation($"BCrypt verification result: {isPasswordValid}");
+                
+                if (!isPasswordValid)
+                {
+                    _logger.LogWarning($"Password verification failed for: {account.AccountName}");
+                    throw new UnauthorizedAccessException("Thông tin đăng nhập không chính xác");
+                }
+
+                if (!account.Status)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản đã bị vô hiệu hóa");
+                }
+
+                // Lấy thông tin FacilityStaff
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId, 
+                    includeProperties: "Account,Facility");
+                
+                if (staff == null)
+                {
+                    throw new UnauthorizedAccessException("Không tìm thấy thông tin nhân viên");
+                }
+
+                if (!staff.Status)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản nhân viên đã bị vô hiệu hóa");
+                }
+
+                var response = _mapper.Map<StaffResponseDTO>(staff);
+                response.Token = _jwtService.GenerateToken(account);
+
+                _logger.LogInformation($"Staff {account.AccountName} with position {staff.Position} logged in successfully");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Staff login failed: {ex.Message}");
                 throw;
             }
         }

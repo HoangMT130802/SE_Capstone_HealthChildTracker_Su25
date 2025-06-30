@@ -19,5 +19,10 @@ namespace Contracts.DTOs.Authentication
         public string Token { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+        
+        // Thêm fields cho FacilityStaff
+        public int? StaffId { get; set; }
+        public string? Position { get; set; }
+        public int? FacilityId { get; set; }
     }
 }
