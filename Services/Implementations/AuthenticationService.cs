@@ -7,6 +7,7 @@ using Repositories.Entities;
 using Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 using BC = BCrypt.Net.BCrypt;
+using Repositories.Models.QueryModels;
 
 namespace Services.Implementations
 {
@@ -678,6 +679,43 @@ namespace Services.Implementations
             {
                 _logger.LogError($"Delete staff failed: {ex.Message}");
                 throw;
+            }
+        }
+        public async Task<QueryResultModel<List<MemberDTO>>> GetAllMembersAsync(int currentUserId, int pageIndex = 1, int pageSize = 10)
+        {
+            try
+            {
+                
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var currentAccount = await accountRepository.GetAsync(a => a.AccountId == currentUserId);
+                if (currentAccount == null || currentAccount.Role != "Admin")
+                {
+                    _logger.LogWarning($"Unauthorized access attempt to GetAllMembers by AccountId {currentUserId}");
+                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền xem danh sách tất cả thành viên");
+                }
+
+                var memberRepository = _unitOfWork.GetRepository<Member>();
+                var result = await memberRepository.GetAllAsync(
+                    filter: m => m.Account.Status, // Chỉ lấy Member có Account.Status = true
+                    orderBy: q => q.OrderByDescending(m => m.CreatedAt),
+                    include: "Account",
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var memberDTOs = _mapper.Map<List<MemberDTO>>(result.Data);
+
+                _logger.LogInformation($"Admin {currentAccount.AccountName} retrieved {memberDTOs.Count} members (page {pageIndex}, size {pageSize})");
+                return new QueryResultModel<List<MemberDTO>>
+                {
+                    Data = memberDTOs,
+                    TotalCount = result.TotalCount
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error retrieving all members for AccountId {currentUserId}");
+                throw new Exception($"Lỗi khi lấy danh sách thành viên: {ex.Message}");
             }
         }
     }

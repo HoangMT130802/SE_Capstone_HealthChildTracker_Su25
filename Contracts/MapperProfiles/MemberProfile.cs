@@ -8,6 +8,14 @@ namespace Contracts.MapperProfiles
     {
         public MemberProfile()
         {
+            //CreateMap<Member, MemberDTO>()
+            //    .ForMember(dest => dest.MemberId, opt => opt.MapFrom(src => src.MemberId))
+            //    .ForMember(dest => dest.AccountId, opt => opt.MapFrom(src => src.AccountId))
+            //    .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
+            //    .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
+            //    .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
+            //    .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
+            //    .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
             CreateMap<Member, MemberDTO>()
                 .ForMember(dest => dest.MemberId, opt => opt.MapFrom(src => src.MemberId))
                 .ForMember(dest => dest.AccountId, opt => opt.MapFrom(src => src.AccountId))
@@ -15,7 +23,10 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
                 .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
-                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt))
+                .ForMember(dest => dest.AccountName, opt => opt.MapFrom(src => src.Account.AccountName))
+                .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Account.Email))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Account.Status));
         }
     }
 } 

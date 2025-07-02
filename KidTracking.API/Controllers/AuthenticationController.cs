@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using BCrypt.Net;
 using Repositories.Interfaces;
 using System.Security.Claims;
+using Repositories.Models.QueryModels;
 
 namespace KidTracking.API.Controllers
 {
@@ -295,6 +296,38 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError($"Delete staff error: {ex.Message}");
                 return StatusCode(500, new { message = "Đã có lỗi xảy ra khi xóa staff/doctor" });
+            }
+        }
+        [HttpGet("members")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(QueryResultModel<List<MemberDTO>>), 200)]
+        [ProducesResponseType(401)]
+        [ProducesResponseType(500)]
+        public async Task<ActionResult<QueryResultModel<List<MemberDTO>>>> GetAllMembers(
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    _logger.LogWarning("Invalid token for GetAllMembers request");
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var result = await _authService.GetAllMembersAsync(currentUserId, pageIndex, pageSize);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Get all members unauthorized: {ex.Message}");
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Get all members error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi lấy danh sách thành viên" });
             }
         }
     }
