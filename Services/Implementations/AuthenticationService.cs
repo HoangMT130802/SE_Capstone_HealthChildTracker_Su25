@@ -438,6 +438,9 @@ namespace Services.Implementations
                         (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
                     newStaff.CreatedAt = DateTime.UtcNow;
                     newStaff.UpdatedAt = DateTime.UtcNow;
+                    
+                    // Log values để debug
+                    _logger.LogInformation($"Creating Staff/Doctor - FacilityId: {newStaff.FacilityId}, Position: {newStaff.Position}, FullName: {newStaff.FullName}");
 
                     await staffRepository.AddAsync(newStaff);
                     await _unitOfWork.SaveChangesAsync();
