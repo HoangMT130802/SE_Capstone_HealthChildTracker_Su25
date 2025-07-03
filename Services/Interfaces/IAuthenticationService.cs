@@ -1,6 +1,8 @@
 ﻿using Contracts.DTOs.Authentication;
 using Contracts.DTOs.Member;
 using Contracts.DTOs.FacilityStaff;
+using Repositories.Models.QueryModels;
+using System.Collections.Generic;
 
 namespace Services.Interfaces
 {
@@ -15,5 +17,6 @@ namespace Services.Interfaces
         Task<FacilityStaffInfoResponseDTO> UpdateFacilityStaffInfoAsync(UpdateFacilityStaffInfoDTO request, int currentUserId);
         Task<UserResponseDTO> BanUserAsync(BanUserRequestDTO request, int currentUserId);
         Task<bool> DeleteStaffAsync(int staffId, int managerAccountId);
+        Task<QueryResultModel<List<MemberDTO>>> GetAllMembersAsync(int currentUserId, int pageIndex = 1, int pageSize = 10);
     }
 }
