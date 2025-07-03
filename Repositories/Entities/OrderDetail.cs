@@ -11,7 +11,9 @@ public partial class OrderDetail
 
     public int OrderId { get; set; }
 
-    public int VaccineId { get; set; }
+    public int FacilityVaccineId { get; set; }
+
+    public int DiseaseId { get; set; }
 
     public int RemainingQuantity { get; set; }
 
@@ -21,7 +23,11 @@ public partial class OrderDetail
 
     public DateTime UpdatedAt { get; set; }
 
-    public virtual Order Order { get; set; }
+    public virtual Disease Disease { get; set; }
 
-    public virtual Vaccine Vaccine { get; set; }
+    public virtual FacilityVaccine FacilityVaccine { get; set; }
+
+    public virtual Vaccine FacilityVaccineNavigation { get; set; }
+
+    public virtual Order Order { get; set; }
 }

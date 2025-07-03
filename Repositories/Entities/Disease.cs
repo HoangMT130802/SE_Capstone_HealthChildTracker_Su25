@@ -23,6 +23,8 @@ public partial class Disease
 
     public virtual ICollection<ChildVaccineProfile> ChildVaccineProfiles { get; set; } = new List<ChildVaccineProfile>();
 
+    public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
+
     public virtual ICollection<VaccineDisease> VaccineDiseases { get; set; } = new List<VaccineDisease>();
 
     public virtual ICollection<VaccineTemplate> VaccineTemplates { get; set; } = new List<VaccineTemplate>();
