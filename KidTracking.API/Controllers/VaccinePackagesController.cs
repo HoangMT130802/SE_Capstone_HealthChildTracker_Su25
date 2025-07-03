@@ -2,9 +2,15 @@
 using Contracts.DTOs.VaccinePackage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Repositories.Entities;
 using Repositories.Interfaces;
 using Services.Interfaces;
+using System;
+using System.Linq;
+using System.Linq.Expressions;
 using System.Security.Claims;
+using System.Threading.Tasks;
+using KidTracking.API.Extensions;
 
 namespace KidTracking.API.Controllers
 {
@@ -34,7 +40,7 @@ namespace KidTracking.API.Controllers
                 return false;
             }
 
-            var staffRepository = _unitOfWork.GetRepository<Repositories.Entities.FacilityStaff>();
+            var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
             var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
             return staff != null;
         }
@@ -69,12 +75,73 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAllVaccinePackages()
+        public async Task<IActionResult> GetAllVaccinePackages(
+            [FromQuery] int? facilityId = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? name = null,
+            [FromQuery] int? pageIndex = null,
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? sortBy = null,
+            [FromQuery] string include = "")
         {
             try
             {
-                var vaccinePackages = await _vaccinePackageService.GetAllVaccinePackagesAsync();
-                return Ok(vaccinePackages);
+                // Build filter expression
+                Expression<Func<VaccinePackage, bool>>? filter = null;
+                if (facilityId.HasValue || !string.IsNullOrEmpty(status) || !string.IsNullOrEmpty(name))
+                {
+                    if (facilityId.HasValue)
+                    {
+                        filter = p => p.FacilityId == facilityId.Value;
+                    }
+                    if (!string.IsNullOrEmpty(status))
+                    {
+                        Expression<Func<VaccinePackage, bool>> statusFilter = p => p.Status == status;
+                        filter = filter == null ? statusFilter : filter.And(statusFilter);
+                    }
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        Expression<Func<VaccinePackage, bool>> nameFilter = p => p.Name.Contains(name);
+                        filter = filter == null ? nameFilter : filter.And(nameFilter);
+                    }
+                }
+
+                // Build orderBy expression
+                Func<IQueryable<VaccinePackage>, IOrderedQueryable<VaccinePackage>>? orderBy = null;
+                if (!string.IsNullOrEmpty(sortBy))
+                {
+                    switch (sortBy.ToLower())
+                    {
+                        case "createdat":
+                            orderBy = q => q.OrderBy(p => p.CreatedAt);
+                            break;
+                        case "createdat_desc":
+                            orderBy = q => q.OrderByDescending(p => p.CreatedAt);
+                            break;
+                        case "price":
+                            orderBy = q => q.OrderBy(p => p.Price);
+                            break;
+                        case "price_desc":
+                            orderBy = q => q.OrderByDescending(p => p.Price);
+                            break;
+                        default:
+                            orderBy = q => q.OrderBy(p => p.PackageId);
+                            break;
+                    }
+                }
+
+                var result = await _vaccinePackageService.GetAllVaccinePackagesAsync(
+                    filter: filter,
+                    orderBy: orderBy,
+                    include: include,
+                    pageIndex: pageIndex,
+                    pageSize: pageSize);
+
+                return Ok(new
+                {
+                    TotalCount = result.TotalCount,
+                    Data = result.Data
+                });
             }
             catch (Exception ex)
             {
