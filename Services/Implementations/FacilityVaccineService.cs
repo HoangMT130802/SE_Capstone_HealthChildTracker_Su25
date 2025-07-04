@@ -102,7 +102,10 @@ namespace Services.Implementations
             try
             {
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
-                var facilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == facilityVaccineId);
+                var facilityVaccine = await facilityVaccineRepository.GetAsync(
+                    fv => fv.FacilityVaccineId == facilityVaccineId,
+                    includeProperties: "Vaccine" 
+                );
                 if (facilityVaccine == null)
                 {
                     throw new KeyNotFoundException($"FacilityVaccine với ID {facilityVaccineId} không tồn tại");
@@ -111,25 +114,27 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting facility vaccine with ID {facilityVaccineId}");
+                _logger.LogError(ex, $"Lỗi khi lấy FacilityVaccine với ID {facilityVaccineId}");
                 throw;
             }
         }
 
         public async Task<QueryResultModel<IEnumerable<FacilityVaccineDTO>>> GetAllFacilityVaccinesAsync(
-            Expression<Func<FacilityVaccine, bool>>? filter = null,
-            Func<IQueryable<FacilityVaccine>, IOrderedQueryable<FacilityVaccine>>? orderBy = null,
-            string include = "",
-            int? pageIndex = null,
-            int? pageSize = null)
+    Expression<Func<FacilityVaccine, bool>>? filter = null,
+    Func<IQueryable<FacilityVaccine>, IOrderedQueryable<FacilityVaccine>>? orderBy = null,
+    string include = "Vaccine", 
+    int? pageIndex = null,
+    int? pageSize = null)
         {
             try
             {
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+                string includeProperties = string.IsNullOrEmpty(include) ? "Vaccine" : $"{include},Vaccine".Trim(',');
+
                 var result = await facilityVaccineRepository.GetAllAsync(
                     filter: filter,
                     orderBy: orderBy,
-                    include: include,
+                    include: includeProperties, 
                     pageIndex: pageIndex,
                     pageSize: pageSize);
 
@@ -142,7 +147,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting all facility vaccines with pagination");
+                _logger.LogError(ex, "Lỗi khi lấy danh sách FacilityVaccines với phân trang");
                 throw;
             }
         }

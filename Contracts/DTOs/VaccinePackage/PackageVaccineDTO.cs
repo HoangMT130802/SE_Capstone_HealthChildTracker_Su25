@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Contracts.DTOs.Disease;
+using Contracts.DTOs.FacilityVaccine;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,7 +12,10 @@ namespace Contracts.DTOs.VaccinePackage
     {
         public int PackageVaccineId { get; set; }
         public int PackageId { get; set; }
-        public int VaccineId { get; set; }
+        public int FacilityVaccineId { get; set; }
+        public FacilityVaccineDTO FacilityVaccine { get; set; }
+        public int DiseaseId { get; set; }
+        public DiseaseDTO Disease { get; set; }
         public int Quantity { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

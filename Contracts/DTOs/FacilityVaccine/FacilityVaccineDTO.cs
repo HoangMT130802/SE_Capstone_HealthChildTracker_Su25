@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Contracts.DTOs.Vaccine;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,5 +20,6 @@ namespace Contracts.DTOs.FacilityVaccine
         public string Status { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+        public VaccineDTO Vaccine { get; set; }
     }
 }
