@@ -9,8 +9,8 @@ namespace Contracts.DTOs.VaccinePackage
 {
     public class CreatePackageVaccineDTO
     {
-        [Required(ErrorMessage = "Vaccine ID is required")]
-        public int VaccineId { get; set; }
+        [Required(ErrorMessage = "Facility Vaccine ID is required")]
+        public int FacilityVaccineId { get; set; }
 
         [Required(ErrorMessage = "Quantity is required")]
         [Range(1, int.MaxValue, ErrorMessage = "Quantity must be greater than 0")]

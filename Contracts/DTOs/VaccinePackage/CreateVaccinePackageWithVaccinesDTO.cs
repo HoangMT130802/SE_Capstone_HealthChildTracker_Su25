@@ -23,6 +23,7 @@ namespace Contracts.DTOs.VaccinePackage
         [Required(ErrorMessage = "Duration is required")]
         [Range(0, int.MaxValue, ErrorMessage = "Duration must be non-negative")]
         public int Duration { get; set; }
+
         [Required(ErrorMessage = "Status is required")]
         [StringLength(20, ErrorMessage = "Status must be between 1 and 20 characters")]
         public string Status { get; set; }
