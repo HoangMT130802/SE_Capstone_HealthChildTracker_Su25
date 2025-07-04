@@ -13,7 +13,7 @@ public partial class HealthChildTrackerContext : DbContext
         : base(options)
     {
     }
-    public HealthChildTrackerContext()  { }
+    public HealthChildTrackerContext() { }
     public virtual DbSet<Account> Accounts { get; set; }
 
     public virtual DbSet<AppointmentSchedule> AppointmentSchedules { get; set; }
@@ -92,6 +92,7 @@ public partial class HealthChildTrackerContext : DbContext
         string connectionString = config.GetConnectionString(connectionStringName);
         return connectionString;
     }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder.UseSqlServer(GetConnectionString("DefaultConnection"));
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -651,6 +652,11 @@ public partial class HealthChildTrackerContext : DbContext
 
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Disease).WithMany(p => p.PackageVaccines)
+                .HasForeignKey(d => d.DiseaseId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PackageVaccine_Disease");
 
             entity.HasOne(d => d.FacilityVaccine).WithMany(p => p.PackageVaccines)
                 .HasForeignKey(d => d.FacilityVaccineId)
