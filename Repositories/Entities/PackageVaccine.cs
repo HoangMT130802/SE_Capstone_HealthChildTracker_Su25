@@ -21,6 +21,8 @@ public partial class PackageVaccine
 
     public DateTime UpdatedAt { get; set; }
 
+    public virtual Disease Disease { get; set; }
+
     public virtual FacilityVaccine FacilityVaccine { get; set; }
 
     public virtual VaccinePackage Package { get; set; }
