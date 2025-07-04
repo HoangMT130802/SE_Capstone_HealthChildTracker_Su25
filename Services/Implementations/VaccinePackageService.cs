@@ -172,9 +172,9 @@ namespace Services.Implementations
 
                         vaccinePackage.CreatedAt = currentTime;
                         vaccinePackage.UpdatedAt = currentTime;
-                        vaccinePackage.Price = 0;
+                        vaccinePackage.Price = 0; // Giá ban đầu là 0
                         await packageRepository.AddAsync(vaccinePackage);
-                        await _unitOfWork.SaveChangesAsync();
+                        await _unitOfWork.SaveChangesAsync(); // Lưu VaccinePackage để có PackageId
 
                         var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
                         foreach (var vaccineDto in vaccinePackageDto.Vaccines)
@@ -192,9 +192,15 @@ namespace Services.Implementations
                             await packageVaccineRepository.AddAsync(packageVaccine);
                         }
 
+                        // Lưu tất cả PackageVaccine trước khi tính giá
+                        await _unitOfWork.SaveChangesAsync();
+
+                        // Tính giá sau khi đã lưu tất cả PackageVaccine
                         vaccinePackage.Price = await CalculatePackagePriceAsync(vaccinePackage.PackageId);
+                        _logger.LogInformation($"Calculated Price for PackageId {vaccinePackage.PackageId}: {vaccinePackage.Price}");
                         packageRepository.Update(vaccinePackage);
                         await _unitOfWork.SaveChangesAsync();
+
                         await transaction.CommitAsync();
 
                         var savedPackage = await packageRepository.GetAsync(p => p.PackageId == vaccinePackage.PackageId, includeProperties: "PackageVaccines");
@@ -243,7 +249,7 @@ namespace Services.Implementations
                     PackageId = packageId,
                     FacilityVaccineId = packageVaccineDto.VaccineId,
                     Quantity = packageVaccineDto.Quantity,
-                    DiseaseId = 0 // Cần logic để lấy DiseaseId nếu bắt buộc
+                    DiseaseId = 1 // Cần logic để lấy DiseaseId nếu bắt buộc
                 };
                 var currentTime = DateTime.UtcNow;
                 if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
