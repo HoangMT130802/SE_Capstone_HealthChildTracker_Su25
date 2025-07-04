@@ -232,7 +232,7 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error adding vaccine to package with PackageId {packageId} and VaccineId {packageVaccineDto.VaccineId}");
+                _logger.LogError(ex, $"Error adding vaccine to package with PackageId {packageId} and VaccineId {packageVaccineDto.FacilityVaccineId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }

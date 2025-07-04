@@ -39,7 +39,6 @@ namespace Services.Implementations
         private async Task<decimal> CalculatePackagePriceAsync(int packageId)
         {
             var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
-            var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
             var packageVaccines = await packageVaccineRepository.GetAllAsync(pv => pv.PackageId == packageId, include: "FacilityVaccine");
 
             decimal totalPrice = 0;
@@ -64,18 +63,41 @@ namespace Services.Implementations
             return totalPrice;
         }
 
-        private async Task ValidateVaccineInput(int vaccineId, int facilityId)
+        private async Task ValidateVaccineInput(int facilityVaccineId, int facilityId)
         {
-            if (vaccineId <= 0)
+            if (facilityVaccineId <= 0)
             {
-                throw new InvalidOperationException("VaccineId phải lớn hơn 0");
+                throw new InvalidOperationException("FacilityVaccineId phải lớn hơn 0");
             }
             var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
-            var facilityVaccineExists = await facilityVaccineRepository.AnyAsync(fv => fv.FacilityVaccineId == vaccineId && fv.FacilityId == facilityId);
+            var facilityVaccineExists = await facilityVaccineRepository.AnyAsync(fv => fv.FacilityVaccineId == facilityVaccineId && fv.FacilityId == facilityId);
             if (!facilityVaccineExists)
             {
-                throw new InvalidOperationException($"FacilityVaccine với ID {vaccineId} không tồn tại hoặc không thuộc Facility {facilityId}");
+                throw new InvalidOperationException($"FacilityVaccine với ID {facilityVaccineId} không tồn tại hoặc không thuộc Facility {facilityId}");
             }
+        }
+        private async Task<int> GetDiseaseIdForFacilityVaccineAsync(int facilityVaccineId)
+        {
+            var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+            var vaccineDiseaseRepository = _unitOfWork.GetRepository<VaccineDisease>();
+
+            var facilityVaccine = await facilityVaccineRepository.GetAsync(
+                fv => fv.FacilityVaccineId == facilityVaccineId,
+                includeProperties: "Vaccine,Vaccine.VaccineDiseases"
+            );
+            if (facilityVaccine == null)
+            {
+                throw new InvalidOperationException($"FacilityVaccine với ID {facilityVaccineId} không tồn tại");
+            }
+
+            var vaccineDisease = facilityVaccine.Vaccine?.VaccineDiseases?.FirstOrDefault();
+            if (vaccineDisease == null)
+            {
+                _logger.LogWarning($"No Disease found for FacilityVaccineId {facilityVaccineId}. Using default DiseaseId = 0.");
+                return 0; // Hoặc throw exception nếu DiseaseId bắt buộc
+            }
+
+            return vaccineDisease.DiseaseId;
         }
 
         public async Task<VaccinePackageDTO> CreateVaccinePackageAsync(CreateVaccinePackageDTO vaccinePackageDto, int accountId)
@@ -108,7 +130,7 @@ namespace Services.Implementations
 
                 vaccinePackage.CreatedAt = currentTime;
                 vaccinePackage.UpdatedAt = currentTime;
-                vaccinePackage.Price = 0; // Giá ban đầu là 0
+                vaccinePackage.Price = 0;
                 _logger.LogInformation($"VaccinePackage CreatedAt: {vaccinePackage.CreatedAt:yyyy-MM-dd HH:mm:ss}, UpdatedAt: {vaccinePackage.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
                 _logger.LogInformation($"VaccinePackage object before saving: {JsonConvert.SerializeObject(vaccinePackage)}");
 
@@ -147,7 +169,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Gói vaccine với tên '{vaccinePackageDto.Name}' đã tồn tại trong facility {vaccinePackageDto.FacilityId}");
                 }
 
-                var facilityVaccineIds = vaccinePackageDto.Vaccines.Select(v => v.VaccineId).ToList();
+                var facilityVaccineIds = vaccinePackageDto.Vaccines.Select(v => v.FacilityVaccineId).ToList();
                 var uniqueFacilityVaccineIds = facilityVaccineIds.Distinct().ToList();
                 if (uniqueFacilityVaccineIds.Count != facilityVaccineIds.Count)
                 {
@@ -156,7 +178,7 @@ namespace Services.Implementations
 
                 foreach (var vaccineDto in vaccinePackageDto.Vaccines)
                 {
-                    await ValidateVaccineInput(vaccineDto.VaccineId, vaccinePackageDto.FacilityId);
+                    await ValidateVaccineInput(vaccineDto.FacilityVaccineId, vaccinePackageDto.FacilityId);
                 }
 
                 using (var transaction = await _unitOfWork.BeginTransactionAsync())
@@ -172,30 +194,29 @@ namespace Services.Implementations
 
                         vaccinePackage.CreatedAt = currentTime;
                         vaccinePackage.UpdatedAt = currentTime;
-                        vaccinePackage.Price = 0; // Giá ban đầu là 0
+                        vaccinePackage.Price = 0;
                         await packageRepository.AddAsync(vaccinePackage);
-                        await _unitOfWork.SaveChangesAsync(); // Lưu VaccinePackage để có PackageId
+                        await _unitOfWork.SaveChangesAsync();
 
                         var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
                         foreach (var vaccineDto in vaccinePackageDto.Vaccines)
                         {
+                            var diseaseId = await GetDiseaseIdForFacilityVaccineAsync(vaccineDto.FacilityVaccineId);
                             var packageVaccine = new PackageVaccine
                             {
                                 PackageId = vaccinePackage.PackageId,
-                                FacilityVaccineId = vaccineDto.VaccineId,
+                                FacilityVaccineId = vaccineDto.FacilityVaccineId,
                                 Quantity = vaccineDto.Quantity,
                                 CreatedAt = currentTime,
                                 UpdatedAt = currentTime,
-                                DiseaseId = 0 // Cần logic để lấy DiseaseId nếu bắt buộc
+                                DiseaseId = diseaseId // Lấy DiseaseId từ GetDiseaseIdForFacilityVaccineAsync
                             };
-                            _logger.LogInformation($"Adding package vaccine: PackageId {packageVaccine.PackageId}, FacilityVaccineId {packageVaccine.FacilityVaccineId}, Quantity {packageVaccine.Quantity}");
+                            _logger.LogInformation($"Adding package vaccine: PackageId {packageVaccine.PackageId}, FacilityVaccineId {packageVaccine.FacilityVaccineId}, Quantity {packageVaccine.Quantity}, DiseaseId {packageVaccine.DiseaseId}");
                             await packageVaccineRepository.AddAsync(packageVaccine);
                         }
 
-                        // Lưu tất cả PackageVaccine trước khi tính giá
                         await _unitOfWork.SaveChangesAsync();
 
-                        // Tính giá sau khi đã lưu tất cả PackageVaccine
                         vaccinePackage.Price = await CalculatePackagePriceAsync(vaccinePackage.PackageId);
                         _logger.LogInformation($"Calculated Price for PackageId {vaccinePackage.PackageId}: {vaccinePackage.Price}");
                         packageRepository.Update(vaccinePackage);
@@ -225,7 +246,7 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation($"Adding vaccine to package with PackageId: {packageId}, FacilityVaccineId: {packageVaccineDto.VaccineId}, by AccountId: {accountId}");
+                _logger.LogInformation($"Adding vaccine to package with PackageId: {packageId}, FacilityVaccineId: {packageVaccineDto.FacilityVaccineId}, by AccountId: {accountId}");
 
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
                 var package = await packageRepository.GetAsync(p => p.PackageId == packageId);
@@ -235,21 +256,22 @@ namespace Services.Implementations
                 }
 
                 await ValidateManagerAccess(accountId, package.FacilityId);
-                await ValidateVaccineInput(packageVaccineDto.VaccineId, package.FacilityId);
+                await ValidateVaccineInput(packageVaccineDto.FacilityVaccineId, package.FacilityId);
 
                 var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
-                var existingPackageVaccine = await packageVaccineRepository.AnyAsync(pv => pv.PackageId == packageId && pv.FacilityVaccineId == packageVaccineDto.VaccineId);
+                var existingPackageVaccine = await packageVaccineRepository.AnyAsync(pv => pv.PackageId == packageId && pv.FacilityVaccineId == packageVaccineDto.FacilityVaccineId);
                 if (existingPackageVaccine)
                 {
-                    throw new InvalidOperationException($"FacilityVaccine với PackageId {packageId} và FacilityVaccineId {packageVaccineDto.VaccineId} đã tồn tại");
+                    throw new InvalidOperationException($"FacilityVaccine với PackageId {packageId} và FacilityVaccineId {packageVaccineDto.FacilityVaccineId} đã tồn tại");
                 }
 
+                var diseaseId = await GetDiseaseIdForFacilityVaccineAsync(packageVaccineDto.FacilityVaccineId);
                 var packageVaccine = new PackageVaccine
                 {
                     PackageId = packageId,
-                    FacilityVaccineId = packageVaccineDto.VaccineId,
+                    FacilityVaccineId = packageVaccineDto.FacilityVaccineId,
                     Quantity = packageVaccineDto.Quantity,
-                    DiseaseId = 1 // Cần logic để lấy DiseaseId nếu bắt buộc
+                    DiseaseId = diseaseId // Lấy DiseaseId từ GetDiseaseIdForFacilityVaccineAsync
                 };
                 var currentTime = DateTime.UtcNow;
                 if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
@@ -274,7 +296,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error adding vaccine to package with PackageId {packageId} and FacilityVaccineId {packageVaccineDto.VaccineId}");
+                _logger.LogError(ex, $"Error adding vaccine to package with PackageId {packageId} and FacilityVaccineId {packageVaccineDto.FacilityVaccineId}");
                 throw;
             }
         }
@@ -352,17 +374,18 @@ namespace Services.Implementations
                 }
 
                 await ValidateManagerAccess(accountId, package.FacilityId);
-                await ValidateVaccineInput(packageVaccineDto.VaccineId, package.FacilityId);
+                await ValidateVaccineInput(packageVaccineDto.FacilityVaccineId, package.FacilityId);
 
-                var existingPackageVaccine = await packageVaccineRepository.AnyAsync(pv => pv.PackageId == packageId && pv.FacilityVaccineId == packageVaccineDto.VaccineId && pv.FacilityVaccineId != facilityVaccineId);
+                var existingPackageVaccine = await packageVaccineRepository.AnyAsync(pv => pv.PackageId == packageId && pv.FacilityVaccineId == packageVaccineDto.FacilityVaccineId && pv.FacilityVaccineId != facilityVaccineId);
                 if (existingPackageVaccine)
                 {
-                    throw new InvalidOperationException($"FacilityVaccine với PackageId {packageId} và FacilityVaccineId {packageVaccineDto.VaccineId} đã tồn tại");
+                    throw new InvalidOperationException($"FacilityVaccine với PackageId {packageId} và FacilityVaccineId {packageVaccineDto.FacilityVaccineId} đã tồn tại");
                 }
 
-                packageVaccine.FacilityVaccineId = packageVaccineDto.VaccineId;
+                var diseaseId = await GetDiseaseIdForFacilityVaccineAsync(packageVaccineDto.FacilityVaccineId);
+                packageVaccine.FacilityVaccineId = packageVaccineDto.FacilityVaccineId;
                 packageVaccine.Quantity = packageVaccineDto.Quantity;
-                packageVaccine.DiseaseId = 0; // Cần logic để lấy DiseaseId nếu bắt buộc
+                packageVaccine.DiseaseId = diseaseId; // Lấy DiseaseId từ GetDiseaseIdForFacilityVaccineAsync
                 var currentTime = DateTime.UtcNow;
                 if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
                 {
@@ -379,7 +402,7 @@ namespace Services.Implementations
 
                 await _unitOfWork.SaveChangesAsync();
 
-                var updatedPackageVaccine = await packageVaccineRepository.GetAsync(pv => pv.PackageId == packageId && pv.FacilityVaccineId == packageVaccineDto.VaccineId);
+                var updatedPackageVaccine = await packageVaccineRepository.GetAsync(pv => pv.PackageId == packageId && pv.FacilityVaccineId == packageVaccineDto.FacilityVaccineId);
                 return _mapper.Map<PackageVaccineDTO>(updatedPackageVaccine);
             }
             catch (Exception ex)
@@ -453,7 +476,10 @@ namespace Services.Implementations
             try
             {
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
-                var vaccinePackage = await packageRepository.GetAsync(p => p.PackageId == packageId, includeProperties: "PackageVaccines");
+                var vaccinePackage = await packageRepository.GetAsync(
+                    p => p.PackageId == packageId,
+                    includeProperties: "PackageVaccines,PackageVaccines.FacilityVaccine,PackageVaccines.Disease"
+                );
                 if (vaccinePackage == null)
                 {
                     throw new KeyNotFoundException($"VaccinePackage with ID {packageId} not found");
@@ -469,11 +495,11 @@ namespace Services.Implementations
         }
 
         public async Task<QueryResultModel<IEnumerable<VaccinePackageDTO>>> GetAllVaccinePackagesAsync(
-            Expression<Func<VaccinePackage, bool>>? filter = null,
-            Func<IQueryable<VaccinePackage>, IOrderedQueryable<VaccinePackage>>? orderBy = null,
-            string include = "",
-            int? pageIndex = null,
-            int? pageSize = null)
+    Expression<Func<VaccinePackage, bool>>? filter = null,
+    Func<IQueryable<VaccinePackage>, IOrderedQueryable<VaccinePackage>>? orderBy = null,
+    string include = "",
+    int? pageIndex = null,
+    int? pageSize = null)
         {
             try
             {
@@ -481,7 +507,7 @@ namespace Services.Implementations
                 var result = await packageRepository.GetAllAsync(
                     filter: filter,
                     orderBy: orderBy,
-                    include: include,
+                    include: "PackageVaccines,PackageVaccines.FacilityVaccine,PackageVaccines.Disease",
                     pageIndex: pageIndex,
                     pageSize: pageSize);
 
