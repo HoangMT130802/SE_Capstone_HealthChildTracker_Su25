@@ -15,7 +15,6 @@
     <Folder Include="DTOs\Blog\" />
     <Folder Include="DTOs\Survey\" />
     <Folder Include="DTOs\Transaction\" />
-    <Folder Include="DTOs\Order\" />
   </ItemGroup>
 
   <ItemGroup>
