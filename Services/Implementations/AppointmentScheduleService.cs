@@ -20,58 +20,36 @@ namespace Services.Implementations
             _logger = logger;
         }
 
-        public async Task<AppointmentScheduleDTO> CreateScheduleAsync(CreateAppointmentScheduleDTO createDto)
-        {
-            try
-            {
-                _logger.LogInformation("Creating appointment schedule");
-
-                var schedule = _mapper.Map<AppointmentSchedule>(createDto);
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                await repository.AddAsync(schedule);
-                await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully created appointment schedule");
-                return _mapper.Map<AppointmentScheduleDTO>(schedule);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating appointment schedule");
-                throw;
-            }
-        }
-
-        public async Task<AppointmentScheduleDTO> GetScheduleByIdAsync(int scheduleId)
-        {
-            try
-            {
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
-
-                if (schedule == null)
-                {
-                    throw new ArgumentException($"Schedule với ID {scheduleId} không tồn tại");
-                }
-
-                return _mapper.Map<AppointmentScheduleDTO>(schedule);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting schedule by ID");
-                throw;
-            }
-        }
-
-        public async Task<List<AppointmentScheduleDTO>> GetSchedulesAsync(int page, int size, int? facilityId = null, string? status = null)
+        public async Task<List<AppointmentScheduleDTO>> GetAllSchedulesAsync()
         {
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedules = await repository.GetAllAsync("");
 
+                var result = schedules.OrderBy(s => s.Date).ThenBy(s => s.SlotId).ToList();
+                return _mapper.Map<List<AppointmentScheduleDTO>>(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy tất cả lịch hẹn");
+                throw;
+            }
+        }
+
+        public async Task<List<AppointmentScheduleDTO>> GetSchedulesByWeekAsync(DateTime startOfWeek)
+        {
+            try
+            {
+                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var schedules = await repository.GetAllAsync("");
+
+                var endOfWeek = startOfWeek.AddDays(6);
+                var startDateOnly = DateOnly.FromDateTime(startOfWeek);
+                var endDateOnly = DateOnly.FromDateTime(endOfWeek);
+
                 var result = schedules
-                    .Where(s => (!facilityId.HasValue || s.FacilityId == facilityId.Value) && 
-                               (string.IsNullOrEmpty(status) || s.Status == status))
+                    .Where(s => s.Date >= startDateOnly && s.Date <= endDateOnly)
                     .OrderBy(s => s.Date)
                     .ThenBy(s => s.SlotId)
                     .ToList();
@@ -80,75 +58,25 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedules");
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn theo tuần");
                 throw;
             }
         }
 
-        public async Task<AppointmentScheduleDTO> UpdateScheduleAsync(int scheduleId, UpdateAppointmentScheduleDTO updateDto)
-        {
-            try
-            {
-                _logger.LogInformation("Updating appointment schedule");
-
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
-
-                if (schedule == null)
-                {
-                    throw new ArgumentException($"Schedule với ID {scheduleId} không tồn tại");
-                }
-
-                _mapper.Map(updateDto, schedule);
-                repository.Update(schedule);
-                await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully updated appointment schedule");
-                return _mapper.Map<AppointmentScheduleDTO>(schedule);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating appointment schedule");
-                throw;
-            }
-        }
-
-        public async Task<bool> DeleteScheduleAsync(int scheduleId)
-        {
-            try
-            {
-                _logger.LogInformation("Deleting appointment schedule");
-
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
-
-                if (schedule == null)
-                {
-                    throw new ArgumentException($"Schedule với ID {scheduleId} không tồn tại");
-                }
-
-                repository.Delete(schedule);
-                await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully deleted appointment schedule");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting appointment schedule");
-                throw;
-            }
-        }
-
-        public async Task<List<AppointmentScheduleDTO>> GetSchedulesByFacilityAsync(int facilityId)
+        public async Task<List<AppointmentScheduleDTO>> GetSchedulesByMonthAsync(DateTime month)
         {
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedules = await repository.GetAllAsync("");
 
+                var firstDayOfMonth = new DateTime(month.Year, month.Month, 1);
+                var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+                var startDateOnly = DateOnly.FromDateTime(firstDayOfMonth);
+                var endDateOnly = DateOnly.FromDateTime(lastDayOfMonth);
+
                 var result = schedules
-                    .Where(s => s.FacilityId == facilityId)
+                    .Where(s => s.Date >= startDateOnly && s.Date <= endDateOnly)
                     .OrderBy(s => s.Date)
                     .ThenBy(s => s.SlotId)
                     .ToList();
@@ -157,7 +85,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedules by facility");
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn theo tháng");
                 throw;
             }
         }
@@ -172,367 +100,136 @@ namespace Services.Implementations
                 var dateOnly = DateOnly.FromDateTime(date);
                 var result = schedules
                     .Where(s => s.Date == dateOnly)
-                    .OrderBy(s => s.FacilityId)
-                    .ThenBy(s => s.SlotId)
+                    .OrderBy(s => s.SlotId)
                     .ToList();
 
                 return _mapper.Map<List<AppointmentScheduleDTO>>(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedules by date");
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn theo ngày");
                 throw;
             }
         }
 
-        public async Task<List<AppointmentScheduleDTO>> GetAvailableSchedulesAsync(DateTime date, int? facilityId = null)
+        public async Task<AppointmentScheduleDTO> CreateScheduleAsync(CreateAppointmentScheduleDTO createDto)
         {
             try
             {
+                _logger.LogInformation("Tạo lịch hẹn mới");
+
+                var schedule = _mapper.Map<AppointmentSchedule>(createDto);
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                await repository.AddAsync(schedule);
+                await _unitOfWork.SaveChangesAsync();
 
-                var dateOnly = DateOnly.FromDateTime(date);
-                var result = schedules
-                    .Where(s => s.Date == dateOnly && 
-                               s.Status == "Available" &&
-                               (!facilityId.HasValue || s.FacilityId == facilityId.Value))
-                    .OrderBy(s => s.FacilityId)
-                    .ThenBy(s => s.SlotId)
-                    .ToList();
-
-                return _mapper.Map<List<AppointmentScheduleDTO>>(result);
+                _logger.LogInformation("Tạo lịch hẹn thành công");
+                return _mapper.Map<AppointmentScheduleDTO>(schedule);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting available schedules");
+                _logger.LogError(ex, "Lỗi khi tạo lịch hẹn");
                 throw;
             }
         }
 
-        public async Task<bool> BookScheduleAsync(int scheduleId, int memberId)
+        public async Task<AppointmentScheduleDTO> UpdateScheduleAsync(int scheduleId, UpdateAppointmentScheduleDTO updateDto)
         {
             try
             {
-                _logger.LogInformation("Booking appointment schedule");
+                _logger.LogInformation("Cập nhật lịch hẹn ID: {ScheduleId}", scheduleId);
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
 
                 if (schedule == null)
                 {
-                    throw new ArgumentException($"Schedule với ID {scheduleId} không tồn tại");
+                    throw new ArgumentException($"Lịch hẹn với ID {scheduleId} không tồn tại");
                 }
 
-                if (schedule.Status != "Available")
-                {
-                    throw new InvalidOperationException("Schedule không khả dụng để đặt lịch");
-                }
-
-                schedule.Status = "Booked";
-                schedule.UpdatedAt = DateTime.UtcNow;
-
+                _mapper.Map(updateDto, schedule);
                 repository.Update(schedule);
                 await _unitOfWork.SaveChangesAsync();
 
-                _logger.LogInformation("Successfully booked appointment schedule");
-                return true;
+                _logger.LogInformation("Cập nhật lịch hẹn thành công");
+                return _mapper.Map<AppointmentScheduleDTO>(schedule);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error booking appointment schedule");
+                _logger.LogError(ex, "Lỗi khi cập nhật lịch hẹn ID: {ScheduleId}", scheduleId);
                 throw;
             }
         }
 
-        public async Task<bool> CancelScheduleAsync(int scheduleId)
+        public async Task<bool> DeleteScheduleAsync(int scheduleId)
         {
             try
             {
-                _logger.LogInformation("Canceling appointment schedule");
+                _logger.LogInformation("Xóa lịch hẹn ID: {ScheduleId}", scheduleId);
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
 
                 if (schedule == null)
                 {
-                    throw new ArgumentException($"Schedule với ID {scheduleId} không tồn tại");
+                    throw new ArgumentException($"Lịch hẹn với ID {scheduleId} không tồn tại");
                 }
 
-                if (schedule.Status != "Booked")
-                {
-                    throw new InvalidOperationException("Chỉ có thể hủy schedule đã được đặt");
-                }
-
-                schedule.Status = "Available";
-                schedule.UpdatedAt = DateTime.UtcNow;
-
-                repository.Update(schedule);
+                repository.Delete(schedule);
                 await _unitOfWork.SaveChangesAsync();
 
-                _logger.LogInformation("Successfully canceled appointment schedule");
+                _logger.LogInformation("Xóa lịch hẹn thành công");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error canceling appointment schedule");
+                _logger.LogError(ex, "Lỗi khi xóa lịch hẹn ID: {ScheduleId}", scheduleId);
                 throw;
             }
         }
 
-        public async Task<bool> SetHolidayAsync(int facilityId, DateTime date, string reason)
+        public async Task<bool> DeleteSchedulesByDateAsync(DateTime date)
         {
             try
             {
-                _logger.LogInformation("Setting holiday schedule");
+                _logger.LogInformation("Xóa tất cả lịch hẹn của ngày: {Date}", date.ToString("yyyy-MM-dd"));
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedules = await repository.GetAllAsync("");
 
                 var dateOnly = DateOnly.FromDateTime(date);
-                var targetSchedules = schedules
-                    .Where(s => s.FacilityId == facilityId && s.Date == dateOnly)
-                    .ToList();
+                var schedulesToDelete = schedules.Where(s => s.Date == dateOnly).ToList();
 
-                foreach (var schedule in targetSchedules)
+                if (schedulesToDelete.Any())
                 {
-                    schedule.Status = "Holiday";
-                    schedule.UpdatedAt = DateTime.UtcNow;
-                }
-
-                if (targetSchedules.Any())
-                {
-                    repository.UpdateRange(targetSchedules);
-                    await _unitOfWork.SaveChangesAsync();
-                }
-
-                _logger.LogInformation("Successfully set holiday schedule");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting holiday schedule");
-                throw;
-            }
-        }
-
-        public async Task<bool> SetMaintenanceAsync(int facilityId, DateTime date, string reason)
-        {
-            try
-            {
-                _logger.LogInformation("Setting maintenance schedule");
-
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
-
-                var dateOnly = DateOnly.FromDateTime(date);
-                var targetSchedules = schedules
-                    .Where(s => s.FacilityId == facilityId && s.Date == dateOnly)
-                    .ToList();
-
-                foreach (var schedule in targetSchedules)
-                {
-                    schedule.Status = "Maintenance";
-                    schedule.UpdatedAt = DateTime.UtcNow;
-                }
-
-                if (targetSchedules.Any())
-                {
-                    repository.UpdateRange(targetSchedules);
-                    await _unitOfWork.SaveChangesAsync();
-                }
-
-                _logger.LogInformation("Successfully set maintenance schedule");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting maintenance schedule");
-                throw;
-            }
-        }
-
-        public async Task<List<AppointmentScheduleDTO>> CreateSchedulesForDateRangeAsync(int facilityId, DateTime startDate, DateTime endDate)
-        {
-            try
-            {
-                _logger.LogInformation("Creating schedules for date range");
-
-                var slotRepository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slots = await slotRepository.GetAllAsync("");
-                var activeSlots = slots.Where(s => s.Status == "Active").ToList();
-
-                if (!activeSlots.Any())
-                {
-                    throw new InvalidOperationException("Không có slot nào khả dụng");
-                }
-
-                var scheduleRepository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var createdSchedules = new List<AppointmentSchedule>();
-
-                for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
-                {
-                    var dateOnly = DateOnly.FromDateTime(date);
-                    
-                    foreach (var slot in activeSlots)
+                    foreach (var schedule in schedulesToDelete)
                     {
-                        var existingSchedules = await scheduleRepository.GetAllAsync("");
-                        var exists = existingSchedules.Any(s => s.FacilityId == facilityId && 
-                                                                s.Date == dateOnly && 
-                                                                s.SlotId == slot.SlotId);
-
-                        if (!exists)
-                        {
-                            var schedule = new AppointmentSchedule
-                            {
-                                FacilityId = facilityId,
-                                SlotId = slot.SlotId,
-                                Date = dateOnly,
-                                Status = "Available",
-                                CreatedAt = DateTime.UtcNow,
-                                UpdatedAt = DateTime.UtcNow
-                            };
-
-                            createdSchedules.Add(schedule);
-                        }
+                        repository.Delete(schedule);
                     }
-                }
-
-                if (createdSchedules.Any())
-                {
-                    await scheduleRepository.AddRangeAsync(createdSchedules);
                     await _unitOfWork.SaveChangesAsync();
                 }
 
-                _logger.LogInformation("Successfully created schedules for date range");
-                return _mapper.Map<List<AppointmentScheduleDTO>>(createdSchedules);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating schedules for date range");
-                throw;
-            }
-        }
-
-        public async Task<bool> UpdateScheduleStatusAsync(int scheduleId, string status)
-        {
-            try
-            {
-                _logger.LogInformation("Updating schedule status");
-
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
-
-                if (schedule == null)
-                {
-                    throw new ArgumentException($"Schedule với ID {scheduleId} không tồn tại");
-                }
-
-                schedule.Status = status;
-                schedule.UpdatedAt = DateTime.UtcNow;
-
-                repository.Update(schedule);
-                await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully updated schedule status");
+                _logger.LogInformation("Xóa lịch hẹn theo ngày thành công");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating schedule status");
+                _logger.LogError(ex, "Lỗi khi xóa lịch hẹn theo ngày: {Date}", date.ToString("yyyy-MM-dd"));
                 throw;
             }
         }
 
-        public async Task<bool> IsScheduleAvailableAsync(int scheduleId)
+        public async Task<bool> UpdateDayStatusAsync(DateTime date, string status)
         {
             try
             {
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
-
-                if (schedule == null)
-                {
-                    return false;
-                }
-
-                return schedule.Status == "Available";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking schedule availability");
-                throw;
-            }
-        }
-
-        public async Task<List<AppointmentScheduleDTO>> GetSchedulesByManagerAsync(int managerId)
-        {
-            try
-            {
-                var facilityStaffRepo = _unitOfWork.GetRepository<FacilityStaff>();
-                var allStaff = await facilityStaffRepo.GetAllAsync("");
-                var managerStaff = allStaff.FirstOrDefault(fs => fs.StaffId == managerId && fs.Position == "Manager");
-
-                if (managerStaff == null)
-                {
-                    throw new ArgumentException("Manager không tồn tại hoặc không có facility");
-                }
+                _logger.LogInformation("Cập nhật trạng thái ngày {Date} thành {Status}", date.ToString("yyyy-MM-dd"), status);
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedules = await repository.GetAllAsync("");
 
-                var result = schedules
-                    .Where(s => s.FacilityId == managerStaff.FacilityId)
-                    .OrderBy(s => s.Date)
-                    .ThenBy(s => s.SlotId)
-                    .ToList();
-
-                return _mapper.Map<List<AppointmentScheduleDTO>>(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting schedules by manager");
-                throw;
-            }
-        }
-
-        public async Task<List<AppointmentScheduleDTO>> CreateMultipleSchedulesAsync(List<CreateAppointmentScheduleDTO> createDtos)
-        {
-            try
-            {
-                _logger.LogInformation("Creating multiple appointment schedules");
-
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var createdSchedules = new List<AppointmentSchedule>();
-
-                foreach (var createDto in createDtos)
-                {
-                    var schedule = _mapper.Map<AppointmentSchedule>(createDto);
-                    createdSchedules.Add(schedule);
-                }
-
-                await repository.AddRangeAsync(createdSchedules);
-                await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully created multiple appointment schedules");
-                return _mapper.Map<List<AppointmentScheduleDTO>>(createdSchedules);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating multiple appointment schedules");
-                throw;
-            }
-        }
-
-        public async Task<bool> UpdateMultipleSchedulesStatusAsync(List<int> scheduleIds, string status)
-        {
-            try
-            {
-                _logger.LogInformation("Updating multiple schedules status");
-
-                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var allSchedules = await repository.GetAllAsync("");
-                var schedulesToUpdate = allSchedules.Where(s => scheduleIds.Contains(s.ScheduleId)).ToList();
+                var dateOnly = DateOnly.FromDateTime(date);
+                var schedulesToUpdate = schedules.Where(s => s.Date == dateOnly).ToList();
 
                 foreach (var schedule in schedulesToUpdate)
                 {
@@ -546,12 +243,83 @@ namespace Services.Implementations
                     await _unitOfWork.SaveChangesAsync();
                 }
 
-                _logger.LogInformation("Successfully updated multiple schedules status");
+                _logger.LogInformation("Cập nhật trạng thái ngày thành công");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating multiple schedules status");
+                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái ngày: {Date}", date.ToString("yyyy-MM-dd"));
+                throw;
+            }
+        }
+
+        public async Task<List<AppointmentScheduleDTO>> AddSlotsToScheduleAsync(DateTime date, List<int> slotIds)
+        {
+            try
+            {
+                _logger.LogInformation("Thêm slots vào lịch ngày {Date}", date.ToString("yyyy-MM-dd"));
+
+                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var createdSchedules = new List<AppointmentSchedule>();
+
+                var dateOnly = DateOnly.FromDateTime(date);
+
+                foreach (var slotId in slotIds)
+                {
+                    // Kiểm tra xem schedule đã tồn tại chưa
+                    var existingSchedules = await repository.GetAllAsync("");
+                    var exists = existingSchedules.Any(s => s.Date == dateOnly && s.SlotId == slotId);
+
+                    if (!exists)
+                    {
+                        var schedule = new AppointmentSchedule
+                        {
+                            FacilityId = 1, // Mặc định facility ID, có thể thay đổi sau
+                            SlotId = slotId,
+                            Date = dateOnly,
+                            Status = "Available",
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        createdSchedules.Add(schedule);
+                    }
+                }
+
+                if (createdSchedules.Any())
+                {
+                    await repository.AddRangeAsync(createdSchedules);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+
+                _logger.LogInformation("Thêm slots vào lịch thành công");
+                return _mapper.Map<List<AppointmentScheduleDTO>>(createdSchedules);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi thêm slots vào lịch ngày: {Date}", date.ToString("yyyy-MM-dd"));
+                throw;
+            }
+        }
+
+        public async Task<List<AppointmentScheduleDTO>> GetDayScheduleWithSlotsAsync(DateTime date)
+        {
+            try
+            {
+                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var schedules = await repository.GetAllAsync("");
+
+                var dateOnly = DateOnly.FromDateTime(date);
+                var result = schedules
+                    .Where(s => s.Date == dateOnly)
+                    .OrderBy(s => s.SlotId)
+                    .ToList();
+
+                return _mapper.Map<List<AppointmentScheduleDTO>>(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn với slots trong ngày: {Date}", date.ToString("yyyy-MM-dd"));
                 throw;
             }
         }

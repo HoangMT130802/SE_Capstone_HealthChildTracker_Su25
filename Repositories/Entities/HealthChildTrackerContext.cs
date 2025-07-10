@@ -676,9 +676,11 @@ public partial class HealthChildTrackerContext : DbContext
             entity.ToTable("ScheduleSlot");
 
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
-            entity.Property(e => e.SlotTime)
-                .IsRequired()
-                .HasMaxLength(50);
+            entity.Property(e => e.EndTime).HasPrecision(0);
+            entity.Property(e => e.LunchBreakEnd).HasPrecision(0);
+            entity.Property(e => e.LunchBreakStart).HasPrecision(0);
+            entity.Property(e => e.SlotTime).HasMaxLength(50);
+            entity.Property(e => e.StartTime).HasPrecision(0);
             entity.Property(e => e.Status)
                 .IsRequired()
                 .HasMaxLength(50);

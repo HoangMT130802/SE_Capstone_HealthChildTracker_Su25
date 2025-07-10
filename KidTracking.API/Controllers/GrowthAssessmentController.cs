@@ -107,5 +107,43 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, "Đã xảy ra lỗi khi xử lý yêu cầu");
             }
         }
+
+        /// <summary>
+        /// Dự đoán tăng trưởng tương lai cho trẻ
+        /// </summary>
+        [HttpGet("child/{childId}/prediction")]
+        [ProducesResponseType(typeof(GrowthPredictionDTO), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<GrowthPredictionDTO>> PredictGrowthByChildId(
+            int childId, 
+            [FromQuery] string period = "3months")
+        {
+            try
+            {
+                var validPeriods = new[] { "1day", "1week", "1month", "3months", "6months", "1year" };
+                if (!validPeriods.Contains(period.ToLower()))
+                {
+                    return BadRequest($"Khoảng thời gian không hợp lệ. Chọn một trong: {string.Join(", ", validPeriods)}");
+                }
+
+                var prediction = await _assessmentService.PredictGrowthAsync(childId, period);
+                return Ok(prediction);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi dự đoán tăng trưởng cho trẻ {ChildId}", childId);
+                return StatusCode(500, "Đã xảy ra lỗi khi xử lý yêu cầu");
+            }
+        }
     }
 }

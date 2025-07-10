@@ -1,541 +1,203 @@
 using Contracts.DTOs.Appointment;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
-using System.Security.Claims;
 
 namespace KidTracking.API.Controllers
 {
-    [Route("api/appointment-schedules")]
+    [Route("api/[controller]")]
     [ApiController]
     public class AppointmentSchedulesController : ControllerBase
     {
         private readonly IAppointmentScheduleService _appointmentScheduleService;
         private readonly ILogger<AppointmentSchedulesController> _logger;
 
-        public AppointmentSchedulesController(
-            IAppointmentScheduleService appointmentScheduleService,
-            ILogger<AppointmentSchedulesController> logger)
+        public AppointmentSchedulesController(IAppointmentScheduleService appointmentScheduleService, ILogger<AppointmentSchedulesController> logger)
         {
             _appointmentScheduleService = appointmentScheduleService;
             _logger = logger;
         }
 
-        [HttpPost]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> CreateSchedule([FromBody] CreateAppointmentScheduleDTO createDto)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.CreateScheduleAsync(createDto);
-                return CreatedAtAction(nameof(GetScheduleById), new { id = result.ScheduleId }, new
-                {
-                    success = true,
-                    message = "Tạo lịch hẹn thành công",
-                    data = result
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Conflict(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating appointment schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi tạo lịch hẹn" });
-            }
-        }
-
-        [HttpGet("{id}")]
-        [Authorize]
-        public async Task<IActionResult> GetScheduleById(int id)
-        {
-            try
-            {
-                var result = await _appointmentScheduleService.GetScheduleByIdAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy thông tin lịch hẹn thành công",
-                    data = result
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting appointment schedule by ID");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy thông tin lịch hẹn" });
-            }
-        }
-
         [HttpGet]
-        [Authorize]
-        public async Task<IActionResult> GetSchedules(
-            [FromQuery] int page = 1,
-            [FromQuery] int size = 10,
-            [FromQuery] int? facilityId = null,
-            [FromQuery] string? status = null)
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> GetAllSchedules()
         {
             try
             {
-                if (page < 1 || size < 1)
-                {
-                    return BadRequest(new { success = false, message = "Page và Size phải lớn hơn 0" });
-                }
-
-                var result = await _appointmentScheduleService.GetSchedulesAsync(page, size, facilityId, status);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy danh sách lịch hẹn thành công",
-                    data = result
-                });
+                var schedules = await _appointmentScheduleService.GetAllSchedulesAsync();
+                return Ok(schedules);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting appointment schedules");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy danh sách lịch hẹn" });
+                _logger.LogError(ex, "Lỗi khi lấy tất cả lịch hẹn");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        [HttpGet("week")]
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> GetSchedulesByWeek([FromQuery] DateTime startOfWeek)
+        {
+            try
+            {
+                var schedules = await _appointmentScheduleService.GetSchedulesByWeekAsync(startOfWeek);
+                return Ok(schedules);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn theo tuần");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        [HttpGet("month")]
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> GetSchedulesByMonth([FromQuery] DateTime month)
+        {
+            try
+            {
+                var schedules = await _appointmentScheduleService.GetSchedulesByMonthAsync(month);
+                return Ok(schedules);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn theo tháng");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        [HttpGet("date")]
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> GetSchedulesByDate([FromQuery] DateTime date)
+        {
+            try
+            {
+                var schedules = await _appointmentScheduleService.GetSchedulesByDateAsync(date);
+                return Ok(schedules);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn theo ngày");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<AppointmentScheduleDTO>> CreateSchedule([FromBody] CreateAppointmentScheduleDTO createDto)
+        {
+            try
+            {
+                var schedule = await _appointmentScheduleService.CreateScheduleAsync(createDto);
+                return CreatedAtAction(nameof(GetSchedulesByDate), new { date = schedule.Date }, schedule);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tạo lịch hẹn");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateSchedule(int id, [FromBody] UpdateAppointmentScheduleDTO updateDto)
+        public async Task<ActionResult<AppointmentScheduleDTO>> UpdateSchedule(int id, [FromBody] UpdateAppointmentScheduleDTO updateDto)
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.UpdateScheduleAsync(id, updateDto);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Cập nhật lịch hẹn thành công",
-                    data = result
-                });
+                var schedule = await _appointmentScheduleService.UpdateScheduleAsync(id, updateDto);
+                return Ok(schedule);
             }
             catch (ArgumentException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating appointment schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi cập nhật lịch hẹn" });
+                _logger.LogError(ex, "Lỗi khi cập nhật lịch hẹn");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> DeleteSchedule(int id)
+        public async Task<ActionResult> DeleteSchedule(int id)
         {
             try
             {
-                var result = await _appointmentScheduleService.DeleteScheduleAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Xóa lịch hẹn thành công"
-                });
+                await _appointmentScheduleService.DeleteScheduleAsync(id);
+                return NoContent();
             }
             catch (ArgumentException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting appointment schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi xóa lịch hẹn" });
+                _logger.LogError(ex, "Lỗi khi xóa lịch hẹn");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("facility/{facilityId}")]
-        [Authorize]
-        public async Task<IActionResult> GetSchedulesByFacility(int facilityId)
+        [HttpDelete("date")]
+        public async Task<ActionResult> DeleteSchedulesByDate([FromQuery] DateTime date)
         {
             try
             {
-                var result = await _appointmentScheduleService.GetSchedulesByFacilityAsync(facilityId);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy lịch hẹn theo cơ sở thành công",
-                    data = result
-                });
+                await _appointmentScheduleService.DeleteSchedulesByDateAsync(date);
+                return Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedules by facility");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy lịch hẹn theo cơ sở" });
+                _logger.LogError(ex, "Lỗi khi xóa lịch hẹn theo ngày");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("date/{date}")]
-        [Authorize]
-        public async Task<IActionResult> GetSchedulesByDate(DateTime date)
+        [HttpPatch("date/status")]
+        public async Task<ActionResult> UpdateDayStatus([FromQuery] DateTime date, [FromBody] UpdateDayStatusRequest request)
         {
             try
             {
-                var result = await _appointmentScheduleService.GetSchedulesByDateAsync(date);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy lịch hẹn theo ngày thành công",
-                    data = result
-                });
+                await _appointmentScheduleService.UpdateDayStatusAsync(date, request.Status);
+                return Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedules by date");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy lịch hẹn theo ngày" });
+                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái ngày");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("available")]
-        [Authorize]
-        public async Task<IActionResult> GetAvailableSchedules([FromQuery] DateTime date, [FromQuery] int? facilityId = null)
+        [HttpPost("date/slots")]
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> AddSlotsToSchedule([FromQuery] DateTime date, [FromBody] AddSlotsToScheduleRequest request)
         {
             try
             {
-                var result = await _appointmentScheduleService.GetAvailableSchedulesAsync(date, facilityId);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy lịch hẹn khả dụng thành công",
-                    data = result
-                });
+                var schedules = await _appointmentScheduleService.AddSlotsToScheduleAsync(date, request.SlotIds);
+                return Ok(schedules);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting available schedules");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy lịch hẹn khả dụng" });
+                _logger.LogError(ex, "Lỗi khi thêm slots vào lịch");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("{id}/available")]
-        [Authorize]
-        public async Task<IActionResult> IsScheduleAvailable(int id)
+        [HttpGet("date/slots")]
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> GetDayScheduleWithSlots([FromQuery] DateTime date)
         {
             try
             {
-                var result = await _appointmentScheduleService.IsScheduleAvailableAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Kiểm tra tình trạng lịch hẹn thành công",
-                    data = new { available = result }
-                });
+                var schedules = await _appointmentScheduleService.GetDayScheduleWithSlotsAsync(date);
+                return Ok(schedules);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking schedule availability");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi kiểm tra tình trạng lịch hẹn" });
-            }
-        }
-
-        [HttpPost("{id}/book")]
-        [Authorize(Roles = "Manager,Member")]
-        public async Task<IActionResult> BookSchedule(int id, [FromBody] BookScheduleRequestDTO bookingRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.BookScheduleAsync(id, bookingRequest.MemberId);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Đặt lịch hẹn thành công"
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error booking schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi đặt lịch hẹn" });
-            }
-        }
-
-        [HttpPost("{id}/cancel")]
-        [Authorize(Roles = "Manager,Member")]
-        public async Task<IActionResult> CancelSchedule(int id)
-        {
-            try
-            {
-                var result = await _appointmentScheduleService.CancelScheduleAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Hủy lịch hẹn thành công"
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error canceling schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi hủy lịch hẹn" });
-            }
-        }
-
-        [HttpPost("facility/{facilityId}/holiday")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> SetHolidaySchedule(int facilityId, [FromBody] SetHolidayRequestDTO holidayRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.SetHolidayAsync(facilityId, holidayRequest.Date, holidayRequest.Reason);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Thiết lập lịch nghỉ lễ thành công"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting holiday schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi thiết lập lịch nghỉ lễ" });
-            }
-        }
-
-        [HttpPost("facility/{facilityId}/maintenance")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> SetMaintenanceSchedule(int facilityId, [FromBody] SetMaintenanceRequestDTO maintenanceRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.SetMaintenanceAsync(facilityId, maintenanceRequest.Date, maintenanceRequest.Reason);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Thiết lập lịch bảo trì thành công"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting maintenance schedule");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi thiết lập lịch bảo trì" });
-            }
-        }
-
-        [HttpPut("{id}/status")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateScheduleStatus(int id, [FromBody] UpdateStatusRequestDTO statusRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.UpdateScheduleStatusAsync(id, statusRequest.Status);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Cập nhật trạng thái lịch hẹn thành công"
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating schedule status");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi cập nhật trạng thái lịch hẹn" });
-            }
-        }
-
-        [HttpPost("batch/create")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> CreateSchedulesForDateRange([FromBody] CreateScheduleBatchRequestDTO batchRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.CreateSchedulesForDateRangeAsync(
-                    batchRequest.FacilityId, 
-                    batchRequest.StartDate, 
-                    batchRequest.EndDate);
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Tạo lịch hẹn hàng loạt thành công",
-                    data = result
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating schedules for date range");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi tạo lịch hẹn hàng loạt" });
-            }
-        }
-
-        [HttpPost("multiple")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> CreateMultipleSchedules([FromBody] List<CreateAppointmentScheduleDTO> createDtos)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.CreateMultipleSchedulesAsync(createDtos);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Tạo nhiều lịch hẹn thành công",
-                    data = result
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating multiple schedules");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi tạo nhiều lịch hẹn" });
-            }
-        }
-
-        [HttpPut("batch/status")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateMultipleSchedulesStatus([FromBody] UpdateScheduleStatusBatchRequestDTO batchRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _appointmentScheduleService.UpdateMultipleSchedulesStatusAsync(batchRequest.ScheduleIds, batchRequest.Status);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Cập nhật trạng thái lịch hẹn hàng loạt thành công"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating multiple schedules status");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi cập nhật trạng thái lịch hẹn hàng loạt" });
-            }
-        }
-
-        [HttpGet("manager/{managerId}")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> GetSchedulesByManager(int managerId)
-        {
-            try
-            {
-                var result = await _appointmentScheduleService.GetSchedulesByManagerAsync(managerId);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy lịch hẹn theo manager thành công",
-                    data = result
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting schedules by manager");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy lịch hẹn theo manager" });
+                _logger.LogError(ex, "Lỗi khi lấy lịch hẹn với slots trong ngày");
+                return StatusCode(500, "Lỗi server");
             }
         }
     }
 
-    // Request DTOs
-    public class BookScheduleRequestDTO
-    {
-        public int MemberId { get; set; }
-    }
-
-    public class SetHolidayRequestDTO
-    {
-        public DateTime Date { get; set; }
-        public string Reason { get; set; } = "Holiday";
-    }
-
-    public class SetMaintenanceRequestDTO
-    {
-        public DateTime Date { get; set; }
-        public string Reason { get; set; } = "Maintenance";
-    }
-
-    public class UpdateStatusRequestDTO
+    public class UpdateDayStatusRequest
     {
         public string Status { get; set; }
     }
 
-    public class CreateScheduleBatchRequestDTO
+    public class AddSlotsToScheduleRequest
     {
-        public int FacilityId { get; set; }
-        public DateTime StartDate { get; set; }
-        public DateTime EndDate { get; set; }
-    }
-
-    public class UpdateScheduleStatusBatchRequestDTO
-    {
-        public List<int> ScheduleIds { get; set; } = new List<int>();
-        public string Status { get; set; }
+        public List<int> SlotIds { get; set; }
     }
 } 

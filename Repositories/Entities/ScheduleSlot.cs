@@ -11,11 +11,23 @@ public partial class ScheduleSlot
 
     public string SlotTime { get; set; }
 
+    public TimeOnly? StartTime { get; set; }
+
+    public TimeOnly? EndTime { get; set; }
+
+    public int? SlotDurationMinutes { get; set; }
+
+    public TimeOnly? LunchBreakStart { get; set; }
+
+    public TimeOnly? LunchBreakEnd { get; set; }
+
     public int MaxCapacity { get; set; }
 
     public int BookedCount { get; set; }
 
     public string Status { get; set; }
+
+    public bool IsWorkingHours { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

@@ -5,443 +5,210 @@ using Services.Interfaces;
 
 namespace KidTracking.API.Controllers
 {
-    [Route("api/schedule-slots")]
+    [Route("api/[controller]")]
     [ApiController]
     public class ScheduleSlotsController : ControllerBase
     {
         private readonly IScheduleSlotService _scheduleSlotService;
         private readonly ILogger<ScheduleSlotsController> _logger;
 
-        public ScheduleSlotsController(
-            IScheduleSlotService scheduleSlotService,
-            ILogger<ScheduleSlotsController> logger)
+        public ScheduleSlotsController(IScheduleSlotService scheduleSlotService, ILogger<ScheduleSlotsController> logger)
         {
             _scheduleSlotService = scheduleSlotService;
             _logger = logger;
         }
 
-        [HttpPost]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> CreateSlot([FromBody] CreateScheduleSlotDTO createDto)
+        [HttpGet]
+        public async Task<ActionResult<List<ScheduleSlotDTO>>> GetAllSlots()
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _scheduleSlotService.CreateSlotAsync(createDto);
-                return CreatedAtAction(nameof(GetSlotById), new { id = result.SlotId }, new
-                {
-                    success = true,
-                    message = "Tạo slot thời gian thành công",
-                    data = result
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Conflict(new { success = false, message = ex.Message });
+                var slots = await _scheduleSlotService.GetAllSlotsAsync();
+                return Ok(slots);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating schedule slot");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi tạo slot thời gian" });
+                _logger.LogError(ex, "Lỗi khi lấy danh sách slots");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
         [HttpGet("{id}")]
-        [Authorize]
-        public async Task<IActionResult> GetSlotById(int id)
+        public async Task<ActionResult<ScheduleSlotDTO>> GetSlotById(int id)
         {
             try
             {
-                var result = await _scheduleSlotService.GetSlotByIdAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy thông tin slot thành công",
-                    data = result
-                });
+                var slot = await _scheduleSlotService.GetSlotByIdAsync(id);
+                return Ok(slot);
             }
             catch (ArgumentException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedule slot by ID");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy thông tin slot" });
+                _logger.LogError(ex, "Lỗi khi lấy slot theo ID");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet]
-        [Authorize]
-        public async Task<IActionResult> GetSlots(
-            [FromQuery] int page = 1,
-            [FromQuery] int size = 10,
-            [FromQuery] string? status = null)
+        [HttpPost]
+        public async Task<ActionResult<List<ScheduleSlotDTO>>> CreateSlot([FromBody] CreateScheduleSlotDTO createDto)
         {
             try
             {
-                if (page < 1 || size < 1)
+                var slots = await _scheduleSlotService.CreateSlotAsync(createDto);
+                
+                if (createDto.IsWorkingHours)
                 {
-                    return BadRequest(new { success = false, message = "Page và Size phải lớn hơn 0" });
+                    // Working hours tạo nhiều slots
+                    return Ok(slots);
                 }
-
-                var result = await _scheduleSlotService.GetSlotsAsync(page, size, status);
-                return Ok(new
+                else
                 {
-                    success = true,
-                    message = "Lấy danh sách slot thành công",
-                    data = result
-                });
+                    // Single slot
+                    var slot = slots.First();
+                    return CreatedAtAction(nameof(GetSlotById), new { id = slot.SlotId }, slots);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting schedule slots");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy danh sách slot" });
+                _logger.LogError(ex, "Lỗi khi tạo slot");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateSlot(int id, [FromBody] UpdateScheduleSlotDTO updateDto)
+        public async Task<ActionResult<ScheduleSlotDTO>> UpdateSlot(int id, [FromBody] UpdateScheduleSlotDTO updateDto)
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _scheduleSlotService.UpdateSlotAsync(id, updateDto);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Cập nhật slot thành công",
-                    data = result
-                });
+                var slot = await _scheduleSlotService.UpdateSlotAsync(id, updateDto);
+                return Ok(slot);
             }
             catch (ArgumentException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating schedule slot");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi cập nhật slot" });
+                _logger.LogError(ex, "Lỗi khi cập nhật slot");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> DeleteSlot(int id)
+        public async Task<ActionResult> DeleteSlot(int id)
         {
             try
             {
-                var result = await _scheduleSlotService.DeleteSlotAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Xóa slot thành công"
-                });
+                await _scheduleSlotService.DeleteSlotAsync(id);
+                return NoContent();
             }
             catch (ArgumentException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting schedule slot");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi xóa slot" });
+                _logger.LogError(ex, "Lỗi khi xóa slot");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("active")]
-        [Authorize]
-        public async Task<IActionResult> GetActiveSlots()
+        // ✅ Working Hours Management theo entity mới
+        [HttpGet("working-hours")]
+        public async Task<ActionResult<List<ScheduleSlotDTO>>> GetWorkingHoursSlots([FromQuery] TimeOnly startTime, [FromQuery] TimeOnly endTime)
         {
             try
             {
-                var result = await _scheduleSlotService.GetActiveSlotsAsync();
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy danh sách slot hoạt động thành công",
-                    data = result
-                });
+                var slots = await _scheduleSlotService.GetWorkingHoursSlotsAsync(startTime, endTime);
+                return Ok(slots);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting active slots");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy danh sách slot hoạt động" });
+                _logger.LogError(ex, "Lỗi khi lấy working hours slots");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("available")]
-        [Authorize]
-        public async Task<IActionResult> GetAvailableSlots()
+        [HttpDelete("working-hours")]
+        public async Task<ActionResult> DeleteWorkingHours([FromQuery] TimeOnly startTime, [FromQuery] TimeOnly endTime)
         {
             try
             {
-                var result = await _scheduleSlotService.GetAvailableSlotsAsync();
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy danh sách slot khả dụng thành công",
-                    data = result
-                });
+                await _scheduleSlotService.DeleteWorkingHoursAsync(startTime, endTime);
+                return Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting available slots");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi lấy danh sách slot khả dụng" });
+                _logger.LogError(ex, "Lỗi khi xóa working hours");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpGet("{id}/available")]
-        [Authorize]
-        public async Task<IActionResult> IsSlotAvailable(int id)
+        [HttpPut("working-hours")]
+        public async Task<ActionResult<List<ScheduleSlotDTO>>> UpdateWorkingHours(
+            [FromQuery] TimeOnly oldStartTime, 
+            [FromQuery] TimeOnly oldEndTime, 
+            [FromBody] CreateScheduleSlotDTO newConfig)
         {
             try
             {
-                var result = await _scheduleSlotService.IsSlotAvailableAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Kiểm tra tình trạng slot thành công",
-                    data = new { isAvailable = result }
-                });
+                var slots = await _scheduleSlotService.UpdateWorkingHoursAsync(oldStartTime, oldEndTime, newConfig);
+                return Ok(slots);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking slot availability");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi kiểm tra tình trạng slot" });
+                _logger.LogError(ex, "Lỗi khi cập nhật working hours");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpPost("{id}/activate")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> ActivateSlot(int id)
+        [HttpPatch("{id}/status")]
+        public async Task<ActionResult> UpdateSlotStatus(int id, [FromBody] UpdateStatusRequest request)
         {
             try
             {
-                var result = await _scheduleSlotService.ActivateSlotAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Kích hoạt slot thành công"
-                });
+                await _scheduleSlotService.UpdateSlotStatusAsync(id, request.Status);
+                return Ok();
             }
             catch (ArgumentException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error activating slot");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi kích hoạt slot" });
+                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái slot");
+                return StatusCode(500, "Lỗi server");
             }
         }
 
-        [HttpPost("{id}/deactivate")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> DeactivateSlot(int id)
+        [HttpDelete("multiple")]
+        public async Task<ActionResult> DeleteMultipleSlots([FromBody] DeleteMultipleSlotsRequest request)
         {
             try
             {
-                var result = await _scheduleSlotService.DeactivateSlotAsync(id);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Vô hiệu hóa slot thành công"
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return NotFound(new { success = false, message = ex.Message });
+                await _scheduleSlotService.DeleteMultipleSlotsAsync(request.SlotIds);
+                return Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deactivating slot");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi vô hiệu hóa slot" });
-            }
-        }
-
-        [HttpPut("{id}/capacity")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateSlotCapacity(int id, [FromBody] UpdateCapacityRequestDTO capacityRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _scheduleSlotService.UpdateSlotCapacityAsync(id, capacityRequest.NewCapacity);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Cập nhật sức chứa slot thành công"
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating slot capacity");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi cập nhật sức chứa slot" });
-            }
-        }
-
-        [HttpPost("default")]
-        [Authorize(Roles = "Manager,Admin")]
-        public async Task<IActionResult> CreateDefaultSlots()
-        {
-            try
-            {
-                var result = await _scheduleSlotService.CreateDefaultSlotsAsync();
-                return Ok(new
-                {
-                    success = true,
-                    message = $"Tạo thành công {result.Count} slot mặc định",
-                    data = result
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating default slots");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi tạo slot mặc định" });
-            }
-        }
-
-        [HttpPost("batch/create")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> CreateMultipleSlots([FromBody] List<CreateScheduleSlotDTO> createDtos)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _scheduleSlotService.CreateMultipleSlotsAsync(createDtos);
-                return Ok(new
-                {
-                    success = true,
-                    message = $"Tạo thành công {result.Count} slot",
-                    data = result
-                });
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Conflict(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating multiple slots");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi tạo nhiều slot" });
-            }
-        }
-
-        [HttpPut("batch/status")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateMultipleSlotsStatus([FromBody] UpdateSlotsStatusBatchRequestDTO batchRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _scheduleSlotService.UpdateMultipleSlotsStatusAsync(batchRequest.SlotIds, batchRequest.Status);
-                return Ok(new
-                {
-                    success = true,
-                    message = "Cập nhật trạng thái slot thành công"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating multiple slots status");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi cập nhật trạng thái slot" });
-            }
-        }
-
-        [HttpPost("{id}/validate-time")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> ValidateSlotTime(int id, [FromBody] ValidateSlotTimeRequestDTO validateRequest)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var isValid = await _scheduleSlotService.ValidateSlotTimeAsync(validateRequest.SlotTime);
-                var hasConflict = await _scheduleSlotService.CheckSlotTimeConflictAsync(validateRequest.SlotTime, id);
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Kiểm tra thời gian slot thành công",
-                    data = new 
-                    { 
-                        isValid = isValid,
-                        hasConflict = hasConflict,
-                        canUse = isValid && !hasConflict
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error validating slot time");
-                return StatusCode(500, new { success = false, message = "Đã xảy ra lỗi khi kiểm tra thời gian slot" });
+                _logger.LogError(ex, "Lỗi khi xóa nhiều slots");
+                return StatusCode(500, "Lỗi server");
             }
         }
     }
 
-    // Request DTOs for controller actions
-    public class UpdateCapacityRequestDTO
-    {
-        public int NewCapacity { get; set; }
-    }
+    // ❌ XÓA: CreateWorkingHoursRequest - không còn dùng vì đã gộp vào CreateScheduleSlotDTO
 
-    public class UpdateSlotsStatusBatchRequestDTO
+    public class UpdateStatusRequest
     {
-        public List<int> SlotIds { get; set; } = new List<int>();
         public string Status { get; set; }
     }
 
-    public class ValidateSlotTimeRequestDTO
+    public class DeleteMultipleSlotsRequest
     {
-        public string SlotTime { get; set; }
+        public List<int> SlotIds { get; set; }
     }
 } 
