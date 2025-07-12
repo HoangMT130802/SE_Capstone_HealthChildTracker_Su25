@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.Disease;
 using Contracts.DTOs.FacilityVaccine;
+using Contracts.DTOs.Member;
 using Contracts.DTOs.Order;
 using Repositories.Entities;
 using System;
@@ -41,10 +42,12 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Order, opt => opt.Ignore());
 
             CreateMap<Order, OrderDTO>()
-                .ForMember(dest => dest.OrderDetails, opt => opt.MapFrom(src => src.OrderDetails));
+            .ForMember(dest => dest.OrderDetails, opt => opt.MapFrom(src => src.OrderDetails))
+            .ForMember(dest => dest.Member, opt => opt.MapFrom(src => src.Member));
             CreateMap<OrderDetail, OrderDetailDTO>();
             CreateMap<FacilityVaccine, FacilityVaccineDTO>();
             CreateMap<Disease, DiseaseDTO>();
+            CreateMap<Member, MemberDTO>();
         }
     }
 }
