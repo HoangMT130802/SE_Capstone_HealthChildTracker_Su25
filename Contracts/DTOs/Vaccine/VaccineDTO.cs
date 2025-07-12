@@ -3,9 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Contracts.DTOs.Disease;
 
 namespace Contracts.DTOs.Vaccine
 {
+    /// <summary>
+    /// DTO cho thông tin Vaccine
+    /// </summary>
     public class VaccineDTO
     {
         public int VaccineId { get; set; }
@@ -22,6 +26,10 @@ namespace Contracts.DTOs.Vaccine
         public string Status { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
-        public List<int> DiseaseIds { get; set; }
+
+        /// <summary>
+        /// Danh sách bệnh mà vaccine này có thể điều trị
+        /// </summary>
+        public List<DiseaseDTO>? Diseases { get; set; }
     }
 }

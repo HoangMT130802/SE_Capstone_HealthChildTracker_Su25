@@ -11,8 +11,9 @@ namespace Contracts.DTOs.FacilitySchedule
         [Range(1, 100, ErrorMessage = "MaxCapacity phải từ 1 đến 100")]
         public int MaxCapacity { get; set; } = 10;
 
-        [Range(0, int.MaxValue, ErrorMessage = "BookedCount phải >= 0")]
-        public int BookedCount { get; set; } = 0;
+        // ❌ Bỏ BookedCount - sẽ tính tự động từ appointments
+        // [Range(0, int.MaxValue, ErrorMessage = "BookedCount phải >= 0")]
+        // public int BookedCount { get; set; } = 0;
 
         [RegularExpression("^(Active|Inactive)$", 
             ErrorMessage = "Status phải là: Active hoặc Inactive")]
@@ -26,5 +27,9 @@ namespace Contracts.DTOs.FacilitySchedule
         public TimeOnly? LunchBreakEnd { get; set; }
         
         public bool IsWorkingHours { get; set; } = false;
+
+        // ✅ FacilityId sẽ được lấy từ JWT token trong Controller
+        // Không cần validation vì được set automatic
+        public int? FacilityId { get; set; }
     }
 } 

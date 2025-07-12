@@ -12,8 +12,9 @@ namespace Contracts.DTOs.FacilitySchedule
         [Range(1, 100, ErrorMessage = "MaxCapacity phải từ 1 đến 100")]
         public int MaxCapacity { get; set; }
 
-        [Range(0, int.MaxValue, ErrorMessage = "BookedCount phải >= 0")]
-        public int BookedCount { get; set; }
+        // ❌ Bỏ BookedCount - sẽ tính tự động từ appointments
+        // [Range(0, int.MaxValue, ErrorMessage = "BookedCount phải >= 0")]
+        // public int BookedCount { get; set; }
 
         [RegularExpression("^(Active|Inactive)$", 
             ErrorMessage = "Status phải là: Active hoặc Inactive")]

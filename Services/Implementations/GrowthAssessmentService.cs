@@ -135,28 +135,13 @@ namespace Services.Implementations
         {
             return period.ToLower() switch
             {
-                "1day" => new List<(int, string)> { (1, "Ngày mai") },
-                "1week" => new List<(int, string)> 
-                { 
-                    (1, "Ngày mai"), (3, "3 ngày"), (7, "1 tuần") 
-                },
-                "1month" => new List<(int, string)> 
-                { 
-                    (7, "1 tuần"), (14, "2 tuần"), (21, "3 tuần"), (30, "1 tháng") 
-                },
-                "3months" => new List<(int, string)> 
-                { 
-                    (30, "1 tháng"), (60, "2 tháng"), (90, "3 tháng") 
-                },
-                "6months" => new List<(int, string)> 
-                { 
-                    (30, "1 tháng"), (90, "3 tháng"), (180, "6 tháng") 
-                },
-                "1year" => new List<(int, string)> 
-                { 
-                    (90, "3 tháng"), (180, "6 tháng"), (270, "9 tháng"), (365, "1 năm") 
-                },
-                _ => new List<(int, string)> { (30, "1 tháng"), (60, "2 tháng"), (90, "3 tháng") }
+                "1day" => new List<(int, string)> { (1, "1 ngày") },
+                "1week" => new List<(int, string)> { (7, "1 tuần") },
+                "1month" => new List<(int, string)> { (30, "1 tháng") },
+                "3months" => new List<(int, string)> { (90, "3 tháng") },
+                "6months" => new List<(int, string)> { (180, "6 tháng") },
+                "1year" => new List<(int, string)> { (365, "1 năm") },
+                _ => new List<(int, string)> { (90, "3 tháng") }
             };
         }
 
@@ -349,12 +334,7 @@ namespace Services.Implementations
             else
                 recommendations.Add("- 🚨 Cân nặng có xu hướng giảm đáng lo ngại");
 
-            recommendations.Add("");
-            recommendations.Add("🛡️ **VALIDATION ĐÃ ÁP DỤNG:**");
-            recommendations.Add("- Chiều cao chỉ tăng hoặc không đổi (không bao giờ giảm)");
-            recommendations.Add("- Vòng đầu chỉ tăng hoặc không đổi (không bao giờ giảm)");
-            recommendations.Add("- Cân nặng có thể giảm tối đa 10%/tháng");
-            recommendations.Add("- Tăng trưởng được giới hạn trong mức hợp lý");
+
 
             recommendations.Add("");
             recommendations.Add("💡 **KHUYẾN NGHỊ:**");
@@ -371,12 +351,11 @@ namespace Services.Implementations
                 recommendations.Add("- 👨‍⚕️ Có thể cần tham vấn bác sĩ nếu cân nặng tiếp tục giảm");
             }
 
-            recommendations.Add("- 📊 Tiếp tục theo dõi định kỳ để cập nhật dự đoán");
-            recommendations.Add("- 🎯 Dữ liệu càng nhiều, dự đoán càng chính xác");
-
+            recommendations.Add("- 📊 Tiếp tục theo dõi định kỳ để dự đoán chính xác hơn");
+            
             if (recentRecords.Count < 4)
             {
-                recommendations.Add("- ⚠️ Cần ít nhất 4 điểm đo để tăng độ chính xác");
+                recommendations.Add("- 📈 Để có dự đoán chính xác hơn, hãy đo đạc thêm vài lần nữa");
             }
 
             return string.Join("\n", recommendations);

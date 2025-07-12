@@ -12,6 +12,7 @@ namespace Contracts.DTOs.VaccinationFacility
         public string FacilityName { get; set; }
 
         [Required(ErrorMessage = "Số giấy phép là bắt buộc")]
+        [Range(1, 999999999, ErrorMessage = "Số giấy phép phải từ 1 đến 999,999,999")]
         public int LicenseNumber { get; set; }
 
         [Required(ErrorMessage = "Địa chỉ là bắt buộc")]
@@ -19,6 +20,7 @@ namespace Contracts.DTOs.VaccinationFacility
         public string Address { get; set; }
 
         [Required(ErrorMessage = "Số điện thoại là bắt buộc")]
+        [Range(100000000, 999999999, ErrorMessage = "Số điện thoại phải có 9 chữ số (100,000,000 - 999,999,999)")]
         public int Phone { get; set; }
 
         [Required(ErrorMessage = "Email là bắt buộc")]
@@ -29,6 +31,7 @@ namespace Contracts.DTOs.VaccinationFacility
         [StringLength(1000, ErrorMessage = "Mô tả không được vượt quá 1000 ký tự")]
         public string Description { get; set; }
 
+        [Range(0, 1, ErrorMessage = "Status phải là 0 (Inactive) hoặc 1 (Active)")]
         public long Status { get; set; }
     }
 } 

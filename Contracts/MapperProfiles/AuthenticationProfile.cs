@@ -52,7 +52,7 @@ namespace Contracts.MapperProfiles
             CreateMap<CreateManagerDTO, FacilityStaff>()
                 .ForMember(dest => dest.StaffId, opt => opt.Ignore())
                 .ForMember(dest => dest.AccountId, opt => opt.Ignore())
-                .ForMember(dest => dest.FacilityId, opt => opt.MapFrom(src => src.FacilityId))
+                .ForMember(dest => dest.FacilityId, opt => opt.Ignore()) // Manager chưa có facility khi tạo
                 .ForMember(dest => dest.Phone, opt => opt.Ignore())
                 .ForMember(dest => dest.Email, opt => opt.Ignore())
                 .ForMember(dest => dest.Position, opt => opt.MapFrom(src => "Manager"))

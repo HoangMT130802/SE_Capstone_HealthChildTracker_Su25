@@ -108,7 +108,17 @@ namespace Services.Implementations
                     }
                 }
 
-                response.Token = _jwtService.GenerateToken(account);
+                // ✅ Sử dụng JWT với FacilityId cho Staff/Manager
+                if (account.Role == "FacilityStaff" || account.Role == "Doctor" || account.Role == "Manager")
+                {
+                    var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var staffInfo = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
+                    response.Token = _jwtService.GenerateToken(account, staffInfo?.FacilityId);
+                }
+                else
+                {
+                    response.Token = _jwtService.GenerateToken(account);
+                }
 
                 _logger.LogInformation($"User {account.AccountName} with role {account.Role} logged in successfully");
                 return response;
@@ -165,25 +175,53 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Tài khoản đã bị vô hiệu hóa");
                 }
 
-                // Lấy thông tin FacilityStaff
+                // Lấy thông tin FacilityStaff (nếu có)
                 var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId, 
                     includeProperties: "Account,Facility");
                 
+                StaffResponseDTO response;
+                
                 if (staff == null)
                 {
-                    throw new UnauthorizedAccessException("Không tìm thấy thông tin nhân viên");
+                    // Manager mới tạo chưa có FacilityStaff record
+                    if (account.Role == "Manager")
+                    {
+                        response = new StaffResponseDTO
+                        {
+                            AccountId = account.AccountId,
+                            StaffId = 0, // Chưa có Staff record
+                            AccountName = account.AccountName,
+                            Email = account.Email,
+                            Role = account.Role,
+                            FullName = account.AccountName, // Tạm thời dùng AccountName
+                            Phone = "",
+                            FacilityId = 0, // Chưa có facility
+                            Position = "Manager",
+                            Description = "",
+                            Status = true,
+                            CreatedAt = account.CreatedAt,
+                            Token = _jwtService.GenerateToken(account, null) // Manager mới chưa có facility
+                        };
+                    }
+                    else
+                    {
+                        throw new UnauthorizedAccessException("Không tìm thấy thông tin nhân viên");
+                    }
                 }
-
-                if (!staff.Status)
+                else
                 {
-                    throw new UnauthorizedAccessException("Tài khoản nhân viên đã bị vô hiệu hóa");
+                    if (!staff.Status)
+                    {
+                        throw new UnauthorizedAccessException("Tài khoản nhân viên đã bị vô hiệu hóa");
+                    }
+
+                    response = _mapper.Map<StaffResponseDTO>(staff);
+                    // ✅ Sử dụng JWT với FacilityId cho Staff/Manager
+                    response.Token = _jwtService.GenerateToken(account, staff.FacilityId);
                 }
 
-                var response = _mapper.Map<StaffResponseDTO>(staff);
-                response.Token = _jwtService.GenerateToken(account);
-
-                _logger.LogInformation($"Staff {account.AccountName} with position {staff.Position} logged in successfully");
+                _logger.LogInformation($"Staff {account.AccountName} with position {response.Position} logged in successfully");
                 return response;
             }
             catch (Exception ex)
@@ -345,29 +383,25 @@ namespace Services.Implementations
                     await accountRepository.AddAsync(newAccount);
                     await _unitOfWork.SaveChangesAsync();
 
-                    // Create FacilityStaff
-                    var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                    var newStaff = _mapper.Map<FacilityStaff>(request);
-                    newStaff.AccountId = newAccount.AccountId;
-                    newStaff.Email = request.Email;
-                    newStaff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
-                        (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
-                    newStaff.CreatedAt = DateTime.UtcNow;
-                    newStaff.UpdatedAt = DateTime.UtcNow;
-
-                    await staffRepository.AddAsync(newStaff);
-                    await _unitOfWork.SaveChangesAsync();
-
                     await transaction.CommitAsync();
 
-                    // Prepare response
-                    var staffWithAccount = await staffRepository.GetAsync(
-                        s => s.StaffId == newStaff.StaffId, 
-                        includeProperties: "Account"
-                    );
-
-                    var response = _mapper.Map<StaffResponseDTO>(staffWithAccount);
-                    response.Token = _jwtService.GenerateToken(newAccount);
+                    // Prepare response (chỉ từ Account, chưa có FacilityStaff)
+                    var response = new StaffResponseDTO
+                    {
+                        AccountId = newAccount.AccountId,
+                        StaffId = 0, // Manager chưa có Staff record
+                        AccountName = newAccount.AccountName,
+                        Email = newAccount.Email,
+                        Role = newAccount.Role,
+                        FullName = request.FullName,
+                        Phone = request.Phone ?? "",
+                        FacilityId = 0, // Manager chưa có facility
+                        Position = "Manager",
+                        Description = request.Description ?? "",
+                        Status = true,
+                        CreatedAt = newAccount.CreatedAt,
+                        Token = _jwtService.GenerateToken(newAccount, null) // Manager mới chưa có facility
+                    };
 
                     _logger.LogInformation($"Manager {newAccount.AccountName} created successfully by Admin {adminAccount.AccountName}");
                     return response;

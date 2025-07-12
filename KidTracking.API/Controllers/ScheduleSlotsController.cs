@@ -2,11 +2,13 @@ using Contracts.DTOs.FacilitySchedule;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
+using System.Security.Claims;
 
 namespace KidTracking.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize] // ✅ Yêu cầu authentication cho tất cả endpoints
     public class ScheduleSlotsController : ControllerBase
     {
         private readonly IScheduleSlotService _scheduleSlotService;
@@ -18,7 +20,37 @@ namespace KidTracking.API.Controllers
             _logger = logger;
         }
 
+        // ✅ Helper method để lấy FacilityId từ JWT token
+        private int? GetFacilityIdFromToken()
+        {
+            var facilityIdClaim = User.FindFirst("FacilityId")?.Value;
+            if (int.TryParse(facilityIdClaim, out int facilityId))
+            {
+                return facilityId;
+            }
+            return null;
+        }
+
+        // ✅ Helper method để lấy AccountId từ JWT token
+        private int GetAccountIdFromToken()
+        {
+            var accountIdClaim = User.FindFirst("AccountId")?.Value;
+            if (int.TryParse(accountIdClaim, out int accountId))
+            {
+                return accountId;
+            }
+            throw new UnauthorizedAccessException("Không thể xác định thông tin người dùng");
+        }
+
+        // ✅ Helper method để kiểm tra role
+        private string GetUserRole()
+        {
+            return User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        }
+
+        // ✅ GET tất cả slots (chỉ Admin)
         [HttpGet]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> GetAllSlots()
         {
             try
@@ -33,13 +65,72 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ GET slots của facility hiện tại (Manager/Staff)
+        [HttpGet("my-facility")]
+        
+        public async Task<ActionResult<List<ScheduleSlotDTO>>> GetMyFacilitySlots()
+        {
+            try
+            {
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                var slots = await _scheduleSlotService.GetSlotsByFacilityAsync(facilityId.Value);
+                return Ok(slots);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy danh sách slots của facility");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        // ✅ GET slots theo facility ID (Admin)
+        [HttpGet("facility/{facilityId}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<List<ScheduleSlotDTO>>> GetSlotsByFacility(int facilityId)
+        {
+            try
+            {
+                var slots = await _scheduleSlotService.GetSlotsByFacilityAsync(facilityId);
+                return Ok(slots);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy danh sách slots theo facility");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        // ✅ GET slot theo ID với authorization
         [HttpGet("{id}")]
         public async Task<ActionResult<ScheduleSlotDTO>> GetSlotById(int id)
         {
             try
             {
-                var slot = await _scheduleSlotService.GetSlotByIdAsync(id);
-                return Ok(slot);
+                var role = GetUserRole();
+                
+                if (role == "Admin")
+                {
+                    // Admin có thể xem tất cả slots
+                    var slot = await _scheduleSlotService.GetSlotByIdAsync(id);
+                    return Ok(slot);
+                }
+                else
+                {
+                    // Manager/Staff chỉ xem slots của facility mình
+                    var facilityId = GetFacilityIdFromToken();
+                    if (!facilityId.HasValue)
+                    {
+                        return BadRequest("Bạn chưa được gán vào facility nào");
+                    }
+
+                    var slot = await _scheduleSlotService.GetSlotByIdWithFacilityCheckAsync(id, facilityId.Value);
+                    return Ok(slot);
+                }
             }
             catch (ArgumentException ex)
             {
@@ -52,23 +143,37 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ POST tạo slot mới (Manager only)
         [HttpPost]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> CreateSlot([FromBody] CreateScheduleSlotDTO createDto)
         {
             try
             {
-                var slots = await _scheduleSlotService.CreateSlotAsync(createDto);
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                var slots = await _scheduleSlotService.CreateSlotAsync(createDto, facilityId.Value);
                 
                 if (createDto.IsWorkingHours)
                 {
                     // Working hours tạo nhiều slots
-                    return Ok(slots);
+                    return Ok(new { 
+                        message = $"Tạo thành công {slots.Count} slots cho working hours",
+                        data = slots 
+                    });
                 }
                 else
                 {
                     // Single slot
                     var slot = slots.First();
-                    return CreatedAtAction(nameof(GetSlotById), new { id = slot.SlotId }, slots);
+                    return CreatedAtAction(nameof(GetSlotById), new { id = slot.SlotId }, new {
+                        message = "Tạo slot thành công",
+                        data = slots
+                    });
                 }
             }
             catch (Exception ex)
@@ -78,11 +183,22 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ PUT cập nhật slot (Manager only, chỉ slots của facility mình)
         [HttpPut("{id}")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult<ScheduleSlotDTO>> UpdateSlot(int id, [FromBody] UpdateScheduleSlotDTO updateDto)
         {
             try
             {
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                // Kiểm tra slot có thuộc facility không trước khi update
+                await _scheduleSlotService.GetSlotByIdWithFacilityCheckAsync(id, facilityId.Value);
+                
                 var slot = await _scheduleSlotService.UpdateSlotAsync(id, updateDto);
                 return Ok(slot);
             }
@@ -97,13 +213,24 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ DELETE xóa slot (Manager only, chỉ slots của facility mình)
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult> DeleteSlot(int id)
         {
             try
             {
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                // Kiểm tra slot có thuộc facility không trước khi delete
+                await _scheduleSlotService.GetSlotByIdWithFacilityCheckAsync(id, facilityId.Value);
+                
                 await _scheduleSlotService.DeleteSlotAsync(id);
-                return NoContent();
+                return Ok(new { message = "Xóa slot thành công" });
             }
             catch (ArgumentException ex)
             {
@@ -116,13 +243,22 @@ namespace KidTracking.API.Controllers
             }
         }
 
-        // ✅ Working Hours Management theo entity mới
+        // ✅ GET working hours slots của facility (Manager/Staff)
         [HttpGet("working-hours")]
+        [Authorize(Roles = "Manager,FacilityStaff,Doctor")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> GetWorkingHoursSlots([FromQuery] TimeOnly startTime, [FromQuery] TimeOnly endTime)
         {
             try
             {
                 var slots = await _scheduleSlotService.GetWorkingHoursSlotsAsync(startTime, endTime);
+                
+                // Filter theo facility của user
+                var facilityId = GetFacilityIdFromToken();
+                if (facilityId.HasValue)
+                {
+                    slots = slots.Where(s => s.FacilityId == facilityId.Value).ToList();
+                }
+                
                 return Ok(slots);
             }
             catch (Exception ex)
@@ -132,13 +268,21 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ DELETE working hours (Manager only)
         [HttpDelete("working-hours")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult> DeleteWorkingHours([FromQuery] TimeOnly startTime, [FromQuery] TimeOnly endTime)
         {
             try
             {
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
                 await _scheduleSlotService.DeleteWorkingHoursAsync(startTime, endTime);
-                return Ok();
+                return Ok(new { message = "Xóa working hours thành công" });
             }
             catch (Exception ex)
             {
@@ -147,7 +291,9 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ PUT cập nhật working hours (Manager only)
         [HttpPut("working-hours")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> UpdateWorkingHours(
             [FromQuery] TimeOnly oldStartTime, 
             [FromQuery] TimeOnly oldEndTime, 
@@ -155,8 +301,17 @@ namespace KidTracking.API.Controllers
         {
             try
             {
-                var slots = await _scheduleSlotService.UpdateWorkingHoursAsync(oldStartTime, oldEndTime, newConfig);
-                return Ok(slots);
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                var slots = await _scheduleSlotService.UpdateWorkingHoursAsync(oldStartTime, oldEndTime, newConfig, facilityId.Value);
+                return Ok(new {
+                    message = $"Cập nhật working hours thành công với {slots.Count} slots",
+                    data = slots
+                });
             }
             catch (Exception ex)
             {
@@ -165,13 +320,24 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ PATCH cập nhật trạng thái slot (Manager only, chỉ slots của facility mình)
         [HttpPatch("{id}/status")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult> UpdateSlotStatus(int id, [FromBody] UpdateStatusRequest request)
         {
             try
             {
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                // Kiểm tra slot có thuộc facility không
+                await _scheduleSlotService.GetSlotByIdWithFacilityCheckAsync(id, facilityId.Value);
+                
                 await _scheduleSlotService.UpdateSlotStatusAsync(id, request.Status);
-                return Ok();
+                return Ok(new { message = $"Cập nhật trạng thái slot thành {request.Status}" });
             }
             catch (ArgumentException ex)
             {
@@ -184,13 +350,31 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        // ✅ DELETE nhiều slots (Manager only, chỉ slots của facility mình)
         [HttpDelete("multiple")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult> DeleteMultipleSlots([FromBody] DeleteMultipleSlotsRequest request)
         {
             try
             {
+                var facilityId = GetFacilityIdFromToken();
+                if (!facilityId.HasValue)
+                {
+                    return BadRequest("Bạn chưa được gán vào facility nào");
+                }
+
+                // Kiểm tra tất cả slots có thuộc facility không
+                foreach (var slotId in request.SlotIds)
+                {
+                    await _scheduleSlotService.GetSlotByIdWithFacilityCheckAsync(slotId, facilityId.Value);
+                }
+                
                 await _scheduleSlotService.DeleteMultipleSlotsAsync(request.SlotIds);
-                return Ok();
+                return Ok(new { message = $"Xóa thành công {request.SlotIds.Count} slots" });
+            }
+            catch (ArgumentException ex)
+            {
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
@@ -200,8 +384,7 @@ namespace KidTracking.API.Controllers
         }
     }
 
-    // ❌ XÓA: CreateWorkingHoursRequest - không còn dùng vì đã gộp vào CreateScheduleSlotDTO
-
+    // ✅ Request DTOs
     public class UpdateStatusRequest
     {
         public string Status { get; set; }
