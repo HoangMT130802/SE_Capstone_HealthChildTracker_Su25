@@ -15,8 +15,10 @@ namespace Contracts.MapperProfiles
         {
             // ✅ Entity → DTO
             CreateMap<Vaccine, VaccineDTO>()
-                .ForMember(dest => dest.Diseases, opt => opt.MapFrom(src => 
-                    src.VaccineDiseases.Select(vd => vd.Disease).ToList()));
+                .ForMember(dest => dest.Diseases, opt => opt.MapFrom(src =>
+                    src.VaccineDiseases != null
+                    ? src.VaccineDiseases.Select(vd => vd.Disease).ToList()
+                    : null));
 
             // ✅ DTO → Entity
             CreateMap<VaccineDTO, Vaccine>()

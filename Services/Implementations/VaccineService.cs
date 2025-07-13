@@ -114,7 +114,7 @@ namespace Services.Implementations
             try
             {
                 var vaccineRepository = _unitOfWork.GetRepository<Vaccine>();
-                var vaccine = await vaccineRepository.GetAsync(v => v.VaccineId == vaccineId, includeProperties: "VaccineDiseases");
+                var vaccine = await vaccineRepository.GetAsync(v => v.VaccineId == vaccineId, includeProperties: "VaccineDiseases.Disease");
                 if (vaccine == null)
                 {
                     throw new KeyNotFoundException($"Vaccine with ID {vaccineId} not found");
@@ -134,7 +134,7 @@ namespace Services.Implementations
             try
             {
                 var vaccineRepository = _unitOfWork.GetRepository<Vaccine>();
-                var vaccines = await vaccineRepository.GetAllAsync(includeProperties: "VaccineDiseases");
+                var vaccines = await vaccineRepository.GetAllAsync(includeProperties: "VaccineDiseases.Disease");
                 return _mapper.Map<IEnumerable<VaccineDTO>>(vaccines);
             }
             catch (Exception ex)
