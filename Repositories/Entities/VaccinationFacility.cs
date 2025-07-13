@@ -37,5 +37,7 @@ public partial class VaccinationFacility
 
     public virtual ICollection<FacilityVaccine> FacilityVaccines { get; set; } = new List<FacilityVaccine>();
 
+    public virtual ICollection<ScheduleSlot> ScheduleSlots { get; set; } = new List<ScheduleSlot>();
+
     public virtual ICollection<VaccinePackage> VaccinePackages { get; set; } = new List<VaccinePackage>();
 }

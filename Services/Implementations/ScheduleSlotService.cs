@@ -25,7 +25,8 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slots = await repository.GetAllAsync("Facility");
+                var slotsResult = await repository.GetAllAsync(null, null, "Facility", null, null);
+                var slots = slotsResult.Data;
                 
                 var result = slots.OrderBy(s => s.SlotTime).ToList();
                 var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(result);
@@ -54,7 +55,8 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var allSlots = await repository.GetAllAsync("Facility");
+                var allSlotsResult = await repository.GetAllAsync(null, null, "Facility", null, null);
+                var allSlots = allSlotsResult.Data;
                 var slots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.SlotTime).ToList();
                 
                 var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(slots);
@@ -83,19 +85,20 @@ namespace Services.Implementations
             {
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
                 var slot = await repository.GetAsync(s => s.SlotId == slotId, includeProperties: "Facility");
-
+                
                 if (slot == null)
                 {
                     throw new ArgumentException($"Slot với ID {slotId} không tồn tại");
                 }
-
+                
                 var mappedSlot = _mapper.Map<ScheduleSlotDTO>(slot);
                 
                 // ✅ Tính BookedCount tự động
                 await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
                 
                 // Tính SlotNumber dựa trên vị trí trong danh sách
-                var allSlots = await repository.GetAllAsync("");
+                var allSlotsResult = await repository.GetAllAsync(null, null, "", null, null);
+                var allSlots = allSlotsResult.Data;
                 var orderedSlots = allSlots.OrderBy(s => s.SlotTime).ToList();
                 mappedSlot.SlotNumber = orderedSlots.FindIndex(s => s.SlotId == slotId) + 1;
                 
@@ -127,7 +130,8 @@ namespace Services.Implementations
                 await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
                 
                 // Tính SlotNumber dựa trên vị trí trong danh sách facility
-                var allSlots = await repository.GetAllAsync("");
+                var allSlotsResult = await repository.GetAllAsync(null, null, "", null, null);
+                var allSlots = allSlotsResult.Data;
                 var facilitySlots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.SlotTime).ToList();
                 mappedSlot.SlotNumber = facilitySlots.FindIndex(s => s.SlotId == slotId) + 1;
                 
@@ -144,8 +148,9 @@ namespace Services.Implementations
         private async Task CalculateBookedCountForSlots(List<ScheduleSlotDTO> slots)
         {
             var appointmentRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
-            var allAppointments = await appointmentRepo.GetAllAsync("");
-
+            var appointmentsResult = await appointmentRepo.GetAllAsync(null, null, "", null, null);
+            var allAppointments = appointmentsResult.Data;
+            
             foreach (var slot in slots)
             {
                 // Đếm số appointments cho slot này
@@ -188,7 +193,7 @@ namespace Services.Implementations
             slot.BookedCount = 0;
             // ✅ Set FacilityId từ JWT token
             slot.FacilityId = facilityId;
-            
+
             var repository = _unitOfWork.GetRepository<ScheduleSlot>();
             await repository.AddAsync(slot);
             await _unitOfWork.SaveChangesAsync();
@@ -199,7 +204,8 @@ namespace Services.Implementations
             await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
             
             // Tính SlotNumber sau khi tạo
-            var allSlots = await repository.GetAllAsync("");
+            var allSlotsResult = await repository.GetAllAsync(null, null, "", null, null);
+            var allSlots = allSlotsResult.Data;
             var facilitySlots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.SlotTime).ToList();
             mappedSlot.SlotNumber = facilitySlots.FindIndex(s => s.SlotId == slot.SlotId) + 1;
 
@@ -234,7 +240,7 @@ namespace Services.Implementations
                         continue;
                     }
                 }
-                
+
                 if (slotEndTime <= createDto.EndTime.Value)
                 {
                     var slot = new ScheduleSlot
@@ -259,7 +265,7 @@ namespace Services.Implementations
                     };
                     slots.Add(slot);
                 }
-                
+
                 currentTime = slotEndTime;
             }
 
@@ -281,7 +287,7 @@ namespace Services.Implementations
             {
                 mappedSlots[i].SlotNumber = i + 1;
             }
-            
+
             return mappedSlots;
         }
 
@@ -477,7 +483,8 @@ namespace Services.Implementations
                 _logger.LogInformation("Xóa nhiều slots: {SlotIds}", string.Join(", ", slotIds));
 
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var allSlots = await repository.GetAllAsync("");
+                var slotsResult = await repository.GetAllAsync(null, null, "", null, null);
+                var allSlots = slotsResult.Data;
                 var slotsToDelete = allSlots.Where(s => slotIds.Contains(s.SlotId)).ToList();
 
                 if (slotsToDelete.Any())

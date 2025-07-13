@@ -21,7 +21,7 @@ namespace Contracts.DTOs.FacilitySchedule
         public string Status { get; set; }
         public bool IsWorkingHours { get; set; }
         
-        // ✅ Thêm FacilityId để phân quyền theo facility
+        // ✅ Facility Information
         public int FacilityId { get; set; }
         public string? FacilityName { get; set; } // Optional: hiển thị tên facility
         
