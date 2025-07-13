@@ -419,10 +419,28 @@ namespace Services.Implementations
                 }
 
                 await ValidateManagerAccess(accountId, vaccinePackage.FacilityId);
+                var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
+                var packageVaccines = await packageVaccineRepository.GetAllAsync(
+                    filter: pv => pv.PackageId == packageId,
+                    pageIndex: null, 
+                    pageSize: null,   
+                    include: ""       
+                );
+                foreach (var packageVaccine in packageVaccines.Data)
+                {
+                    packageVaccineRepository.Delete(packageVaccine);
+                }
+                await _unitOfWork.SaveChangesAsync(); 
 
+                // Xóa VaccinePackage
                 packageRepository.Delete(vaccinePackage);
                 await _unitOfWork.SaveChangesAsync();
                 return true;
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+            {
+                _logger.LogError(ex, $"Database error deleting vaccine package with ID {packageId}: Foreign key constraint violation or related data exists");
+                throw new InvalidOperationException("Không thể xóa gói vaccine vì có dữ liệu liên quan chưa được xóa.", ex);
             }
             catch (Exception ex)
             {
