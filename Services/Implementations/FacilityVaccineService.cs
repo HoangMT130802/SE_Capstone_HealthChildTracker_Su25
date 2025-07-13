@@ -104,7 +104,7 @@ namespace Services.Implementations
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
                 var facilityVaccine = await facilityVaccineRepository.GetAsync(
                     fv => fv.FacilityVaccineId == facilityVaccineId,
-                    includeProperties: "Vaccine" 
+                    includeProperties: "Vaccine,Vaccine.VaccineDiseases,Disease"
                 );
                 if (facilityVaccine == null)
                 {
@@ -120,21 +120,21 @@ namespace Services.Implementations
         }
 
         public async Task<QueryResultModel<IEnumerable<FacilityVaccineDTO>>> GetAllFacilityVaccinesAsync(
-    Expression<Func<FacilityVaccine, bool>>? filter = null,
-    Func<IQueryable<FacilityVaccine>, IOrderedQueryable<FacilityVaccine>>? orderBy = null,
-    string include = "Vaccine", 
-    int? pageIndex = null,
-    int? pageSize = null)
+            Expression<Func<FacilityVaccine, bool>>? filter = null,
+            Func<IQueryable<FacilityVaccine>, IOrderedQueryable<FacilityVaccine>>? orderBy = null,
+            string include = "Vaccine",
+            int? pageIndex = null,
+            int? pageSize = null)
         {
             try
             {
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
-                string includeProperties = string.IsNullOrEmpty(include) ? "Vaccine" : $"{include},Vaccine".Trim(',');
+                string includeProperties = string.IsNullOrEmpty(include) ? "Vaccine.VaccineDiseases.Disease" : $"{include},Vaccine.VaccineDiseases.Disease".Trim(',');
 
                 var result = await facilityVaccineRepository.GetAllAsync(
                     filter: filter,
                     orderBy: orderBy,
-                    include: includeProperties, 
+                    include: includeProperties,
                     pageIndex: pageIndex,
                     pageSize: pageSize);
 

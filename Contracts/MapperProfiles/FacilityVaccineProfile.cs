@@ -21,7 +21,6 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Facility, opt => opt.Ignore())
                 .ForMember(dest => dest.Vaccine, opt => opt.Ignore());
 
-            // Ánh xạ từ UpdateFacilityVaccineDTO sang FacilityVaccine
             CreateMap<UpdateFacilityVaccineDTO, FacilityVaccine>()
                 .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
@@ -29,12 +28,11 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Facility, opt => opt.Ignore())
                 .ForMember(dest => dest.Vaccine, opt => opt.Ignore());
 
-            // Ánh xạ từ FacilityVaccine sang FacilityVaccineDTO
             CreateMap<FacilityVaccine, FacilityVaccineDTO>()
                 .ForMember(dest => dest.Vaccine, opt => opt.MapFrom(src => src.Vaccine));
 
-            // Ánh xạ từ Vaccine sang VaccineDTO
-            CreateMap<Vaccine, VaccineDTO>();
+            CreateMap<Vaccine, VaccineDTO>()
+                .ForMember(dest => dest.Diseases, opt => opt.MapFrom(src => src.VaccineDiseases.Select(vd => vd.Disease).ToList()));
         }
-}
+    }
 }
