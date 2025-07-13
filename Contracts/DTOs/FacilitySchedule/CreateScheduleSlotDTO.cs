@@ -30,6 +30,5 @@ namespace Contracts.DTOs.FacilitySchedule
 
         // ✅ FacilityId sẽ được lấy từ JWT token trong Controller
         // Không cần validation vì được set automatic
-        public int? FacilityId { get; set; }
     }
 } 
