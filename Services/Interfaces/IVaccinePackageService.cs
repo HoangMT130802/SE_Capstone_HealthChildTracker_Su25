@@ -26,5 +26,6 @@ namespace Services.Interfaces
         Task<PackageVaccineDTO> UpdateVaccineInPackageAsync(int packageId, int facilityVaccineId, UpdatePackageVaccineDTO packageVaccineDto, int accountId);
         Task<bool> DeleteVaccinePackageAsync(int packageId, int accountId);
         Task<bool> DeleteVaccineFromPackageAsync(int packageId, int facilityVaccineId, int accountId);
+        Task<VaccinePackageDTO> UpdateVaccinePackageWithNewVaccineAsync(int packageId, AddPackageVaccineDTO packageVaccineDto, int accountId);
     }
 }

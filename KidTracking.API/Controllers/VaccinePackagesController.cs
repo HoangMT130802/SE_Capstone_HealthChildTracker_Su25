@@ -360,5 +360,33 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
+        [HttpPut("{packageId}/vaccines/add")]
+        public async Task<IActionResult> UpdateVaccinePackageWithNewVaccine(int packageId, [FromBody] AddPackageVaccineDTO packageVaccineDto)
+        {
+            try
+            {
+                if (!await IsManager())
+                {
+                    return StatusCode(403, new { message = "Chỉ Manager mới có quyền thực hiện hành động này" });
+                }
+
+                var accountId = GetAccountId();
+                var vaccinePackage = await _vaccinePackageService.UpdateVaccinePackageWithNewVaccineAsync(packageId, packageVaccineDto, accountId);
+                return Ok(vaccinePackage);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating vaccine package with new vaccine for PackageId {packageId} and FacilityVaccineId {packageVaccineDto.FacilityVaccineId}");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
     }
 }

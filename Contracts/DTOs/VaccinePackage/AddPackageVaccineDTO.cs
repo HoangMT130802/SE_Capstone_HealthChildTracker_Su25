@@ -7,8 +7,11 @@ using System.Threading.Tasks;
 
 namespace Contracts.DTOs.VaccinePackage
 {
-    public class UpdatePackageVaccineDTO
+    public class AddPackageVaccineDTO
     {
+        [Required(ErrorMessage = "Facility Vaccine ID is required")]
+        public int FacilityVaccineId { get; set; }
+
         [Required(ErrorMessage = "Quantity is required")]
         [Range(1, int.MaxValue, ErrorMessage = "Quantity must be greater than 0")]
         public int Quantity { get; set; }
