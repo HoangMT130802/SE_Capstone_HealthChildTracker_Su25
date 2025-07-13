@@ -29,9 +29,15 @@ public partial class ScheduleSlot
 
     public bool IsWorkingHours { get; set; }
 
+    // ✅ Thêm FacilityId để phân quyền theo facility
+    public int FacilityId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 
     public virtual ICollection<AppointmentSchedule> AppointmentSchedules { get; set; } = new List<AppointmentSchedule>();
+    
+    // ✅ Navigation property
+    public virtual VaccinationFacility Facility { get; set; }
 }

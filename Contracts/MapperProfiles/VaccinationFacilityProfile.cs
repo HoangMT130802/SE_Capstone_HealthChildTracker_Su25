@@ -29,7 +29,7 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Phone, opt => opt.MapFrom(src => src.Phone))
                 .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => 1)) // Active by default
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
                 .ForMember(dest => dest.FacilityId, opt => opt.Ignore())

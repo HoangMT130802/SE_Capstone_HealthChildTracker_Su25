@@ -24,6 +24,12 @@ namespace KidTracking.API
             {
                 options.ModelValidatorProviders.Clear();
             })
+            .AddJsonOptions(options =>
+            {
+                // ✅ Thêm TimeOnly converter để xử lý JSON serialization
+                options.JsonSerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
+                options.JsonSerializerOptions.Converters.Add(new TimeOnlyNullableJsonConverter());
+            })
             .ConfigureApiBehaviorOptions(options =>
             {
                 options.InvalidModelStateResponseFactory = context =>
@@ -185,6 +191,11 @@ namespace KidTracking.API
             builder.Services.AddScoped<IVaccinePackageService,VaccinePackageService>();
             builder.Services.AddScoped<IFacilityVaccineService, FacilityVaccineService>();
             builder.Services.AddScoped<IOrderService, OrderService>();
+            // ✅ Thêm Schedule Slot và Appointment Schedule Services
+            builder.Services.AddScoped<IScheduleSlotService, ScheduleSlotService>();
+            builder.Services.AddScoped<IAppointmentScheduleService, AppointmentScheduleService>();
+            builder.Services.AddScoped<IAppointmentBookingService, AppointmentBookingService>();
+            
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);
 

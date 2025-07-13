@@ -66,7 +66,7 @@ namespace Services.Implementations
             {
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var facilityStaff = await facilityStaffRepository.GetAsync(
-                    fs => fs.AccountId == accountId && fs.Status,
+                    fs => fs.AccountId == accountId && fs.Status && fs.FacilityId > 0,
                     "Facility"
                 );
 
@@ -87,10 +87,10 @@ namespace Services.Implementations
         {
             try
             {
-                // Kiểm tra manager đã có facility chưa
+                // Kiểm tra manager đã có facility hoạt động chưa
                 if (await CheckManagerHasFacilityAsync(managerAccountId))
                 {
-                    throw new InvalidOperationException("Manager này đã có cơ sở tiêm chủng. Mỗi manager chỉ được tạo 1 cơ sở.");
+                    throw new InvalidOperationException("Manager này đã có cơ sở tiêm chủng hoạt động. Mỗi manager chỉ được tạo 1 cơ sở.");
                 }
 
                 // Kiểm tra account có tồn tại và có role Manager không
@@ -114,22 +114,41 @@ namespace Services.Implementations
                 await facilityRepository.AddAsync(facility);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Tạo FacilityStaff record để liên kết manager với facility
+                // Tạo FacilityStaff record cho Manager
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                var facilityStaff = new FacilityStaff
-                {
-                    AccountId = managerAccountId,
-                    FacilityId = facility.FacilityId,
-                    FullName = account.AccountName,
-                    Email = account.Email,
-                    Position = "Manager",
-                    Description = "Quản lý cơ sở",
-                    Status = true,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
+                
+                // Kiểm tra xem Manager đã có FacilityStaff record chưa
+                var existingManagerStaff = await facilityStaffRepository.GetAsync(
+                    fs => fs.AccountId == managerAccountId && fs.Position == "Manager"
+                );
 
-                await facilityStaffRepository.AddAsync(facilityStaff);
+                if (existingManagerStaff != null)
+                {
+                    // Update FacilityId cho Manager đã tồn tại
+                    existingManagerStaff.FacilityId = facility.FacilityId;
+                    existingManagerStaff.Status = true;
+                    existingManagerStaff.UpdatedAt = DateTime.UtcNow;
+                    facilityStaffRepository.Update(existingManagerStaff);
+                }
+                else
+                {
+                    // Tạo FacilityStaff record mới cho Manager
+                    var facilityStaff = new FacilityStaff
+                    {
+                        AccountId = managerAccountId,
+                        FacilityId = facility.FacilityId,
+                        FullName = account.AccountName,
+                        Email = account.Email,
+                        Position = "Manager",
+                        Description = "Quản lý cơ sở",
+                        Status = true,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await facilityStaffRepository.AddAsync(facilityStaff);
+                }
+                
                 await _unitOfWork.SaveChangesAsync();
 
                 return _mapper.Map<VaccinationFacilityDTO>(facility);
@@ -155,7 +174,7 @@ namespace Services.Implementations
                 // Kiểm tra manager có quyền chỉnh sửa facility này không
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var facilityStaff = await facilityStaffRepository.GetAsync(
-                    fs => fs.AccountId == managerAccountId && fs.FacilityId == updateDto.FacilityId && fs.Status
+                    fs => fs.AccountId == managerAccountId && fs.FacilityId == updateDto.FacilityId && fs.Status && fs.FacilityId > 0
                 );
 
                 if (facilityStaff == null)
@@ -203,7 +222,7 @@ namespace Services.Implementations
                 // Kiểm tra manager có quyền xóa facility này không
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var facilityStaff = await facilityStaffRepository.GetAsync(
-                    fs => fs.AccountId == managerAccountId && fs.FacilityId == facilityId && fs.Status
+                    fs => fs.AccountId == managerAccountId && fs.FacilityId == facilityId && fs.Status && fs.FacilityId > 0
                 );
 
                 if (facilityStaff == null)
@@ -216,8 +235,9 @@ namespace Services.Implementations
                 facility.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 facilityRepository.Update(facility);
 
-                // Cũng cập nhật status của facility staff
-                facilityStaff.Status = false;
+                // Reset FacilityId của Manager về 0 để có thể tạo facility mới
+                facilityStaff.FacilityId = 0; // Manager có thể tạo facility mới
+                facilityStaff.Status = false; // Tạm thời vô hiệu hóa đến khi tạo facility mới
                 facilityStaff.UpdatedAt = DateTime.UtcNow;
                 var facilityStaffRepo = _unitOfWork.GetRepository<FacilityStaff>();
                 facilityStaffRepo.Update(facilityStaff);
@@ -237,7 +257,7 @@ namespace Services.Implementations
             {
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 return await facilityStaffRepository.AnyAsync(
-                    fs => fs.AccountId == managerAccountId && fs.Status
+                    fs => fs.AccountId == managerAccountId && fs.Position == "Manager" && fs.Status && fs.FacilityId > 0
                 );
             }
             catch (Exception ex)

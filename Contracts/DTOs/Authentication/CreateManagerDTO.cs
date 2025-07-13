@@ -23,9 +23,6 @@ namespace Contracts.DTOs.Authentication
         [Phone(ErrorMessage = "Số điện thoại không hợp lệ")]
         public string Phone { get; set; }
 
-        [Required(ErrorMessage = "ID cơ sở y tế không được để trống")]
-        public int FacilityId { get; set; }
-
         public string Description { get; set; }
     }
 } 
