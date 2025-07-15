@@ -9,9 +9,6 @@ namespace Contracts.DTOs.Survey
 {
     public class AppointmentSurveyDto
     {
-        [Required(ErrorMessage = "Appointment ID is required")]
-        public int AppointmentId { get; set; }
-
         [Required(ErrorMessage = "Question ID is required")]
         public int QuestionId { get; set; }
 

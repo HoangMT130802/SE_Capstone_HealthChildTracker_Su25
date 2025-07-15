@@ -138,7 +138,7 @@ public class SurveyService : ISurveyService
             foreach (var answerDto in answers)
             {
                 var appointmentSurvey = _mapper.Map<AppointmentSurvey>(answerDto);
-                appointmentSurvey.AppointmentId = appointmentId; 
+                appointmentSurvey.AppointmentId = appointmentId;
                 appointmentSurvey.CreatedAt = currentTime;
                 appointmentSurvey.UpdatedAt = currentTime;
                 await appointmentSurveyRepository.AddAsync(appointmentSurvey);
