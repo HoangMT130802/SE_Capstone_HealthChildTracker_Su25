@@ -13,7 +13,6 @@
     <Folder Include="DTOs\Appointment\" />
     <Folder Include="DTOs\FacilitySchedule\" />
     <Folder Include="DTOs\Blog\" />
-    <Folder Include="DTOs\Survey\" />
     <Folder Include="DTOs\Transaction\" />
   </ItemGroup>
 
