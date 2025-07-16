@@ -2,6 +2,8 @@ using Contracts.DTOs.Appointment;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
+using Repositories.Entities;
+using Repositories.Interfaces;
 
 namespace KidTracking.API.Controllers
 {
@@ -11,13 +13,16 @@ namespace KidTracking.API.Controllers
     public class AppointmentBookingController : ControllerBase
     {
         private readonly IAppointmentBookingService _appointmentBookingService;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<AppointmentBookingController> _logger;
 
         public AppointmentBookingController(
             IAppointmentBookingService appointmentBookingService,
+            IUnitOfWork unitOfWork,
             ILogger<AppointmentBookingController> logger)
         {
             _appointmentBookingService = appointmentBookingService;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -232,6 +237,46 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError(ex, "Lỗi khi hủy lịch hẹn {AppointmentId}", appointmentId);
                 return StatusCode(500, "Có lỗi xảy ra khi hủy lịch hẹn");
+            }
+        }
+
+        #endregion
+
+        #region History APIs
+
+        /// <summary>
+        /// Lấy lịch sử đặt lịch của user hiện tại
+        /// </summary>
+        /// <param name="childId">ID trẻ (tùy chọn - nếu không có sẽ lấy tất cả trẻ)</param>
+        /// <returns>Lịch sử đặt lịch</returns>
+        [HttpGet("my-history")]
+        public async Task<ActionResult<AppointmentHistoryResponseDTO>> GetMyAppointmentHistory(
+            [FromQuery] int? childId = null)
+        {
+            try
+            {
+                // Lấy AccountId từ JWT claims của user hiện tại
+                var accountIdClaim = User.FindFirst("AccountId")?.Value;
+                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+                {
+                    return Unauthorized("Không tìm thấy thông tin người dùng");
+                }
+
+                // Tìm Member tương ứng với AccountId
+                var memberRepo = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
+                if (member == null)
+                {
+                    return NotFound("Không tìm thấy thông tin member");
+                }
+
+                var result = await _appointmentBookingService.GetAppointmentHistoryAsync(member.MemberId, childId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch sử đặt lịch cho user hiện tại");
+                return StatusCode(500, "Có lỗi xảy ra khi lấy lịch sử đặt lịch");
             }
         }
 

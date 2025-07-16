@@ -1,0 +1,296 @@
+using Contracts.DTOs.Appointment;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Services.Interfaces;
+using System.Security.Claims;
+using Repositories.Interfaces;
+using Repositories.Entities;
+
+namespace KidTracking.API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize] // Bỏ role requirement, chỉ cần login
+    public class FacilityAppointmentController : ControllerBase
+    {
+        private readonly IAppointmentBookingService _appointmentBookingService;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<FacilityAppointmentController> _logger;
+
+        public FacilityAppointmentController(
+            IAppointmentBookingService appointmentBookingService,
+            IUnitOfWork unitOfWork,
+            ILogger<FacilityAppointmentController> logger)
+        {
+            _appointmentBookingService = appointmentBookingService;
+            _unitOfWork = unitOfWork;
+            _logger = logger;
+        }
+
+        #region Helper Methods
+        private async Task<int> GetFacilityIdAsync()
+        {
+            // Thử lấy FacilityId từ token trước
+            var facilityIdClaim = User.FindFirst("FacilityId")?.Value;
+            if (!string.IsNullOrEmpty(facilityIdClaim) && int.TryParse(facilityIdClaim, out int facilityId))
+            {
+                return facilityId;
+            }
+
+            // Nếu không có trong token, lấy từ database dựa trên AccountId
+            var accountIdClaim = User.FindFirst("AccountId")?.Value;
+            if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+            {
+                throw new UnauthorizedAccessException("Không tìm thấy AccountId trong token");
+            }
+
+            // Kiểm tra xem user có phải là FacilityStaff không
+            var facilityStaffRepo = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await facilityStaffRepo.GetAsync(s => s.AccountId == accountId);
+            
+            if (staff != null)
+            {
+                return staff.FacilityId;
+            }
+
+            // Nếu không phải FacilityStaff, có thể là Admin - cho phép truy cập tất cả facility
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (userRole == "Admin")
+            {
+                // Admin có thể truy cập facility nào đó, cần parameter facilityId
+                throw new ArgumentException("Admin cần cung cấp FacilityId trong query parameter");
+            }
+
+            throw new UnauthorizedAccessException("User không thuộc về facility nào");
+        }
+
+        private string GetUserRole()
+        {
+            return User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        }
+        #endregion
+
+        /// <summary>
+        /// Lấy tất cả lịch đặt của facility
+        /// </summary>
+        /// <returns>Tất cả lịch đặt</returns>
+        [HttpGet]
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointments()
+        {
+            try
+            {
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to facility appointments");
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Facility not found for user");
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy tất cả lịch đặt cho facility");
+                return StatusCode(500, "Có lỗi xảy ra khi lấy danh sách lịch đặt");
+            }
+        }
+
+        /// <summary>
+        /// Lấy tất cả lịch đặt của facility cụ thể (dành cho Admin)
+        /// </summary>
+        /// <param name="facilityId">ID cơ sở</param>
+        /// <returns>Tất cả lịch đặt của facility</returns>
+        [HttpGet("admin/{facilityId}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointmentsByAdmin(int facilityId)
+        {
+            try
+            {
+                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy tất cả lịch đặt cho facility {FacilityId}", facilityId);
+                return StatusCode(500, "Có lỗi xảy ra khi lấy danh sách lịch đặt");
+            }
+        }
+
+        /// <summary>
+        /// Lấy lịch đặt theo ngày
+        /// </summary>
+        /// <param name="date">Ngày (yyyy-MM-dd)</param>
+        /// <returns>Lịch đặt trong ngày</returns>
+        [HttpGet("date")]
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByDate([FromQuery] DateTime date)
+        {
+            try
+            {
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.GetFacilityAppointmentsByDateAsync(facilityId, date);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to facility appointments");
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Facility not found for user");
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch đặt theo ngày cho facility");
+                return StatusCode(500, "Có lỗi xảy ra khi lấy lịch đặt theo ngày");
+            }
+        }
+
+        /// <summary>
+        /// Lấy lịch đặt theo tuần
+        /// </summary>
+        /// <param name="startOfWeek">Ngày đầu tuần (yyyy-MM-dd)</param>
+        /// <returns>Lịch đặt trong tuần</returns>
+        [HttpGet("week")]
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByWeek([FromQuery] DateTime startOfWeek)
+        {
+            try
+            {
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.GetFacilityAppointmentsByWeekAsync(facilityId, startOfWeek);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to facility appointments");
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Facility not found for user");
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch đặt theo tuần cho facility");
+                return StatusCode(500, "Có lỗi xảy ra khi lấy lịch đặt theo tuần");
+            }
+        }
+
+        /// <summary>
+        /// Lấy lịch đặt theo tháng
+        /// </summary>
+        /// <param name="month">Tháng (yyyy-MM-dd)</param>
+        /// <returns>Lịch đặt trong tháng</returns>
+        [HttpGet("month")]
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByMonth([FromQuery] DateTime month)
+        {
+            try
+            {
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.GetFacilityAppointmentsByMonthAsync(facilityId, month);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to facility appointments");
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Facility not found for user");
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy lịch đặt theo tháng cho facility");
+                return StatusCode(500, "Có lỗi xảy ra khi lấy lịch đặt theo tháng");
+            }
+        }
+
+        /// <summary>
+        /// Lấy chi tiết lịch đặt theo ID
+        /// </summary>
+        /// <param name="appointmentId">ID lịch đặt</param>
+        /// <returns>Chi tiết lịch đặt</returns>
+        [HttpGet("{appointmentId}")]
+        public async Task<ActionResult<FacilityAppointmentDTO>> GetFacilityAppointmentById(int appointmentId)
+        {
+            try
+            {
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.GetFacilityAppointmentByIdAsync(appointmentId, facilityId);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to facility appointment {AppointmentId}", appointmentId);
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Appointment not found: {AppointmentId}", appointmentId);
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy chi tiết lịch đặt {AppointmentId}", appointmentId);
+                return StatusCode(500, "Có lỗi xảy ra khi lấy chi tiết lịch đặt");
+            }
+        }
+
+        /// <summary>
+        /// Cập nhật trạng thái lịch đặt (Duyệt/Từ chối/Hoàn thành)
+        /// </summary>
+        /// <param name="appointmentId">ID lịch đặt</param>
+        /// <param name="updateDto">Thông tin cập nhật</param>
+        /// <returns>Kết quả cập nhật</returns>
+        [HttpPut("{appointmentId}/status")]
+        public async Task<ActionResult<bool>> UpdateAppointmentStatus(
+            int appointmentId,
+            [FromBody] UpdateAppointmentStatusDTO updateDto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.UpdateAppointmentStatusAsync(appointmentId, facilityId, updateDto);
+                
+                _logger.LogInformation("Cập nhật trạng thái lịch đặt {AppointmentId} thành {Status} thành công", 
+                    appointmentId, updateDto.Status);
+                
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to update appointment {AppointmentId}", appointmentId);
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Appointment not found: {AppointmentId}", appointmentId);
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid status transition for appointment {AppointmentId}", appointmentId);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái lịch đặt {AppointmentId}", appointmentId);
+                return StatusCode(500, "Có lỗi xảy ra khi cập nhật trạng thái lịch đặt");
+            }
+        }
+    }
+} 

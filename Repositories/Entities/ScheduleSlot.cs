@@ -11,6 +11,8 @@ public partial class ScheduleSlot
 
     public int FacilityId { get; set; }
 
+    public string WorkingHoursGroupId { get; set; }
+
     public string SlotTime { get; set; }
 
     public TimeOnly? StartTime { get; set; }

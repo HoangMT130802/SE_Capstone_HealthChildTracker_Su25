@@ -10,8 +10,8 @@ namespace Services.Interfaces
         Task<List<AppointmentScheduleDTO>> GetSchedulesByMonthAsync(DateTime month);
         Task<List<AppointmentScheduleDTO>> GetSchedulesByDateAsync(DateTime date);
         
-        // Manager tạo/sửa/xóa lịch
-        Task<AppointmentScheduleDTO> CreateScheduleAsync(CreateAppointmentScheduleDTO createDto);
+        // Manager tạo/sửa/xóa lịch - support cả single và bulk creation
+        Task<List<AppointmentScheduleDTO>> CreateScheduleAsync(CreateAppointmentScheduleDTO createDto);
         Task<AppointmentScheduleDTO> UpdateScheduleAsync(int scheduleId, UpdateAppointmentScheduleDTO updateDto);
         Task<bool> DeleteScheduleAsync(int scheduleId);
         Task<bool> DeleteSchedulesByDateAsync(DateTime date);
@@ -21,6 +21,9 @@ namespace Services.Interfaces
         
         // Manager thêm slots vào lịch
         Task<List<AppointmentScheduleDTO>> AddSlotsToScheduleAsync(DateTime date, List<int> slotIds);
+        
+        // Manager bulk assign working hours group vào ngày
+        Task<BulkAssignWorkingHoursResponseDTO> BulkAssignWorkingHoursAsync(BulkAssignWorkingHoursDTO bulkAssignDto);
         
         // Manager xem slots trong ngày
         Task<List<AppointmentScheduleDTO>> GetDayScheduleWithSlotsAsync(DateTime date);

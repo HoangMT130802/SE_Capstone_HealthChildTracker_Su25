@@ -1,5 +1,6 @@
 using AutoMapper;
 using Contracts.DTOs.Appointment;
+using Contracts.DTOs.FacilitySchedule;
 using Microsoft.Extensions.Logging;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -12,12 +13,14 @@ namespace Services.Implementations
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ILogger<AppointmentScheduleService> _logger;
+        private readonly IScheduleSlotService _scheduleSlotService;
 
-        public AppointmentScheduleService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<AppointmentScheduleService> logger)
+        public AppointmentScheduleService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<AppointmentScheduleService> logger, IScheduleSlotService scheduleSlotService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _logger = logger;
+            _scheduleSlotService = scheduleSlotService;
         }
 
         public async Task<List<AppointmentScheduleDTO>> GetAllSchedulesAsync()
@@ -112,19 +115,100 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<AppointmentScheduleDTO> CreateScheduleAsync(CreateAppointmentScheduleDTO createDto)
+        public async Task<List<AppointmentScheduleDTO>> CreateScheduleAsync(CreateAppointmentScheduleDTO createDto)
         {
             try
             {
-                _logger.LogInformation("Tạo lịch hẹn mới");
+                // Validate input
+                if (!createDto.IsValid())
+                {
+                    throw new ArgumentException("Phải có SlotId hoặc WorkingHoursGroupId");
+                }
 
-                var schedule = _mapper.Map<AppointmentSchedule>(createDto);
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                await repository.AddAsync(schedule);
-                await _unitOfWork.SaveChangesAsync();
+                var createdSchedules = new List<AppointmentSchedule>();
 
-                _logger.LogInformation("Tạo lịch hẹn thành công");
-                return _mapper.Map<AppointmentScheduleDTO>(schedule);
+                // Case 1: Single slot assignment
+                if (createDto.SlotId.HasValue)
+                {
+                    _logger.LogInformation("Tạo lịch hẹn cho slot {SlotId}", createDto.SlotId.Value);
+
+                    // Kiểm tra xem schedule đã tồn tại chưa
+                    var existingSchedules = await repository.GetAllAsync("");
+                    var exists = existingSchedules.Any(s => s.Date == createDto.Date && s.SlotId == createDto.SlotId.Value);
+
+                    if (exists)
+                    {
+                        throw new InvalidOperationException($"Lịch hẹn cho slot {createDto.SlotId.Value} vào ngày {createDto.Date:yyyy-MM-dd} đã tồn tại");
+                    }
+
+                    var schedule = new AppointmentSchedule
+                    {
+                        FacilityId = createDto.FacilityId,
+                        SlotId = createDto.SlotId.Value,
+                        Date = createDto.Date,
+                        BookedCount = createDto.BookedCount ?? 0,
+                        Status = createDto.Status,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    createdSchedules.Add(schedule);
+                }
+                // Case 2: Working hours group assignment
+                else if (!string.IsNullOrEmpty(createDto.WorkingHoursGroupId))
+                {
+                    _logger.LogInformation("Tạo lịch hẹn cho working hours group {GroupId}", createDto.WorkingHoursGroupId);
+
+                    // Lấy tất cả slots trong working hours group
+                    var groupSlots = await _scheduleSlotService.GetSlotsByWorkingHoursGroupIdAsync(createDto.WorkingHoursGroupId);
+                    
+                    if (!groupSlots.Any())
+                    {
+                        throw new ArgumentException($"Không tìm thấy slots trong working hours group {createDto.WorkingHoursGroupId}");
+                    }
+
+                    // Kiểm tra facility có đúng không
+                    var firstSlot = groupSlots.First();
+                    if (firstSlot.FacilityId != createDto.FacilityId)
+                    {
+                        throw new ArgumentException("Working hours group không thuộc về facility được chỉ định");
+                    }
+
+                    var existingSchedules = await repository.GetAllAsync("");
+                    
+                    foreach (var slot in groupSlots)
+                    {
+                        // Kiểm tra xem schedule đã tồn tại chưa
+                        var exists = existingSchedules.Any(s => s.Date == createDto.Date && s.SlotId == slot.SlotId);
+                        
+                        if (!exists)
+                        {
+                            var schedule = new AppointmentSchedule
+                            {
+                                FacilityId = createDto.FacilityId,
+                                SlotId = slot.SlotId,
+                                Date = createDto.Date,
+                                BookedCount = createDto.BookedCount ?? 0,
+                                Status = createDto.Status,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+
+                            createdSchedules.Add(schedule);
+                        }
+                    }
+                }
+
+                // Lưu tất cả schedules
+                if (createdSchedules.Any())
+                {
+                    await repository.AddRangeAsync(createdSchedules);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+
+                _logger.LogInformation("Tạo {Count} lịch hẹn thành công", createdSchedules.Count);
+                return _mapper.Map<List<AppointmentScheduleDTO>>(createdSchedules);
             }
             catch (Exception ex)
             {
@@ -321,6 +405,120 @@ namespace Services.Implementations
             {
                 _logger.LogError(ex, "Lỗi khi lấy lịch hẹn với slots trong ngày: {Date}", date.ToString("yyyy-MM-dd"));
                 throw;
+            }
+        }
+
+        public async Task<BulkAssignWorkingHoursResponseDTO> BulkAssignWorkingHoursAsync(BulkAssignWorkingHoursDTO bulkAssignDto)
+        {
+            try
+            {
+                _logger.LogInformation("Bắt đầu bulk assign working hours group {GroupId} cho ngày {Date}", 
+                    bulkAssignDto.WorkingHoursGroupId, bulkAssignDto.Date.ToString("yyyy-MM-dd"));
+
+                // Lấy tất cả slots trong working hours group
+                var groupSlots = await _scheduleSlotService.GetSlotsByWorkingHoursGroupIdAsync(bulkAssignDto.WorkingHoursGroupId);
+                
+                if (!groupSlots.Any())
+                {
+                    return new BulkAssignWorkingHoursResponseDTO
+                    {
+                        IsSuccess = false,
+                        Message = $"Không tìm thấy slots trong working hours group {bulkAssignDto.WorkingHoursGroupId}",
+                        TotalSlotsAssigned = 0,
+                        ExistingSlotsSkipped = 0
+                    };
+                }
+
+                // Kiểm tra facility có đúng không
+                var firstSlot = groupSlots.First();
+                if (firstSlot.FacilityId != bulkAssignDto.FacilityId)
+                {
+                    return new BulkAssignWorkingHoursResponseDTO
+                    {
+                        IsSuccess = false,
+                        Message = "Working hours group không thuộc về facility được chỉ định",
+                        TotalSlotsAssigned = 0,
+                        ExistingSlotsSkipped = 0
+                    };
+                }
+
+                var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var existingSchedules = await repository.GetAllAsync("");
+                
+                var createdSchedules = new List<AppointmentSchedule>();
+                int existingCount = 0;
+
+                foreach (var slot in groupSlots)
+                {
+                    // Kiểm tra xem schedule đã tồn tại chưa
+                    var exists = existingSchedules.Any(s => s.Date == bulkAssignDto.Date && s.SlotId == slot.SlotId);
+                    
+                    if (!exists)
+                    {
+                        var schedule = new AppointmentSchedule
+                        {
+                            FacilityId = bulkAssignDto.FacilityId,
+                            SlotId = slot.SlotId,
+                            Date = bulkAssignDto.Date,
+                            BookedCount = 0,
+                            Status = bulkAssignDto.Status,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        createdSchedules.Add(schedule);
+                    }
+                    else
+                    {
+                        existingCount++;
+                    }
+                }
+
+                // Lưu các schedule mới
+                if (createdSchedules.Any())
+                {
+                    await repository.AddRangeAsync(createdSchedules);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+
+                // Lấy working hours group info
+                var workingHoursGroups = await _scheduleSlotService.GetWorkingHoursGroupsByFacilityAsync(bulkAssignDto.FacilityId);
+                var groupInfo = workingHoursGroups.FirstOrDefault(g => g.GroupId == bulkAssignDto.WorkingHoursGroupId);
+
+                var response = new BulkAssignWorkingHoursResponseDTO
+                {
+                    IsSuccess = true,
+                    Message = $"Đã assign {createdSchedules.Count} slots thành công cho ngày {bulkAssignDto.Date:yyyy-MM-dd}",
+                    TotalSlotsAssigned = createdSchedules.Count,
+                    ExistingSlotsSkipped = existingCount,
+                    CreatedSchedules = _mapper.Map<List<AppointmentScheduleDTO>>(createdSchedules),
+                    WorkingHoursGroup = new WorkingHoursGroupInfoDTO
+                    {
+                        WorkingHoursGroupId = bulkAssignDto.WorkingHoursGroupId,
+                        Description = groupInfo?.Description ?? "Working Hours Group",
+                        TotalSlots = groupSlots.Count,
+                        TimeRange = groupInfo != null ? $"{groupInfo.StartTime:HH:mm} - {groupInfo.EndTime:HH:mm}" : "N/A",
+                        AssignedDate = bulkAssignDto.Date
+                    }
+                };
+
+                _logger.LogInformation("Bulk assign thành công: {Assigned} slots mới, {Skipped} slots đã tồn tại", 
+                    createdSchedules.Count, existingCount);
+
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi bulk assign working hours group {GroupId} cho ngày {Date}", 
+                    bulkAssignDto.WorkingHoursGroupId, bulkAssignDto.Date.ToString("yyyy-MM-dd"));
+                
+                return new BulkAssignWorkingHoursResponseDTO
+                {
+                    IsSuccess = false,
+                    Message = "Có lỗi xảy ra khi assign working hours group",
+                    TotalSlotsAssigned = 0,
+                    ExistingSlotsSkipped = 0
+                };
             }
         }
     }

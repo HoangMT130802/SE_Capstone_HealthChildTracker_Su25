@@ -1,6 +1,7 @@
 using AutoMapper;
 using Contracts.DTOs.FacilitySchedule;
 using Microsoft.Extensions.Logging;
+using Repositories.Common;
 using Repositories.Entities;
 using Repositories.Interfaces;
 using Services.Interfaces;
@@ -28,7 +29,7 @@ namespace Services.Implementations
                 var slotsResult = await repository.GetAllAsync(null, null, "Facility", null, null);
                 var slots = slotsResult.Data;
                 
-                var result = slots.OrderBy(s => s.SlotTime).ToList();
+                var result = slots.OrderBy(s => s.StartTime).ToList();
                 var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(result);
                 
                 // ✅ Tính BookedCount tự động cho tất cả slots
@@ -49,7 +50,6 @@ namespace Services.Implementations
             }
         }
 
-        // ✅ Thêm method GetSlotsByFacilityAsync cho phân quyền
         public async Task<List<ScheduleSlotDTO>> GetSlotsByFacilityAsync(int facilityId)
         {
             try
@@ -57,7 +57,7 @@ namespace Services.Implementations
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
                 var allSlotsResult = await repository.GetAllAsync(null, null, "Facility", null, null);
                 var allSlots = allSlotsResult.Data;
-                var slots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.SlotTime).ToList();
+                var slots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.StartTime).ToList();
                 
                 var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(slots);
                 
@@ -84,23 +84,17 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slot = await repository.GetAsync(s => s.SlotId == slotId, includeProperties: "Facility");
+                var slot = await repository.GetAsync(s => s.SlotId == slotId, "Facility");
                 
                 if (slot == null)
                 {
-                    throw new ArgumentException($"Slot với ID {slotId} không tồn tại");
+                    throw new ArgumentException($"Không tìm thấy slot với ID: {slotId}");
                 }
                 
                 var mappedSlot = _mapper.Map<ScheduleSlotDTO>(slot);
                 
                 // ✅ Tính BookedCount tự động
                 await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
-                
-                // Tính SlotNumber dựa trên vị trí trong danh sách
-                var allSlotsResult = await repository.GetAllAsync(null, null, "", null, null);
-                var allSlots = allSlotsResult.Data;
-                var orderedSlots = allSlots.OrderBy(s => s.SlotTime).ToList();
-                mappedSlot.SlotNumber = orderedSlots.FindIndex(s => s.SlotId == slotId) + 1;
                 
                 return mappedSlot;
             }
@@ -111,29 +105,27 @@ namespace Services.Implementations
             }
         }
 
-        // ✅ Thêm method GetSlotByIdWithFacilityCheckAsync cho phân quyền
         public async Task<ScheduleSlotDTO> GetSlotByIdWithFacilityCheckAsync(int slotId, int facilityId)
         {
             try
             {
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slot = await repository.GetAsync(s => s.SlotId == slotId && s.FacilityId == facilityId, includeProperties: "Facility");
-
+                var slot = await repository.GetAsync(s => s.SlotId == slotId, "Facility");
+                
                 if (slot == null)
                 {
-                    throw new ArgumentException($"Slot với ID {slotId} không tồn tại hoặc không thuộc facility của bạn");
+                    throw new ArgumentException($"Không tìm thấy slot với ID: {slotId}");
                 }
-
+                
+                if (slot.FacilityId != facilityId)
+                {
+                    throw new UnauthorizedAccessException($"Slot {slotId} không thuộc về facility {facilityId}");
+                }
+                
                 var mappedSlot = _mapper.Map<ScheduleSlotDTO>(slot);
                 
                 // ✅ Tính BookedCount tự động
                 await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
-                
-                // Tính SlotNumber dựa trên vị trí trong danh sách facility
-                var allSlotsResult = await repository.GetAllAsync(null, null, "", null, null);
-                var allSlots = allSlotsResult.Data;
-                var facilitySlots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.SlotTime).ToList();
-                mappedSlot.SlotNumber = facilitySlots.FindIndex(s => s.SlotId == slotId) + 1;
                 
                 return mappedSlot;
             }
@@ -144,7 +136,7 @@ namespace Services.Implementations
             }
         }
 
-        // ✅ Helper method để tính BookedCount tự động
+        // ✅ Tính BookedCount tự động từ AppointmentSchedule
         private async Task CalculateBookedCountForSlots(List<ScheduleSlotDTO> slots)
         {
             var appointmentRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
@@ -156,84 +148,52 @@ namespace Services.Implementations
                 // Đếm số appointments cho slot này
                 var bookedCount = allAppointments.Count(a => a.SlotId == slot.SlotId);
                 slot.BookedCount = bookedCount;
-                slot.AvailableCapacity = slot.MaxCapacity - slot.BookedCount;
             }
         }
 
-        // ✅ Cập nhật CreateSlotAsync với FacilityId
         public async Task<List<ScheduleSlotDTO>> CreateSlotAsync(CreateScheduleSlotDTO createDto, int facilityId)
         {
             try
             {
-                if (createDto.IsWorkingHours)
+                // ✅ Validation
+                if (!createDto.IsValid())
                 {
-                    // ✅ TẠO WORKING HOURS (multiple slots)
-                    return await CreateWorkingHoursSlotsAsync(createDto, facilityId);
+                    throw new ArgumentException("Dữ liệu đầu vào không hợp lệ");
                 }
-                else
-                {
-                    // ✅ TẠO SINGLE SLOT
-                    var singleSlot = await CreateSingleSlotAsync(createDto, facilityId);
-                    return new List<ScheduleSlotDTO> { singleSlot };
-                }
+
+                // ✅ Chỉ tạo working hours (multiple slots)
+                return await CreateWorkingHoursSlotsAsync(createDto, facilityId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi tạo slot cho facility: {FacilityId}", facilityId);
+                _logger.LogError(ex, "Lỗi khi tạo working hours slots cho facility: {FacilityId}", facilityId);
                 throw;
             }
         }
 
-        private async Task<ScheduleSlotDTO> CreateSingleSlotAsync(CreateScheduleSlotDTO createDto, int facilityId)
-        {
-            _logger.LogInformation("Tạo slot đơn lẻ cho facility: {FacilityId}", facilityId);
 
-            var slot = _mapper.Map<ScheduleSlot>(createDto);
-            // ✅ BookedCount luôn bắt đầu từ 0
-            slot.BookedCount = 0;
-            // ✅ Set FacilityId từ JWT token
-            slot.FacilityId = facilityId;
-
-            var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-            await repository.AddAsync(slot);
-            await _unitOfWork.SaveChangesAsync();
-
-            var mappedSlot = _mapper.Map<ScheduleSlotDTO>(slot);
-            
-            // ✅ Tính BookedCount tự động (sẽ là 0 vì mới tạo)
-            await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
-            
-            // Tính SlotNumber sau khi tạo
-            var allSlotsResult = await repository.GetAllAsync(null, null, "", null, null);
-            var allSlots = allSlotsResult.Data;
-            var facilitySlots = allSlots.Where(s => s.FacilityId == facilityId).OrderBy(s => s.SlotTime).ToList();
-            mappedSlot.SlotNumber = facilitySlots.FindIndex(s => s.SlotId == slot.SlotId) + 1;
-
-            _logger.LogInformation("Tạo slot đơn lẻ thành công cho facility: {FacilityId}", facilityId);
-            return mappedSlot;
-        }
 
         private async Task<List<ScheduleSlotDTO>> CreateWorkingHoursSlotsAsync(CreateScheduleSlotDTO createDto, int facilityId)
         {
             _logger.LogInformation("Tạo working hours từ {StartTime} đến {EndTime} cho facility: {FacilityId}", 
                 createDto.StartTime, createDto.EndTime, facilityId);
 
-            // Validation
-            if (!createDto.StartTime.HasValue || !createDto.EndTime.HasValue || !createDto.SlotDurationMinutes.HasValue)
-            {
-                throw new ArgumentException("StartTime, EndTime và SlotDurationMinutes là bắt buộc cho working hours");
-            }
+            // ✅ Generate WorkingHoursGroupId cho tất cả slots
+            var workingHoursGroupId = GenerateWorkingHoursGroupId(facilityId);
 
             var slots = new List<ScheduleSlot>();
-            var currentTime = createDto.StartTime.Value;
+            var currentTime = createDto.StartTime;
+            var endTime = createDto.EndTime;
+            var slotDuration = createDto.SlotDurationMinutes;
 
-            while (currentTime < createDto.EndTime.Value)
+            while (currentTime < endTime)
             {
-                var slotEndTime = currentTime.AddMinutes(createDto.SlotDurationMinutes.Value);
+                var slotEndTime = currentTime.AddMinutes(slotDuration);
                 
-                // Kiểm tra lunch break
+                // ✅ Kiểm tra lunch break
                 if (createDto.LunchBreakStart.HasValue && createDto.LunchBreakEnd.HasValue)
                 {
+                    // Nếu slot này overlap với lunch break thì skip
                     if (currentTime >= createDto.LunchBreakStart.Value && currentTime < createDto.LunchBreakEnd.Value)
                     {
                         currentTime = createDto.LunchBreakEnd.Value;
@@ -241,207 +201,199 @@ namespace Services.Implementations
                     }
                 }
 
-                if (slotEndTime <= createDto.EndTime.Value)
+                // ✅ Chỉ tạo slot nếu không vượt quá thời gian kết thúc
+                if (slotEndTime <= endTime)
                 {
+                    // ✅ Tạo SlotTime string format "08:00 - 09:00"
+                    var slotTimeString = $"{currentTime:HH:mm} - {slotEndTime:HH:mm}";
+
                     var slot = new ScheduleSlot
                     {
-                        // ✅ Working hours không cần SlotTime, để null
-                        SlotTime = null,
-                        
-                        // ✅ Working Hours Config theo entity mới
-                        StartTime = createDto.StartTime.Value,
-                        EndTime = createDto.EndTime.Value, 
-                        SlotDurationMinutes = createDto.SlotDurationMinutes.Value,
+                        FacilityId = facilityId,
+                        WorkingHoursGroupId = workingHoursGroupId, // ✅ Assign cùng GroupId
+                        SlotTime = slotTimeString, // ✅ Set SlotTime cho frontend
+                        StartTime = currentTime,
+                        EndTime = slotEndTime,
+                        SlotDurationMinutes = slotDuration,
                         LunchBreakStart = createDto.LunchBreakStart,
                         LunchBreakEnd = createDto.LunchBreakEnd,
-                        
                         MaxCapacity = createDto.MaxCapacity,
-                        BookedCount = 0, // ✅ Luôn bắt đầu từ 0
+                        BookedCount = 0, // Luôn bắt đầu từ 0
                         Status = createDto.Status,
-                        IsWorkingHours = true,
-                        FacilityId = facilityId, // ✅ Set FacilityId
+                        IsWorkingHours = true, // ✅ Luôn là working hours
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
+
                     slots.Add(slot);
                 }
 
                 currentTime = slotEndTime;
             }
 
-            var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-            await repository.AddRangeAsync(slots);
-            await _unitOfWork.SaveChangesAsync();
-
-            _logger.LogInformation("Tạo working hours thành công với {Count} slots cho facility: {FacilityId}", 
-                slots.Count, facilityId);
-            
-            // ✅ Return tất cả slots đã tạo
-            var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(slots);
-            
-            // ✅ Tính BookedCount tự động (sẽ là 0 vì mới tạo)
-            await CalculateBookedCountForSlots(mappedSlots);
-            
-            // Gán SlotNumber
-            for (int i = 0; i < mappedSlots.Count; i++)
+            // ✅ Lưu tất cả slots vào database
+            if (slots.Count > 0)
             {
-                mappedSlots[i].SlotNumber = i + 1;
+                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
+                foreach (var slot in slots)
+                {
+                    await repository.AddAsync(slot);
+                }
+                await _unitOfWork.SaveChangesAsync();
             }
+
+            // ✅ Map và tính BookedCount
+            var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(slots);
+            await CalculateBookedCountForSlots(mappedSlots);
+
+            _logger.LogInformation("Tạo {Count} working hours slots với GroupId {GroupId} cho facility: {FacilityId}", 
+                mappedSlots.Count, workingHoursGroupId, facilityId);
 
             return mappedSlots;
         }
 
-        public async Task<ScheduleSlotDTO> UpdateSlotAsync(int slotId, UpdateScheduleSlotDTO updateDto)
+        // ✅ Generate WorkingHoursGroupId
+        private string GenerateWorkingHoursGroupId(int facilityId)
         {
-            try
-            {
-                _logger.LogInformation("Cập nhật slot ID: {SlotId}", slotId);
-
-                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slot = await repository.GetAsync(s => s.SlotId == slotId);
-
-                if (slot == null)
-                {
-                    throw new ArgumentException($"Slot với ID {slotId} không tồn tại");
-                }
-
-                _mapper.Map(updateDto, slot);
-                repository.Update(slot);
-                await _unitOfWork.SaveChangesAsync();
-
-                var mappedSlot = _mapper.Map<ScheduleSlotDTO>(slot);
-                
-                // ✅ Tính BookedCount tự động
-                await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
-                
-                // Tính SlotNumber sau khi cập nhật
-                var allSlots = await repository.GetAllAsync("");
-                var orderedSlots = allSlots.OrderBy(s => s.SlotTime).ToList();
-                mappedSlot.SlotNumber = orderedSlots.FindIndex(s => s.SlotId == slotId) + 1;
-
-                _logger.LogInformation("Cập nhật slot thành công");
-                return mappedSlot;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi cập nhật slot ID: {SlotId}", slotId);
-                throw;
-            }
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var randomSuffix = Guid.NewGuid().ToString()[..8];
+            return $"WH_{facilityId}_{timestamp}_{randomSuffix}";
         }
 
-        public async Task<bool> DeleteSlotAsync(int slotId)
+        // ✅ Get slots by WorkingHoursGroupId
+        public async Task<List<ScheduleSlotDTO>> GetSlotsByWorkingHoursGroupIdAsync(string workingHoursGroupId)
         {
             try
             {
-                _logger.LogInformation("Xóa slot ID: {SlotId}", slotId);
-
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slot = await repository.GetAsync(s => s.SlotId == slotId);
-
-                if (slot == null)
-                {
-                    throw new ArgumentException($"Slot với ID {slotId} không tồn tại");
-                }
-
-                repository.Delete(slot);
-                await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Xóa slot thành công");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi xóa slot ID: {SlotId}", slotId);
-                throw;
-            }
-        }
-
-        public async Task<bool> DeleteWorkingHoursAsync(TimeOnly startTime, TimeOnly endTime)
-        {
-            try
-            {
-                _logger.LogInformation("Xóa working hours: {StartTime} - {EndTime}", startTime, endTime);
-
-                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var allSlots = await repository.GetAllAsync("");
+                var result = await repository.GetAllAsync(
+                    filter: s => s.WorkingHoursGroupId == workingHoursGroupId,
+                    orderBy: q => q.OrderBy(s => s.StartTime),
+                    include: "Facility"
+                );
                 
-                var slotsToDelete = allSlots.Where(s => s.IsWorkingHours && 
-                                                      s.StartTime == startTime && 
-                                                      s.EndTime == endTime)
-                                           .ToList();
-
-                if (slotsToDelete.Any())
-                {
-                    foreach (var slot in slotsToDelete)
-                    {
-                        repository.Delete(slot);
-                    }
-                    await _unitOfWork.SaveChangesAsync();
-                }
-
-                _logger.LogInformation("Xóa working hours thành công: {Count} slots", slotsToDelete.Count);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi xóa working hours");
-                throw;
-            }
-        }
-
-        public async Task<List<ScheduleSlotDTO>> UpdateWorkingHoursAsync(TimeOnly oldStartTime, TimeOnly oldEndTime, CreateScheduleSlotDTO newConfig, int facilityId)
-        {
-            try
-            {
-                _logger.LogInformation("Cập nhật working hours từ {OldStart}-{OldEnd} thành {NewStart}-{NewEnd} cho facility: {FacilityId}", 
-                    oldStartTime, oldEndTime, newConfig.StartTime, newConfig.EndTime, facilityId);
-
-                // 1. Xóa working hours cũ
-                await DeleteWorkingHoursAsync(oldStartTime, oldEndTime);
-                
-                // 2. Tạo working hours mới
-                var newSlots = await CreateSlotAsync(newConfig, facilityId);
-
-                _logger.LogInformation("Cập nhật working hours thành công cho facility: {FacilityId}", facilityId);
-                return newSlots;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi cập nhật working hours cho facility: {FacilityId}", facilityId);
-                throw;
-            }
-        }
-
-        public async Task<List<ScheduleSlotDTO>> GetWorkingHoursSlotsAsync(TimeOnly startTime, TimeOnly endTime)
-        {
-            try
-            {
-                _logger.LogInformation("Lấy working hours slots: {StartTime} - {EndTime}", startTime, endTime);
-
-                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var allSlots = await repository.GetAllAsync("");
-                
-                var slots = allSlots.Where(s => s.IsWorkingHours && 
-                                               s.StartTime == startTime && 
-                                               s.EndTime == endTime)
-                                   .OrderBy(s => s.CreatedAt)
-                                   .ToList();
-
-                var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(slots);
-                
-                // ✅ Tính BookedCount tự động
+                var mappedSlots = _mapper.Map<List<ScheduleSlotDTO>>(result.Data);
                 await CalculateBookedCountForSlots(mappedSlots);
-                
-                for (int i = 0; i < mappedSlots.Count; i++)
-                {
-                    mappedSlots[i].SlotNumber = i + 1;
-                }
 
                 return mappedSlots;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi lấy working hours slots");
+                _logger.LogError(ex, "Lỗi khi lấy slots theo WorkingHoursGroupId: {GroupId}", workingHoursGroupId);
+                throw;
+            }
+        }
+
+        // ✅ Get working hours groups by facility
+        public async Task<List<WorkingHoursGroupDTO>> GetWorkingHoursGroupsByFacilityAsync(int facilityId)
+        {
+            try
+            {
+                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
+                var result = await repository.GetAllAsync(
+                    filter: s => s.FacilityId == facilityId && !string.IsNullOrEmpty(s.WorkingHoursGroupId),
+                    orderBy: q => q.OrderByDescending(s => s.CreatedAt),
+                    include: "Facility"
+                );
+
+                var groups = result.Data.GroupBy(s => s.WorkingHoursGroupId)
+                                        .Select(g => new WorkingHoursGroupDTO
+                                        {
+                                            GroupId = g.Key,
+                                            Description = GenerateWorkingHoursDescription(g.First()),
+                                            TotalSlots = g.Count(),
+                                            StartTime = g.Min(s => s.StartTime.Value),
+                                            EndTime = g.Max(s => s.EndTime.Value),
+                                            SlotDurationMinutes = g.First().SlotDurationMinutes.Value,
+                                            LunchBreakStart = g.First().LunchBreakStart,
+                                            LunchBreakEnd = g.First().LunchBreakEnd,
+                                            CreatedAt = g.First().CreatedAt,
+                                            Slots = _mapper.Map<List<ScheduleSlotDTO>>(g.OrderBy(s => s.StartTime).ToList())
+                                        })
+                                        .OrderByDescending(g => g.CreatedAt)
+                                        .ToList();
+
+                return groups;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy working hours groups cho facility: {FacilityId}", facilityId);
+                throw;
+            }
+        }
+
+        // ✅ Generate description for working hours group
+        private string GenerateWorkingHoursDescription(ScheduleSlot slot)
+        {
+            var lunchInfo = slot.LunchBreakStart.HasValue && slot.LunchBreakEnd.HasValue
+                ? $" (Lunch: {slot.LunchBreakStart.Value:HH:mm}-{slot.LunchBreakEnd.Value:HH:mm})"
+                : "";
+            
+            return $"Working Hours {slot.StartTime.Value:HH:mm}-{slot.EndTime.Value:HH:mm} - {slot.SlotDurationMinutes}min slots{lunchInfo}";
+        }
+
+        public async Task<ScheduleSlotDTO> UpdateSlotAsync(int slotId, UpdateScheduleSlotDTO updateDto, int facilityId)
+        {
+            try
+            {
+                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
+                var slot = await repository.GetByIdAsync(slotId);
+                
+                if (slot == null)
+                {
+                    throw new ArgumentException($"Không tìm thấy slot với ID: {slotId}");
+                }
+                
+                if (slot.FacilityId != facilityId)
+                {
+                    throw new UnauthorizedAccessException($"Slot {slotId} không thuộc về facility {facilityId}");
+                }
+                
+                // ✅ Cập nhật thông tin slot (chỉ những field cho phép)
+                _mapper.Map(updateDto, slot);
+                
+                repository.Update(slot);
+                await _unitOfWork.SaveChangesAsync();
+                
+                var mappedSlot = _mapper.Map<ScheduleSlotDTO>(slot);
+                
+                // ✅ Tính BookedCount tự động
+                await CalculateBookedCountForSlots(new List<ScheduleSlotDTO> { mappedSlot });
+                
+                return mappedSlot;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cập nhật slot: {SlotId}", slotId);
+                throw;
+            }
+        }
+
+        public async Task<bool> DeleteSlotAsync(int slotId, int facilityId)
+        {
+            try
+            {
+                var repository = _unitOfWork.GetRepository<ScheduleSlot>();
+                var slot = await repository.GetByIdAsync(slotId);
+                
+                if (slot == null)
+                {
+                    throw new ArgumentException($"Không tìm thấy slot với ID: {slotId}");
+                }
+                
+                if (slot.FacilityId != facilityId)
+                {
+                    throw new UnauthorizedAccessException($"Slot {slotId} không thuộc về facility {facilityId}");
+                }
+                
+                repository.Delete(slot);
+                await _unitOfWork.SaveChangesAsync();
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xóa slot: {SlotId}", slotId);
                 throw;
             }
         }
@@ -450,60 +402,79 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Cập nhật trạng thái slot ID: {SlotId} thành {Status}", slotId, status);
-
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slot = await repository.GetAsync(s => s.SlotId == slotId);
-
+                var slot = await repository.GetByIdAsync(slotId);
+                
                 if (slot == null)
                 {
-                    throw new ArgumentException($"Slot với ID {slotId} không tồn tại");
+                    throw new ArgumentException($"Không tìm thấy slot với ID: {slotId}");
                 }
-
+                
                 slot.Status = status;
                 slot.UpdatedAt = DateTime.UtcNow;
-
+                
                 repository.Update(slot);
                 await _unitOfWork.SaveChangesAsync();
-
-                _logger.LogInformation("Cập nhật trạng thái slot thành công");
+                
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái slot ID: {SlotId}", slotId);
+                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái slot: {SlotId}", slotId);
                 throw;
             }
         }
 
-        public async Task<bool> DeleteMultipleSlotsAsync(List<int> slotIds)
+        public async Task<bool> DeleteMultipleSlotsAsync(List<int> slotIds, int facilityId)
         {
             try
             {
-                _logger.LogInformation("Xóa nhiều slots: {SlotIds}", string.Join(", ", slotIds));
-
                 var repository = _unitOfWork.GetRepository<ScheduleSlot>();
-                var slotsResult = await repository.GetAllAsync(null, null, "", null, null);
-                var allSlots = slotsResult.Data;
-                var slotsToDelete = allSlots.Where(s => slotIds.Contains(s.SlotId)).ToList();
-
-                if (slotsToDelete.Any())
+                var deletedCount = 0;
+                
+                foreach (var slotId in slotIds)
                 {
-                    foreach (var slot in slotsToDelete)
+                    var slot = await repository.GetByIdAsync(slotId);
+                    
+                    if (slot != null && slot.FacilityId == facilityId)
                     {
                         repository.Delete(slot);
+                        deletedCount++;
                     }
-                    await _unitOfWork.SaveChangesAsync();
                 }
-
-                _logger.LogInformation("Xóa nhiều slots thành công");
+                
+                await _unitOfWork.SaveChangesAsync();
+                
+                _logger.LogInformation("Xóa multiple slots thành công: {Count}/{Total}", deletedCount, slotIds.Count);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xóa nhiều slots");
+                _logger.LogError(ex, "Lỗi khi xóa multiple slots");
                 throw;
             }
+        }
+
+        // ✅ Backward compatibility methods (có thể loại bỏ sau)
+        public async Task<bool> DeleteWorkingHoursAsync(TimeOnly startTime, TimeOnly endTime)
+        {
+            // ✅ Deprecated method - có thể xóa sau
+            _logger.LogWarning("DeleteWorkingHoursAsync is deprecated. Use DeleteMultipleSlotsAsync instead.");
+            return true;
+        }
+
+        public async Task<List<ScheduleSlotDTO>> UpdateWorkingHoursAsync(TimeOnly oldStartTime, TimeOnly oldEndTime, CreateScheduleSlotDTO newConfig, int facilityId)
+        {
+            // ✅ Deprecated method - có thể xóa sau
+            _logger.LogWarning("UpdateWorkingHoursAsync is deprecated. Delete and recreate working hours instead.");
+            return await CreateSlotAsync(newConfig, facilityId);
+        }
+
+        public async Task<List<ScheduleSlotDTO>> GetWorkingHoursSlotsAsync(TimeOnly startTime, TimeOnly endTime)
+        {
+            // ✅ Deprecated method - có thể xóa sau
+            _logger.LogWarning("GetWorkingHoursSlotsAsync is deprecated. Use GetSlotsByFacilityAsync instead.");
+            return new List<ScheduleSlotDTO>();
         }
     }
 } 

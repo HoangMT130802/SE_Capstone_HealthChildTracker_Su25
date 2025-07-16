@@ -1,0 +1,61 @@
+### Facility Appointment APIs
+
+### Lấy tất cả lịch đặt của facility (tự động detect facility từ token hoặc database)
+GET {{baseUrl}}/api/facilityappointment
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Lấy tất cả lịch đặt của facility cụ thể (dành cho Admin)
+GET {{baseUrl}}/api/facilityappointment/admin/1
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### Lấy lịch đặt theo ngày
+GET {{baseUrl}}/api/facilityappointment/date?date=2024-01-15
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Lấy lịch đặt theo tuần (từ ngày đầu tuần)
+GET {{baseUrl}}/api/facilityappointment/week?startOfWeek=2024-01-15
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Lấy lịch đặt theo tháng
+GET {{baseUrl}}/api/facilityappointment/month?month=2024-01-01
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Lấy chi tiết lịch đặt theo ID
+GET {{baseUrl}}/api/facilityappointment/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Cập nhật trạng thái lịch đặt - Duyệt
+PUT {{baseUrl}}/api/facilityappointment/1/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "status": "Confirmed",
+    "note": "Đã duyệt lịch hẹn"
+}
+
+### Cập nhật trạng thái lịch đặt - Từ chối
+PUT {{baseUrl}}/api/facilityappointment/1/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "status": "Rejected",
+    "note": "Từ chối do lý do cá nhân"
+}
+
+### Cập nhật trạng thái lịch đặt - Hoàn thành
+PUT {{baseUrl}}/api/facilityappointment/1/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "status": "Completed",
+    "note": "Đã hoàn thành tiêm chủng"
+} 

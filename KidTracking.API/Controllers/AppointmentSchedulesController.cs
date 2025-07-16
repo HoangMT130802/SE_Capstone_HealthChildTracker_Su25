@@ -78,12 +78,37 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<AppointmentScheduleDTO>> CreateSchedule([FromBody] CreateAppointmentScheduleDTO createDto)
+        public async Task<ActionResult<List<AppointmentScheduleDTO>>> CreateSchedule([FromBody] CreateAppointmentScheduleDTO createDto)
         {
             try
             {
-                var schedule = await _appointmentScheduleService.CreateScheduleAsync(createDto);
-                return CreatedAtAction(nameof(GetSchedulesByDate), new { date = schedule.Date }, schedule);
+                // Validate input
+                if (!createDto.IsValid())
+                {
+                    return BadRequest("Phải có SlotId hoặc WorkingHoursGroupId");
+                }
+
+                var schedules = await _appointmentScheduleService.CreateScheduleAsync(createDto);
+                
+                // Log thông tin tạo schedule
+                if (createDto.SlotId.HasValue)
+                {
+                    _logger.LogInformation("Tạo lịch hẹn cho slot {SlotId} thành công", createDto.SlotId.Value);
+                }
+                else
+                {
+                    _logger.LogInformation("Tạo bulk lịch hẹn cho working hours group {GroupId} thành công", createDto.WorkingHoursGroupId);
+                }
+
+                return CreatedAtAction(nameof(GetSchedulesByDate), new { date = createDto.Date }, schedules);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(ex.Message);
             }
             catch (Exception ex)
             {
@@ -186,6 +211,32 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi lấy lịch hẹn với slots trong ngày");
+                return StatusCode(500, "Lỗi server");
+            }
+        }
+
+        [HttpPost("bulk-assign-working-hours")]
+        public async Task<ActionResult<BulkAssignWorkingHoursResponseDTO>> BulkAssignWorkingHours([FromBody] BulkAssignWorkingHoursDTO bulkAssignDto)
+        {
+            try
+            {
+                var result = await _appointmentScheduleService.BulkAssignWorkingHoursAsync(bulkAssignDto);
+                
+                if (result.IsSuccess)
+                {
+                    _logger.LogInformation("Bulk assign thành công cho working hours group {GroupId} ngày {Date}", 
+                        bulkAssignDto.WorkingHoursGroupId, bulkAssignDto.Date.ToString("yyyy-MM-dd"));
+                    return Ok(result);
+                }
+                else
+                {
+                    _logger.LogWarning("Bulk assign thất bại: {Message}", result.Message);
+                    return BadRequest(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi bulk assign working hours group");
                 return StatusCode(500, "Lỗi server");
             }
         }

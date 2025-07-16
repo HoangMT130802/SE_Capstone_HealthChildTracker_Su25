@@ -28,10 +28,27 @@ namespace Contracts.DTOs.Appointment
         // Thông tin gói vaccine (nếu có)
         public VaccinePackageDTO? Package { get; set; }
 
+        // Danh sách vaccines được chọn (nếu không chọn gói)
+        public List<AppointmentSelectedVaccineDTO> SelectedVaccines { get; set; } = new List<AppointmentSelectedVaccineDTO>();
+
         // Thông tin lịch hẹn
         public AppointmentScheduleDTO Schedule { get; set; }
 
         // Tổng chi phí dự kiến
         public decimal EstimatedCost { get; set; }
+    }
+
+    /// <summary>
+    /// DTO cho thông tin vaccine được chọn trong appointment
+    /// </summary>
+    public class AppointmentSelectedVaccineDTO
+    {
+        public int FacilityVaccineId { get; set; }
+        public int VaccineId { get; set; }
+        public string VaccineName { get; set; }
+        public string Manufacturer { get; set; }
+        public decimal Price { get; set; }
+        public int Quantity { get; set; } = 1;
+        public string Description { get; set; }
     }
 } 

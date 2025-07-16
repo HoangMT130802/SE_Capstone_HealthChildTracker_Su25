@@ -4,22 +4,17 @@ namespace Contracts.DTOs.FacilitySchedule
 {
     public class UpdateScheduleSlotDTO
     {
-        // ✅ Single Slot Update (chỉ cho IsWorkingHours = false)
-        [RegularExpression(@"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]\s*-\s*([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
-            ErrorMessage = "SlotTime phải có định dạng HH:mm - HH:mm (ví dụ: 08:00 - 09:00)")]
-        public string? SlotTime { get; set; }
-
+        // ✅ Chỉ cho phép update một số field nhất định
         [Range(1, 100, ErrorMessage = "MaxCapacity phải từ 1 đến 100")]
         public int MaxCapacity { get; set; }
 
-        // ❌ Bỏ BookedCount - sẽ tính tự động từ appointments
-        // [Range(0, int.MaxValue, ErrorMessage = "BookedCount phải >= 0")]
-        // public int BookedCount { get; set; }
-
-        [RegularExpression("^(Active|Inactive)$", 
-            ErrorMessage = "Status phải là: Active hoặc Inactive")]
+        [RegularExpression("^(Available|Unavailable|Active|Inactive)$", 
+            ErrorMessage = "Status phải là: Available, Unavailable, Active hoặc Inactive")]
         public string Status { get; set; }
         
-        // Note: Working Hours không update từng slot, mà delete + recreate toàn bộ
+        // ✅ Note: SlotTime, StartTime, EndTime, Duration không được update
+        // ✅ WorkingHoursGroupId không được update
+        // ✅ BookedCount sẽ tính tự động từ appointments
+        // ✅ Working Hours không update từng slot, mà delete + recreate toàn bộ
     }
 } 
