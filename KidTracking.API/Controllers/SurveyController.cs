@@ -218,8 +218,55 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
+        [HttpGet]
+        public async Task<IActionResult> GetAllSurveys([FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
+        {
+            try
+            {
+                if (pageIndex <= 0 || pageSize <= 0)
+                    return BadRequest(new { message = "PageIndex and PageSize must be positive" });
 
-        private int GetAccountId()
+                var surveys = await _surveyService.GetAllSurveysAsync(pageIndex, pageSize);
+                return Ok(new
+                {
+                    totalCount = surveys.TotalCount,
+                    pageIndex,
+                    pageSize,
+                    data = surveys.Data
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all surveys");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("questions")]
+        public async Task<IActionResult> GetAllQuestions([FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
+        {
+            try
+            {
+                if (pageIndex <= 0 || pageSize <= 0)
+                    return BadRequest(new { message = "PageIndex and PageSize must be positive" });
+
+                var questions = await _surveyService.GetAllQuestionsAsync(pageIndex, pageSize);
+                return Ok(new
+                {
+                    totalCount = questions.TotalCount,
+                    pageIndex,
+                    pageSize,
+                    data = questions.Data
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all questions");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+            private int GetAccountId()
         {
             var accountId = int.Parse(User.FindFirst("AccountId")?.Value ?? "0");
             if (accountId == 0) throw new UnauthorizedAccessException("AccountId not found in token");

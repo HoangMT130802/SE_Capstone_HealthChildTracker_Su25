@@ -22,7 +22,7 @@ public class SurveyService : ISurveyService
     private async Task ValidateManagerAccess(int accountId)
     {
         var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-        var staff = await staffRepository.GetAsync(s => s.AccountId == accountId &&  s.Position == "Manager");
+        var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
         if (staff == null)
         {
             throw new UnauthorizedAccessException($"User with AccountId {accountId} is not a Manager or does not belong to Facility");
@@ -190,7 +190,7 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateManagerAccess(accountId); 
+            await ValidateManagerAccess(accountId);
 
             surveyRepository.Delete(survey);
             await _unitOfWork.SaveChangesAsync();
@@ -215,7 +215,7 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateManagerAccess(accountId); 
+            await ValidateManagerAccess(accountId);
 
             _mapper.Map(surveyDto, survey);
             survey.UpdatedAt = DateTime.UtcNow;
@@ -227,6 +227,56 @@ public class SurveyService : ISurveyService
         catch (Exception ex)
         {
             _logger.LogError(ex, $"Error updating survey with ID {surveyId} by AccountId {accountId}");
+            throw;
+        }
+    }
+    public async Task<QueryResultModel<IEnumerable<SurveyDto>>> GetAllSurveysAsync(int? pageIndex = null, int? pageSize = null)
+    {
+        try
+        {
+            var surveyRepository = _unitOfWork.GetRepository<HealthSurvey>();
+            var surveys = await surveyRepository.GetAllAsync(
+                orderBy: s => s.OrderBy(s => s.SurveyId),
+                include: "SurveyQuestions", 
+                pageIndex: pageIndex,
+                pageSize: pageSize
+            );
+
+            var surveyDtos = _mapper.Map<IEnumerable<SurveyDto>>(surveys.Data);
+            return new QueryResultModel<IEnumerable<SurveyDto>>
+            {
+                TotalCount = surveys.TotalCount,
+                Data = surveyDtos
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all surveys");
+            throw;
+        }
+    }
+
+    public async Task<QueryResultModel<IEnumerable<SurveyQuestionDto>>> GetAllQuestionsAsync(int? pageIndex = null, int? pageSize = null)
+    {
+        try
+        {
+            var questionRepository = _unitOfWork.GetRepository<SurveyQuestion>();
+            var questions = await questionRepository.GetAllAsync(
+                orderBy: q => q.OrderBy(q => q.QuestionId),
+                include: "Survey", 
+                pageIndex: pageIndex,
+                pageSize: pageSize
+            );
+            var questionDtos = _mapper.Map<IEnumerable<SurveyQuestionDto>>(questions.Data);
+            return new QueryResultModel<IEnumerable<SurveyQuestionDto>>
+            {
+                TotalCount = questions.TotalCount,
+                Data = questionDtos
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all questions");
             throw;
         }
     }

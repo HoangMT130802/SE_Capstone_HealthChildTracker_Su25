@@ -1,4 +1,5 @@
 ﻿using Contracts.DTOs.Survey;
+using Repositories.Entities;
 using Repositories.Models.QueryModels;
 using System;
 using System.Collections.Generic;
@@ -17,5 +18,7 @@ namespace Services.Interfaces
         Task<QueryResultModel<IEnumerable<SurveyResponseDto>>> GetSurveyResponsesByAppointmentIdAsync(int appointmentId, int? pageIndex = null, int? pageSize = null);
         Task DeleteSurveyAsync(int surveyId, int accountId);
         Task UpdateSurveyAsync(int surveyId, CreateSurveyDto surveyDto, int accountId);
+        Task<QueryResultModel<IEnumerable<SurveyDto>>> GetAllSurveysAsync(int? pageIndex = null, int? pageSize = null);
+        Task<QueryResultModel<IEnumerable<SurveyQuestionDto>>> GetAllQuestionsAsync(int? pageIndex = null, int? pageSize = null);
     }
 }

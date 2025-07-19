@@ -18,7 +18,12 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.SurveyQuestions, opt => opt.Ignore());
 
-            CreateMap<SurveyQuestion, SurveyQuestionDto>();
+            CreateMap<SurveyQuestion, SurveyQuestionDto>()
+                .ForMember(dest => dest.QuestionId, opt => opt.MapFrom(src => src.QuestionId))
+                .ForMember(dest => dest.SurveyId, opt => opt.MapFrom(src => src.SurveyId))
+                .ForMember(dest => dest.QuestionText, opt => opt.MapFrom(src => src.QuestionText))
+                .ForMember(dest => dest.QuestionType, opt => opt.MapFrom(src => src.QuestionType))
+                .ForMember(dest => dest.IsRequired, opt => opt.MapFrom(src => src.IsRequired));
 
             CreateMap<AppointmentSurveyDto, AppointmentSurvey>();
 
@@ -31,6 +36,9 @@ namespace Contracts.MapperProfiles
             .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
             .ForMember(dest => dest.AppointmentSurveys, opt => opt.MapFrom(src => new List<AppointmentSurvey>()))
             .ForMember(dest => dest.SurveyAnswers, opt => opt.MapFrom(src => new List<SurveyAnswer>()));
+
+            CreateMap<HealthSurvey, SurveyDto>()
+            .ForMember(dest => dest.SurveyQuestions, opt => opt.MapFrom(src => src.SurveyQuestions));
         }
 
 
