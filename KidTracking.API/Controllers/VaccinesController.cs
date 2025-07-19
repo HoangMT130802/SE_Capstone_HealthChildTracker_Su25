@@ -66,13 +66,12 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
-
         [HttpGet]
-        public async Task<IActionResult> GetAllVaccines()
+        public async Task<IActionResult> GetAllVaccines(int? diseaseId = null)
         {
             try
             {
-                var vaccines = await _vaccineService.GetAllVaccinesAsync();
+                var vaccines = await _vaccineService.GetAllVaccinesAsync(diseaseId);
                 return Ok(vaccines);
             }
             catch (Exception ex)
@@ -81,6 +80,20 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
+        //[HttpGet]
+        //public async Task<IActionResult> GetAllVaccines()
+        //{
+        //    try
+        //    {
+        //        var vaccines = await _vaccineService.GetAllVaccinesAsync();
+        //        return Ok(vaccines);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error getting all vaccines");
+        //        return StatusCode(500, new { message = "Internal server error" });
+        //    }
+        //}
 
         [HttpPut("{vaccineId}")]
         public async Task<IActionResult> UpdateVaccine(int vaccineId, [FromBody] UpdateVaccineDTO vaccineDto)

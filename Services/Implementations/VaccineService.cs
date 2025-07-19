@@ -8,6 +8,7 @@ using Services.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -128,7 +129,31 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<IEnumerable<VaccineDTO>> GetAllVaccinesAsync(int? diseaseId = null)
+        {
+            try
+            {
+                var vaccineRepository = _unitOfWork.GetRepository<Vaccine>();
+                Expression<Func<Vaccine, bool>> filter = null;
 
+                // Thêm điều kiện lọc theo DiseaseId nếu được cung cấp
+                if (diseaseId.HasValue)
+                {
+                    filter = v => v.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId.Value);
+                }
+
+                var vaccinesResult = await vaccineRepository.GetAllAsync(
+                    filter: filter,
+                    include: "VaccineDiseases.Disease"
+                );
+                return _mapper.Map<IEnumerable<VaccineDTO>>(vaccinesResult.Data); 
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all vaccines");
+                throw;
+            }
+        }
         public async Task<IEnumerable<VaccineDTO>> GetAllVaccinesAsync()
         {
             try
