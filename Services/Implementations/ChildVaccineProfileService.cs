@@ -38,6 +38,33 @@ namespace Services.Implementations
             }
         }
 
+        /// <summary>
+        /// Lấy tất cả vaccine profiles của child mà không cần check account ownership (public API)
+        /// </summary>
+        public async Task<IEnumerable<ChildVaccineProfileDTO>> GetAllChildVaccineProfilesByChildIdPublicAsync(int childId)
+        {
+            try
+            {
+                // Kiểm tra xem child có tồn tại và đang active không
+                var childRepository = _unitOfWork.GetRepository<Child>();
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.Status == true);
+                
+                if (child == null)
+                {
+                    throw new KeyNotFoundException($"Child with ID {childId} not found or inactive");
+                }
+
+                var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                var profiles = await profileRepository.FindAsync(r => r.ChildId == childId, includeProperties: "Child,Vaccine");
+                return _mapper.Map<IEnumerable<ChildVaccineProfileDTO>>(profiles);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting public vaccine profiles for child {childId}");
+                throw;
+            }
+        }
+
         public async Task<ChildVaccineProfileDTO> GetChildVaccineProfileByIdAsync(int profileId)
         {
             try

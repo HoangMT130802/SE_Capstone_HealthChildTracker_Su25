@@ -10,6 +10,7 @@ namespace Services.Interfaces
 {
     public interface IChildVaccineProfileService {
         Task<IEnumerable<ChildVaccineProfileDTO>> GetAllChildVaccineProfilesByChildIdAsync(int childId);
+        Task<IEnumerable<ChildVaccineProfileDTO>> GetAllChildVaccineProfilesByChildIdPublicAsync(int childId);
         Task<ChildVaccineProfileDTO> GetChildVaccineProfileByIdAsync(int profileId);
         Task<ChildVaccineProfileDTO> CreateChildVaccineProfileAsync(CreateChildVaccineProfileDTO profileDTO);
         Task<ChildVaccineProfileDTO> UpdateChildVaccineProfileAsync(int profileId, UpdateChildVaccineProfileDTO profileDTO);

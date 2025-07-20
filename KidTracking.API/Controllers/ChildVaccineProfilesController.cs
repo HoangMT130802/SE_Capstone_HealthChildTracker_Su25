@@ -73,6 +73,29 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API public để lấy vaccine profiles của child mà không cần check account ownership
+        /// </summary>
+        [HttpGet("public/child/{childId}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetAllChildVaccineProfilesByChildIdPublic(int childId)
+        {
+            try
+            {
+                var profiles = await _childVaccineProfileService.GetAllChildVaccineProfilesByChildIdPublicAsync(childId);
+                return Ok(profiles);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Lỗi khi lấy hồ sơ tiêm chủng public cho trẻ {childId}");
+                return StatusCode(500, new { message = "Lỗi server nội bộ" });
+            }
+        }
+
         [HttpGet("{profileId}")]
         public async Task<IActionResult> GetChildVaccineProfileById(int profileId)
         {
