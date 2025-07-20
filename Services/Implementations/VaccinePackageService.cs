@@ -491,7 +491,7 @@ namespace Services.Implementations
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
                 var vaccinePackage = await packageRepository.GetAsync(
                     p => p.PackageId == packageId,
-                    includeProperties: "PackageVaccines,PackageVaccines.FacilityVaccine,PackageVaccines.Disease"
+                    includeProperties: "PackageVaccines,PackageVaccines.FacilityVaccine,PackageVaccines.Disease,PackageVaccines.FacilityVaccine.Vaccine"
                 );
                 if (vaccinePackage == null)
                 {
@@ -520,7 +520,7 @@ namespace Services.Implementations
                 var result = await packageRepository.GetAllAsync(
                     filter: filter,
                     orderBy: orderBy,
-                    include: "PackageVaccines,PackageVaccines.FacilityVaccine,PackageVaccines.Disease",
+                    include: "PackageVaccines,PackageVaccines.FacilityVaccine,PackageVaccines.Disease,PackageVaccines.FacilityVaccine.Vaccine",
                     pageIndex: pageIndex,
                     pageSize: pageSize);
 
