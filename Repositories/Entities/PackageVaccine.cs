@@ -13,7 +13,7 @@ public partial class PackageVaccine
 
     public int FacilityVaccineId { get; set; }
 
-    public int DiseaseId { get; set; }
+    public int VaccineDiseaseId { get; set; }
 
     public int Quantity { get; set; }
 
@@ -21,9 +21,9 @@ public partial class PackageVaccine
 
     public DateTime UpdatedAt { get; set; }
 
-    public virtual Disease Disease { get; set; }
-
     public virtual FacilityVaccine FacilityVaccine { get; set; }
 
     public virtual VaccinePackage Package { get; set; }
+
+    public virtual VaccineDisease VaccineDisease { get; set; }
 }
