@@ -13,6 +13,7 @@ namespace Contracts.DTOs.Survey
 
         [Required(ErrorMessage = "Question text is required")]
         [StringLength(1000, ErrorMessage = "Question text cannot exceed 1000 characters")]
+        public int SurveyId { get; set; }
         public string QuestionText { get; set; }
 
         [Required(ErrorMessage = "Question type is required")]

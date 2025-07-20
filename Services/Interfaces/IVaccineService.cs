@@ -14,5 +14,6 @@ namespace Services.Interfaces
         Task<IEnumerable<VaccineDTO>> GetAllVaccinesAsync();
         Task<VaccineDTO> UpdateVaccineAsync(int vaccineId, UpdateVaccineDTO vaccineDto);
         Task<bool> DeleteVaccineAsync(int vaccineId);
+        Task<IEnumerable<VaccineDTO>> GetAllVaccinesAsync(int? diseaseId = null);
     }
 }
