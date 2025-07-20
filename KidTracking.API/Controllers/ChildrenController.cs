@@ -85,6 +85,7 @@ namespace KidTracking.API.Controllers
             }
         }
         [HttpGet("{childId}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetChildById(int childId)
         {
             try
@@ -104,6 +105,29 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error getting child {childId}");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// API public để lấy thông tin child mà không cần check account ownership
+        /// </summary>
+        [HttpGet("public/{childId}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetChildByIdPublic(int childId)
+        {
+            try
+            {
+                var child = await _childService.GetChildByIdPublicAsync(childId);
+                return Ok(child);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting public child {childId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
