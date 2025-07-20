@@ -90,6 +90,30 @@ namespace Services.Implementations
             }
         }
 
+        /// <summary>
+        /// Lấy thông tin child theo childId mà không cần check account ownership (public API)
+        /// </summary>
+        public async Task<ChildDTO> GetChildByIdPublicAsync(int childId)
+        {
+            try
+            {
+                var childRepository = _unitOfWork.GetRepository<Child>();
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.Status == true);
+
+                if (child == null)
+                {
+                    throw new KeyNotFoundException($"Child with ID {childId} not found");
+                }
+
+                return _mapper.Map<ChildDTO>(child);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting public child {childId}");
+                throw;
+            }
+        }
+
         public async Task<ChildDTO> CreateChildAsync(int accountId, CreateChildDTO childDTO)
         {
             try
