@@ -27,7 +27,5 @@ public partial class OrderDetail
 
     public virtual FacilityVaccine FacilityVaccine { get; set; }
 
-    public virtual Vaccine FacilityVaccineNavigation { get; set; }
-
     public virtual Order Order { get; set; }
 }

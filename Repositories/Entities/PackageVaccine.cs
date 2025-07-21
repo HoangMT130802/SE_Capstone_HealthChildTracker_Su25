@@ -11,9 +11,9 @@ public partial class PackageVaccine
 
     public int PackageId { get; set; }
 
-    public int FacilityVaccineId { get; set; }
-
     public int DiseaseId { get; set; }
+
+    public int FacilityVaccineId { get; set; }
 
     public int Quantity { get; set; }
 

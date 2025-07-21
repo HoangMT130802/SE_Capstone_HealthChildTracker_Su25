@@ -38,7 +38,6 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.Disease, opt => opt.Ignore())
                 .ForMember(dest => dest.FacilityVaccine, opt => opt.Ignore())
-                .ForMember(dest => dest.FacilityVaccineNavigation, opt => opt.Ignore())
                 .ForMember(dest => dest.Order, opt => opt.Ignore());
 
             CreateMap<Order, OrderDTO>()
