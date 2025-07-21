@@ -19,9 +19,5 @@ public partial class VaccineDisease
 
     public virtual Disease Disease { get; set; }
 
-    public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
-
-    public virtual ICollection<PackageVaccine> PackageVaccines { get; set; } = new List<PackageVaccine>();
-
     public virtual Vaccine Vaccine { get; set; }
 }
