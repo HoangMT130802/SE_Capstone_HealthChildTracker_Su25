@@ -11,9 +11,9 @@ namespace Contracts.DTOs.Authentication
         public int AccountId { get; set; }
         public string AccountName { get; set; }
         public string Email { get; set; }
-        public string FullName { get; set; } 
-        public string Phone { get; set; } 
-        public string Address { get; set; } 
+        public string? FullName { get; set; } // Nullable - Guest chưa có thông tin này
+        public string? Phone { get; set; } // Nullable - Guest chưa có thông tin này
+        public string? Address { get; set; } // Nullable - Guest chưa có thông tin này
         public string Role { get; set; }
         public bool Status { get; set; }
         public string Token { get; set; }
