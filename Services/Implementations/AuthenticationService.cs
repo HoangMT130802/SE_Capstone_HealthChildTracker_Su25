@@ -258,22 +258,37 @@ namespace Services.Implementations
                     newAccount.CreatedAt = DateTime.UtcNow;
                     newAccount.UpdatedAt = DateTime.UtcNow;
                     newAccount.Status = true;
-                    newAccount.Role = "Guest"; 
+                    newAccount.Role = "Member"; // Trở về logic cũ - tạo Member ngay
 
                     await accountRepository.AddAsync(newAccount);
                     await _unitOfWork.SaveChangesAsync(); 
 
-                  
                     _logger.LogInformation($"Account created with ID: {newAccount.AccountId}");
 
-                    // Không tạo Member record cho Guest
-                    // Guest sẽ được upgrade thành Member khi mua membership
+                    // Tạo Member record ngay khi register (logic cũ)
+                    var memberRepository = _unitOfWork.GetRepository<Member>();
+                    var newMember = new Member
+                    {
+                        AccountId = newAccount.AccountId,
+                        FullName = request.FullName,
+                        PhoneNumber = request.Phone,
+                        Address = request.Address,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await memberRepository.AddAsync(newMember);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    _logger.LogInformation($"Member record created with ID: {newMember.MemberId}");
 
                     await transaction.CommitAsync();
 
                     var response = _mapper.Map<UserResponseDTO>(newAccount);
-                    // Guest không có thông tin cá nhân ban đầu
-                    // Sẽ được yêu cầu nhập khi upgrade thành Member
+                    // Set thông tin cá nhân từ Member record
+                    response.FullName = request.FullName;
+                    response.Phone = request.Phone;
+                    response.Address = request.Address;
                     response.Token = _jwtService.GenerateToken(newAccount);
 
                     _logger.LogInformation($"User {newAccount.AccountName} registered successfully with role {newAccount.Role}");

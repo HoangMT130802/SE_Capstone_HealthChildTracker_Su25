@@ -114,10 +114,7 @@ namespace Services.Implementations
                     {
                         IsSuccess = true,
                         Message = $"Đăng ký gói {membership.Name} thành công!",
-                        UserMembership = userMembershipDto,
-                        WasUpgradedFromGuest = false,
-                        MemberId = null,
-                        MemberFullName = null
+                        UserMembership = userMembershipDto
                     };
                 }
                 catch
@@ -235,10 +232,7 @@ namespace Services.Implementations
                     {
                         IsSuccess = true,
                         Message = $"Chúc mừng! Bạn đã được nâng cấp thành Member và đăng ký gói {membership.Name} thành công!",
-                        UserMembership = userMembershipDto,
-                        WasUpgradedFromGuest = true,
-                        MemberId = newMember.MemberId,
-                        MemberFullName = subscribeDto.FullName
+                        UserMembership = userMembershipDto
                     };
                 }
                 catch
@@ -393,8 +387,6 @@ namespace Services.Implementations
 
                 var userMembershipDTOs = _mapper.Map<List<UserMembershipDTO>>(result.Data);
 
-                _logger.LogInformation($"Retrieved {userMembershipDTOs.Count} user memberships (page {pageIndex}, size {pageSize})");
-                
                 return new QueryResultModel<List<UserMembershipDTO>>
                 {
                     Data = userMembershipDTOs,

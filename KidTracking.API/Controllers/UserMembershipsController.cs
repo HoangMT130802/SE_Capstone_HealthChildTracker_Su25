@@ -50,16 +50,18 @@ namespace KidTracking.API.Controllers
 
                 var accountRepository = _unitOfWork.GetRepository<Account>();
                 var account = await accountRepository.GetAsync(a => a.AccountId == accountId.Value);
+                
                 return account != null && account.Role == "Admin";
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error in ValidateAdminAccess");
                 return false;
             }
         }
 
         /// <summary>
-        /// Đăng ký membership cho Member (đã có thông tin cá nhân)
+        /// Đăng ký membership cho Member
         /// </summary>
         [HttpPost("subscribe")]
         [Authorize(Roles = "Member")]
@@ -83,57 +85,26 @@ namespace KidTracking.API.Controllers
                 if (result.IsSuccess)
                 {
                     _logger.LogInformation($"Member {accountId} successfully subscribed to membership {subscribeDto.MembershipId}");
-                    return Ok(result);
+                    // Trả về response đơn giản, bỏ các field dư thừa
+                    return Ok(new 
+                    {
+                        isSuccess = result.IsSuccess,
+                        message = result.Message
+                    });
                 }
                 else
                 {
                     _logger.LogWarning($"Failed to subscribe membership for member {accountId}: {result.Message}");
-                    return BadRequest(result);
+                    return BadRequest(new 
+                    {
+                        isSuccess = result.IsSuccess,
+                        message = result.Message
+                    });
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi đăng ký membership cho Member");
-                return StatusCode(500, new { message = "Lỗi server nội bộ" });
-            }
-        }
-
-        /// <summary>
-        /// Đăng ký membership cho Guest (cần nhập thông tin cá nhân để upgrade thành Member)
-        /// </summary>
-        [HttpPost("guest-subscribe")]
-        [Authorize(Roles = "Guest")]
-        public async Task<IActionResult> GuestSubscribeMembership([FromBody] GuestSubscribeMembershipDTO subscribeDto)
-        {
-            try
-            {
-                var accountId = await GetCurrentAccountId();
-                if (!accountId.HasValue)
-                {
-                    return Unauthorized("Không thể xác định tài khoản người dùng");
-                }
-
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var result = await _userMembershipService.GuestSubscribeMembershipAsync(accountId.Value, subscribeDto);
-                
-                if (result.IsSuccess)
-                {
-                    _logger.LogInformation($"Guest {accountId} successfully upgraded to Member and subscribed to membership {subscribeDto.MembershipId}");
-                    return Ok(result);
-                }
-                else
-                {
-                    _logger.LogWarning($"Failed to upgrade and subscribe membership for guest {accountId}: {result.Message}");
-                    return BadRequest(result);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi nâng cấp Guest và đăng ký membership");
                 return StatusCode(500, new { message = "Lỗi server nội bộ" });
             }
         }
@@ -305,6 +276,52 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError(ex, $"Lỗi khi lấy user memberships cho account {accountId}");
                 return StatusCode(500, new { message = "Lỗi server nội bộ" });
+            }
+        }
+
+        /// <summary>
+        /// Test endpoint để debug authentication
+        /// </summary>
+        [HttpGet("debug/auth")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DebugAuth()
+        {
+            try
+            {
+                var claims = User.Claims.Select(c => new { Type = c.Type, Value = c.Value }).ToList();
+                var accountId = await GetCurrentAccountId();
+                var isAdmin = await ValidateAdminAccess();
+                
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                Account account = null;
+                if (accountId.HasValue)
+                {
+                    account = await accountRepository.GetAsync(a => a.AccountId == accountId.Value);
+                }
+
+                return Ok(new
+                {
+                    Claims = claims,
+                    AccountId = accountId,
+                    IsAdmin = isAdmin,
+                    Account = account != null ? new 
+                    { 
+                        account.AccountId, 
+                        account.AccountName, 
+                        account.Role,
+                        account.Email 
+                    } : null,
+                    IsAuthenticated = User.Identity.IsAuthenticated,
+                    Identity = User.Identity.Name
+                });
+            }
+            catch (Exception ex)
+            {
+                return Ok(new
+                {
+                    Error = ex.Message,
+                    StackTrace = ex.StackTrace
+                });
             }
         }
     }
