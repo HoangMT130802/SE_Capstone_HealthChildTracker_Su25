@@ -196,6 +196,8 @@ namespace KidTracking.API
             builder.Services.AddScoped<IAppointmentScheduleService, AppointmentScheduleService>();
             builder.Services.AddScoped<IAppointmentBookingService, AppointmentBookingService>();
             builder.Services.AddScoped<ISurveyService, SurveyService>();
+            builder.Services.AddScoped<IMembershipService, MembershipService>();
+            builder.Services.AddScoped<IUserMembershipService, UserMembershipService>();
 
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);

@@ -32,6 +32,5 @@ namespace Contracts.DTOs.Authentication
         [Required(ErrorMessage = "Địa chỉ không được để trống")]
         [StringLength(200, ErrorMessage = "Địa chỉ không được vượt quá 200 ký tự")]
         public string Address { get; set; }
-
     }
 }
