@@ -15,5 +15,8 @@ namespace Contracts.DTOs.Authentication
         public bool Status { get; set; }
         public DateTime CreatedAt { get; set; }
         public string Token { get; set; }
+        
+        // ✅ Thông tin DoctorProfile (nếu Position = "Doctor")
+        public DoctorProfileDTO? DoctorProfile { get; set; }
     }
 } 

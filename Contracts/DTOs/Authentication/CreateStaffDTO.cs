@@ -4,32 +4,31 @@ namespace Contracts.DTOs.Authentication
 {
     public class CreateStaffDTO
     {
-        [Required(ErrorMessage = "Tên tài khoản không được để trống")]
-        [StringLength(50, ErrorMessage = "Tên tài khoản không được vượt quá 50 ký tự")]
+        [Required]
         public string AccountName { get; set; }
 
-        [Required(ErrorMessage = "Mật khẩu không được để trống")]
-        [StringLength(100, MinimumLength = 6, ErrorMessage = "Mật khẩu phải có ít nhất 6 ký tự")]
-        public string Password { get; set; }
-
-        [Required(ErrorMessage = "Email không được để trống")]
-        [EmailAddress(ErrorMessage = "Email không hợp lệ")]
+        [Required]
+        [EmailAddress]
         public string Email { get; set; }
 
-        [Required(ErrorMessage = "Họ tên không được để trống")]
-        [StringLength(100, ErrorMessage = "Họ tên không được vượt quá 100 ký tự")]
+        [Required]
+        public string Password { get; set; }
+
+        [Required]
         public string FullName { get; set; }
 
-        [Phone(ErrorMessage = "Số điện thoại không hợp lệ")]
-        public string Phone { get; set; }
+        public string? Phone { get; set; }
 
-        [Required(ErrorMessage = "ID cơ sở y tế không được để trống")]
-        public int FacilityId { get; set; }
+        [Required]
+        public string Position { get; set; } // "Doctor" hoặc "Staff"
 
-        [Required(ErrorMessage = "Vị trí không được để trống")]
-        [RegularExpression("^(Doctor|Staff)$", ErrorMessage = "Vị trí phải là Doctor hoặc Staff")]
-        public string Position { get; set; }
+        public string? Description { get; set; }
 
-        public string Description { get; set; }
+        // ✅ Optional DoctorProfile fields (chỉ dùng khi Position = "Doctor")
+        public int? Age { get; set; }
+        public string? Specialization { get; set; }
+        public string? Certifications { get; set; }
+        public string? University { get; set; }
+        public string? Bio { get; set; }
     }
 } 

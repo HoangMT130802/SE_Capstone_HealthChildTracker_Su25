@@ -63,31 +63,8 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.DoctorProfile, opt => opt.Ignore())
                 .ForMember(dest => dest.Facility, opt => opt.Ignore());
 
-            // Mapper cho CreateStaffDTO
-            CreateMap<CreateStaffDTO, Account>()
-                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
-                .ForMember(dest => dest.Password, opt => opt.Ignore())
-                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Position)) // Map role dựa trên position (Doctor hoặc Staff)
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.FacilityStaffs, opt => opt.Ignore())
-                .ForMember(dest => dest.Members, opt => opt.Ignore())
-                .ForMember(dest => dest.UserMemberships, opt => opt.Ignore());
-
-            CreateMap<CreateStaffDTO, FacilityStaff>()
-                .ForMember(dest => dest.StaffId, opt => opt.Ignore())
-                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
-                .ForMember(dest => dest.FacilityId, opt => opt.MapFrom(src => src.FacilityId))
-                .ForMember(dest => dest.Phone, opt => opt.Ignore())
-                .ForMember(dest => dest.Email, opt => opt.Ignore())
-                .ForMember(dest => dest.Position, opt => opt.MapFrom(src => src.Position))
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => true))
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.Account, opt => opt.Ignore())
-                .ForMember(dest => dest.DoctorProfile, opt => opt.Ignore())
-                .ForMember(dest => dest.Facility, opt => opt.Ignore());
+            // ✅ Bỏ mapping CreateStaffDTO vì giờ tạo manual trong service
+            // CreateStaffDTO -> Account và FacilityStaff được handle trong AuthenticationService
 
             // Mapper cho response
             CreateMap<FacilityStaff, StaffResponseDTO>()
@@ -131,6 +108,17 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
                 .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Account.Role))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
+
+            // ✅ Mapper cho DoctorProfile
+            CreateMap<DoctorProfile, DoctorProfileDTO>()
+                .ForMember(dest => dest.DoctorId, opt => opt.MapFrom(src => src.DoctorId))
+                .ForMember(dest => dest.Age, opt => opt.MapFrom(src => src.Age))
+                .ForMember(dest => dest.Specialization, opt => opt.MapFrom(src => src.Specialization))
+                .ForMember(dest => dest.Certifications, opt => opt.MapFrom(src => src.Certifications))
+                .ForMember(dest => dest.University, opt => opt.MapFrom(src => src.University))
+                .ForMember(dest => dest.Bio, opt => opt.MapFrom(src => src.Bio))
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
         }
     }
