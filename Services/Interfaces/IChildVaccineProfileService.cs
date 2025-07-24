@@ -14,5 +14,11 @@ namespace Services.Interfaces
         Task<ChildVaccineProfileDTO> GetChildVaccineProfileByIdAsync(int profileId);
         Task<ChildVaccineProfileDTO> CreateChildVaccineProfileAsync(CreateChildVaccineProfileDTO profileDTO);
         Task<ChildVaccineProfileDTO> UpdateChildVaccineProfileAsync(int profileId, UpdateChildVaccineProfileDTO profileDTO);
-        Task<bool> DeleteChildVaccineProfileAsync(int profileId); }
+        Task<bool> DeleteChildVaccineProfileAsync(int profileId);
+        
+        /// <summary>
+        /// Doctor ghi nhận hoàn thành tiêm vaccine và tạo mũi tiếp theo nếu cần
+        /// </summary>
+        Task<VaccinationCompletionResponseDTO> CompleteVaccinationAsync(CompleteVaccinationDTO completeDto);
+    }
 }

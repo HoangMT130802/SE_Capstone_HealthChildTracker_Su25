@@ -7,6 +7,7 @@ using Services.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace Services.Implementations
 {
@@ -257,6 +258,196 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error deleting vaccine profile {profileId}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Doctor ghi nhận hoàn thành tiêm vaccine và tạo mũi tiếp theo nếu cần
+        /// </summary>
+        public async Task<VaccinationCompletionResponseDTO> CompleteVaccinationAsync(CompleteVaccinationDTO completeDto)
+        {
+            try
+            {
+                _logger.LogInformation("Doctor completing vaccination for Child {ChildId}, Vaccine {VaccineId}, Dose {DoseNumber}", 
+                    completeDto.ChildId, completeDto.VaccineId, completeDto.DoseNumber);
+
+                // 1. Validate appointment có status "Payed" không
+                var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
+                var appointment = await appointmentRepo.GetAsync(a => a.AppointmentId == completeDto.AppointmentId);
+                if (appointment == null || appointment.Status != "Payed")
+                {
+                    throw new InvalidOperationException($"Appointment {completeDto.AppointmentId} not found or not in Payed status");
+                }
+
+                // 2. Validate child, vaccine exists
+                var childRepository = _unitOfWork.GetRepository<Child>();
+                var child = await childRepository.GetAsync(c => c.ChildId == completeDto.ChildId);
+                if (child == null)
+                {
+                    throw new KeyNotFoundException($"Child with ID {completeDto.ChildId} not found");
+                }
+
+                var vaccineRepository = _unitOfWork.GetRepository<Vaccine>();
+                var vaccine = await vaccineRepository.GetAsync(v => v.VaccineId == completeDto.VaccineId, "VaccineDiseases");
+                if (vaccine == null)
+                {
+                    throw new KeyNotFoundException($"Vaccine with ID {completeDto.VaccineId} not found");
+                }
+
+                // Lấy DiseaseId đầu tiên từ vaccine (có thể có nhiều disease)
+                var diseaseId = vaccine.VaccineDiseases?.FirstOrDefault()?.DiseaseId ?? 0;
+                if (diseaseId == 0)
+                {
+                    throw new InvalidOperationException($"Vaccine {completeDto.VaccineId} has no associated diseases");
+                }
+
+                var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
+
+                // 3. Tìm hoặc tạo bản ghi cho mũi hiện tại
+                var currentProfile = await profileRepository.GetAsync(p =>
+                    p.ChildId == completeDto.ChildId &&
+                    p.VaccineId == completeDto.VaccineId &&
+                    p.DoseNum == completeDto.DoseNumber);
+
+                if (currentProfile == null)
+                {
+                    // Tạo mới nếu chưa có
+                    currentProfile = new ChildVaccineProfile
+                    {
+                        ChildId = completeDto.ChildId,
+                        VaccineId = completeDto.VaccineId,
+                        DiseaseId = diseaseId,
+                        DoseNum = completeDto.DoseNumber,
+                        ExpectedDate = completeDto.ActualDate, // Set same as actual initially
+                        ActualDate = completeDto.ActualDate,
+                        Status = "Completed",
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                    await profileRepository.AddAsync(currentProfile);
+                    await _unitOfWork.SaveChangesAsync(); // Save để có ID
+                }
+
+                // 4. Cập nhật bản ghi hiện tại thành "Completed"
+                currentProfile.ActualDate = completeDto.ActualDate;
+                currentProfile.Status = "Completed";
+                currentProfile.Note = completeDto.Note ?? currentProfile.Note;
+                currentProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                profileRepository.Update(currentProfile);
+
+                // 5. Check xem vaccine có bao nhiêu mũi và đã tiêm được mũi nào chưa
+                var totalDoses = vaccine.NumberOfDoses; // Tổng số mũi của vaccine
+                var nextDoseNumber = completeDto.DoseNumber + 1;
+
+                _logger.LogInformation("Vaccine {VaccineId} has {TotalDoses} doses, current dose: {CurrentDose}, next dose: {NextDose}", 
+                    completeDto.VaccineId, totalDoses, completeDto.DoseNumber, nextDoseNumber);
+
+                ChildVaccineProfile? nextProfile = null;
+                DateOnly? nextExpectedDate = null;
+
+                // 6. Nếu còn mũi tiếp theo, tạo bản ghi cho mũi đó
+                if (nextDoseNumber <= totalDoses)
+                {
+                    // Check xem đã có bản ghi cho mũi tiếp theo chưa
+                    var existingNextProfile = await profileRepository.GetAsync(p =>
+                        p.ChildId == completeDto.ChildId &&
+                        p.VaccineId == completeDto.VaccineId &&
+                        p.DoseNum == nextDoseNumber);
+
+                    if (existingNextProfile == null)
+                    {
+                        // Tính toán ngày hẹn tiếp theo (dựa trên MinIntervalBetweenDoses của vaccine)
+                        var intervalDays = vaccine.MinIntervalBetweenDoses > 0 ? vaccine.MinIntervalBetweenDoses : 28;
+                        nextExpectedDate = completeDto.ActualDate.AddDays(intervalDays);
+
+                        nextProfile = new ChildVaccineProfile
+                        {
+                            ChildId = completeDto.ChildId,
+                            VaccineId = completeDto.VaccineId,
+                            DiseaseId = diseaseId,
+                            DoseNum = nextDoseNumber,
+                            ExpectedDate = nextExpectedDate.Value,
+                            ActualDate = DateOnly.MinValue, // Giá trị mặc định vì không nullable
+                            Status = "Scheduled", // Đã lên lịch
+                            Note = $"Mũi tiếp theo sau mũi {completeDto.DoseNumber}",
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        };
+
+                        await profileRepository.AddAsync(nextProfile);
+                        
+                        _logger.LogInformation("Created next dose profile for Child {ChildId}, Vaccine {VaccineId}, Dose {NextDose}, Expected date: {ExpectedDate}", 
+                            completeDto.ChildId, completeDto.VaccineId, nextDoseNumber, nextExpectedDate);
+                    }
+                    else
+                    {
+                        nextProfile = existingNextProfile;
+                        nextExpectedDate = existingNextProfile.ExpectedDate;
+                        _logger.LogInformation("Next dose profile already exists for Child {ChildId}, Vaccine {VaccineId}, Dose {NextDose}", 
+                            completeDto.ChildId, completeDto.VaccineId, nextDoseNumber);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Vaccine {VaccineId} course completed for Child {ChildId}. No more doses needed.", 
+                        completeDto.VaccineId, completeDto.ChildId);
+                }
+
+                // 7. Cập nhật appointment status thành "Completed"
+                appointment.Status = "Completed";
+                appointment.UpdatedAt = DateTime.UtcNow;
+                var appointmentRepository = _unitOfWork.GetRepository<VaccinationAppointment>();
+                appointmentRepository.Update(appointment);
+
+                await _unitOfWork.SaveChangesAsync();
+
+                // 8. Đếm số mũi đã hoàn thành
+                var completedProfiles = await profileRepository.FindAsync(p =>
+                    p.ChildId == completeDto.ChildId &&
+                    p.VaccineId == completeDto.VaccineId &&
+                    p.Status == "Completed");
+
+                var completedDoses = completedProfiles.Count();
+                var isVaccineCourseCompleted = completedDoses >= totalDoses;
+
+                // 9. Load full data để return
+                var completedProfile = await profileRepository.GetAsync(
+                    p => p.VaccineProfileId == currentProfile.VaccineProfileId,
+                    includeProperties: "Child,Vaccine"
+                );
+
+                ChildVaccineProfile? nextProfileWithData = null;
+                if (nextProfile != null)
+                {
+                    nextProfileWithData = await profileRepository.GetAsync(
+                        p => p.VaccineProfileId == nextProfile.VaccineProfileId,
+                        includeProperties: "Child,Vaccine"
+                    );
+                }
+
+                _logger.LogInformation("Successfully completed vaccination for Child {ChildId}, Vaccine {VaccineId}, Dose {DoseNumber}", 
+                    completeDto.ChildId, completeDto.VaccineId, completeDto.DoseNumber);
+
+                return new VaccinationCompletionResponseDTO
+                {
+                    CompletedDose = _mapper.Map<ChildVaccineProfileDTO>(completedProfile),
+                    NextDose = nextProfileWithData != null ? _mapper.Map<ChildVaccineProfileDTO>(nextProfileWithData) : null,
+                    HasNextDose = nextProfile != null,
+                    IsVaccineCourseCompleted = isVaccineCourseCompleted,
+                    TotalDoses = totalDoses,
+                    CompletedDoses = completedDoses,
+                    NextExpectedDate = nextExpectedDate,
+                    Message = isVaccineCourseCompleted ? 
+                        $"Hoàn thành toàn bộ liệu trình vaccine {vaccine.Name}" :
+                        $"Hoàn thành mũi {completeDto.DoseNumber}/{totalDoses}. Mũi tiếp theo dự kiến: {nextExpectedDate?.ToString("dd/MM/yyyy")}"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error completing vaccination for Child {ChildId}, Vaccine {VaccineId}, Dose {DoseNumber}", 
+                    completeDto.ChildId, completeDto.VaccineId, completeDto.DoseNumber);
                 throw;
             }
         }
