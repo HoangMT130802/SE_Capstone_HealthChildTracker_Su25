@@ -10,7 +10,7 @@ namespace KidTracking.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize] // Bỏ role requirement, chỉ cần login
+    [Authorize] 
     public class FacilityAppointmentController : ControllerBase
     {
         private readonly IAppointmentBookingService _appointmentBookingService;

@@ -57,7 +57,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ GET: api/scheduleslots/my-facility (Manager,Staff,Doctor,Member)
         [HttpGet("my-facility")]
-        [Authorize(Roles = "Manager,FacilityStaff,Doctor,Member")]
+        [Authorize(Roles = "FacilityStaff,Member")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> GetMyFacilitySlots()
         {
             try
@@ -136,7 +136,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ POST: api/scheduleslots (Manager only)
         [HttpPost]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> CreateSlot([FromBody] CreateScheduleSlotDTO createDto)
         {
             try
@@ -177,7 +177,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ PUT: api/scheduleslots/{id} (Manager only với facility check)
         [HttpPut("{id}")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<ScheduleSlotDTO>> UpdateSlot(int id, [FromBody] UpdateScheduleSlotDTO updateDto)
         {
             try
@@ -212,7 +212,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ DELETE: api/scheduleslots/{id} (Manager only với facility check)
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult> DeleteSlot(int id)
         {
             try
@@ -249,7 +249,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ PUT: api/scheduleslots/{id}/status (Manager only)
         [HttpPut("{id}/status")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult> UpdateSlotStatus(int id, [FromBody] string status)
         {
             try
@@ -280,7 +280,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ DELETE: api/scheduleslots/batch (Manager only)
         [HttpDelete("batch")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult> DeleteMultipleSlots([FromBody] List<int> slotIds)
         {
             try
@@ -307,7 +307,7 @@ namespace KidTracking.API.Controllers
 
         // ✅ Working Hours Group Management
         [HttpGet("working-hours-groups")]
-        [Authorize(Roles = "Manager,FacilityStaff,Doctor")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<List<WorkingHoursGroupDTO>>> GetWorkingHoursGroups()
         {
             try
@@ -328,7 +328,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpGet("working-hours-groups/{groupId}/slots")]
-        [Authorize(Roles = "Manager,FacilityStaff,Doctor")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<List<ScheduleSlotDTO>>> GetSlotsByWorkingHoursGroup(string groupId)
         {
             try
