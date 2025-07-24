@@ -82,6 +82,7 @@ namespace Services.Implementations
                 var response = _mapper.Map<UserResponseDTO>(account);
 
                
+                // ✅ Lấy thông tin staff nếu role = "FacilityStaff"
                 if (account.Role == "Member")
                 {
                     var memberRepository = _unitOfWork.GetRepository<Member>();
@@ -93,7 +94,7 @@ namespace Services.Implementations
                         response.Address = member.Address;
                     }
                 }
-                else if (account.Role == "FacilityStaff" || account.Role == "Doctor" || account.Role == "Manager")
+                else if (account.Role == "FacilityStaff") // ✅ Chỉ check "FacilityStaff"
                 {
                     var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                     var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId, 
@@ -103,13 +104,13 @@ namespace Services.Implementations
                         response.FullName = staff.FullName;
                         response.Phone = staff.Phone?.ToString();
                         response.StaffId = staff.StaffId;
-                        response.Position = staff.Position;
+                        response.Position = staff.Position; // "Manager", "Doctor", "Staff"
                         response.FacilityId = staff.FacilityId;
                     }
                 }
 
-                // ✅ Sử dụng JWT với FacilityId cho Staff/Manager
-                if (account.Role == "FacilityStaff" || account.Role == "Doctor" || account.Role == "Manager")
+                // ✅ Generate JWT với FacilityId cho Staff
+                if (account.Role == "FacilityStaff") // ✅ Chỉ check "FacilityStaff"
                 {
                     var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                     var staffInfo = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
@@ -153,7 +154,7 @@ namespace Services.Implementations
                 }
 
                 // Kiểm tra role có phải FacilityStaff không
-                if (account.Role != "FacilityStaff" && account.Role != "Doctor" && account.Role != "Manager")
+                if (account.Role != "FacilityStaff") // ✅ Chỉ check "FacilityStaff"
                 {
                     throw new UnauthorizedAccessException("Tài khoản này không phải là nhân viên cơ sở");
                 }
@@ -184,30 +185,8 @@ namespace Services.Implementations
                 
                 if (staff == null)
                 {
-                    // Manager mới tạo chưa có FacilityStaff record
-                    if (account.Role == "Manager")
-                    {
-                        response = new StaffResponseDTO
-                        {
-                            AccountId = account.AccountId,
-                            StaffId = 0, // Chưa có Staff record
-                            AccountName = account.AccountName,
-                            Email = account.Email,
-                            Role = account.Role,
-                            FullName = account.AccountName, // Tạm thời dùng AccountName
-                            Phone = "",
-                            FacilityId = 0, // Chưa có facility
-                            Position = "Manager",
-                            Description = "",
-                            Status = true,
-                            CreatedAt = account.CreatedAt,
-                            Token = _jwtService.GenerateToken(account, null) // Manager mới chưa có facility
-                        };
-                    }
-                    else
-                    {
-                        throw new UnauthorizedAccessException("Không tìm thấy thông tin nhân viên");
-                    }
+                    // ✅ Không còn logic cho Manager mới tạo vì tất cả đều có role "FacilityStaff"
+                    throw new UnauthorizedAccessException("Không tìm thấy thông tin nhân viên");
                 }
                 else
                 {
@@ -382,12 +361,18 @@ namespace Services.Implementations
                     // Hash password
                     var hashedPassword = BC.HashPassword(request.Password);
                     
-                    // Create Account
+                    // ✅ Create Account với Role = "FacilityStaff"
                     var accountRepository = _unitOfWork.GetRepository<Account>();
-                    var newAccount = _mapper.Map<Account>(request);
-                    newAccount.Password = hashedPassword;
-                    newAccount.CreatedAt = DateTime.UtcNow;
-                    newAccount.UpdatedAt = DateTime.UtcNow;
+                    var newAccount = new Account
+                    {
+                        AccountName = request.AccountName,
+                        Email = request.Email,
+                        Password = hashedPassword,
+                        Role = "FacilityStaff", // ✅ Manager cũng có role "FacilityStaff"
+                        Status = true,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
 
                     await accountRepository.AddAsync(newAccount);
                     await _unitOfWork.SaveChangesAsync();
@@ -401,11 +386,11 @@ namespace Services.Implementations
                         StaffId = 0, // Manager chưa có Staff record
                         AccountName = newAccount.AccountName,
                         Email = newAccount.Email,
-                        Role = newAccount.Role,
+                        Role = newAccount.Role, // ✅ "FacilityStaff"
                         FullName = request.FullName,
                         Phone = request.Phone ?? "",
                         FacilityId = 0, // Manager chưa có facility
-                        Position = "Manager",
+                        Position = "Manager", // ✅ Position = "Manager" trong FacilityStaff
                         Description = request.Description ?? "",
                         Status = true,
                         CreatedAt = newAccount.CreatedAt,
@@ -543,7 +528,7 @@ namespace Services.Implementations
                         }
                     }
                     
-                    response.Token = _jwtService.GenerateToken(newAccount);
+                    response.Token = _jwtService.GenerateToken(newAccount, facilityId); // ✅ Include FacilityId
 
                     _logger.LogInformation($"{request.Position} {newAccount.AccountName} created successfully by Manager {managerAccount.AccountName}");
                     return response;
@@ -687,7 +672,7 @@ namespace Services.Implementations
                 {
                     // Admin can update all
                 }
-                else
+                else if (currentAccount.Role == "FacilityStaff") // ✅ Sửa check role
                 {
                     // Check if current user is Manager
                     var currentStaff = await staffRepository.GetAsync(s => s.AccountId == currentUserId);
@@ -705,6 +690,10 @@ namespace Services.Implementations
                         throw new UnauthorizedAccessException("Bạn chỉ có thể cập nhật thông tin của chính mình");
                     }
                 }
+                else
+                {
+                    throw new UnauthorizedAccessException("Không có quyền cập nhật thông tin staff");
+                }
 
                 // Validate email uniqueness (exclude current staff)
                 var staffWithSameEmail = await staffRepository.GetAsync(s => 
@@ -714,23 +703,88 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Email đã được sử dụng bởi staff khác");
                 }
 
-                // Update staff info
-                staff.FullName = request.FullName;
-                staff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
-                    (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
-                staff.Email = request.Email;
-                staff.Position = request.Position;
-                staff.Description = request.Description;
-                staff.Status = request.Status;
-                staff.UpdatedAt = DateTime.UtcNow;
-
-                staffRepository.Update(staff);
-                await _unitOfWork.SaveChangesAsync();
-
-                var response = _mapper.Map<FacilityStaffInfoResponseDTO>(staff);
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
                 
-                _logger.LogInformation($"Staff {staff.FullName} info updated successfully by user {currentAccount.AccountName}");
-                return response;
+                try
+                {
+                    // Update staff info
+                    staff.FullName = request.FullName;
+                    staff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
+                        (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
+                    staff.Email = request.Email;
+                    staff.Position = request.Position;
+                    staff.Description = request.Description;
+                    staff.Status = request.Status;
+                    staff.UpdatedAt = DateTime.UtcNow;
+
+                    staffRepository.Update(staff);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    // ✅ Handle DoctorProfile nếu position = "Doctor"
+                    if (request.Position.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var doctorProfileRepository = _unitOfWork.GetRepository<DoctorProfile>();
+                        var existingDoctorProfile = await doctorProfileRepository.GetAsync(dp => dp.DoctorId == staff.StaffId);
+                        
+                        if (existingDoctorProfile == null)
+                        {
+                            // Tạo DoctorProfile mới nếu chưa có
+                            var newDoctorProfile = new DoctorProfile
+                            {
+                                DoctorId = staff.StaffId,
+                                Age = request.Age ?? 0,
+                                Specialization = request.Specialization ?? "",
+                                Certifications = request.Certifications ?? "",
+                                University = request.University ?? "",
+                                Bio = request.Bio ?? "",
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+
+                            await doctorProfileRepository.AddAsync(newDoctorProfile);
+                            _logger.LogInformation($"Created DoctorProfile for Staff {staff.FullName} (StaffId: {staff.StaffId})");
+                        }
+                        else
+                        {
+                            // Cập nhật DoctorProfile đã tồn tại
+                            existingDoctorProfile.Age = request.Age ?? existingDoctorProfile.Age;
+                            existingDoctorProfile.Specialization = request.Specialization ?? existingDoctorProfile.Specialization;
+                            existingDoctorProfile.Certifications = request.Certifications ?? existingDoctorProfile.Certifications;
+                            existingDoctorProfile.University = request.University ?? existingDoctorProfile.University;
+                            existingDoctorProfile.Bio = request.Bio ?? existingDoctorProfile.Bio;
+                            existingDoctorProfile.UpdatedAt = DateTime.UtcNow;
+
+                            doctorProfileRepository.Update(existingDoctorProfile);
+                            _logger.LogInformation($"Updated DoctorProfile for Staff {staff.FullName} (StaffId: {staff.StaffId})");
+                        }
+                        
+                        await _unitOfWork.SaveChangesAsync();
+                    }
+                    else
+                    {
+                        // ✅ Nếu position không phải Doctor, xóa DoctorProfile nếu có
+                        var doctorProfileRepository = _unitOfWork.GetRepository<DoctorProfile>();
+                        var existingDoctorProfile = await doctorProfileRepository.GetAsync(dp => dp.DoctorId == staff.StaffId);
+                        if (existingDoctorProfile != null)
+                        {
+                            doctorProfileRepository.Delete(existingDoctorProfile);
+                            await _unitOfWork.SaveChangesAsync();
+                            _logger.LogInformation($"Deleted DoctorProfile for Staff {staff.FullName} (StaffId: {staff.StaffId}) as position changed to {request.Position}");
+                        }
+                    }
+
+                    await transaction.CommitAsync();
+
+                    var response = _mapper.Map<FacilityStaffInfoResponseDTO>(staff);
+                    
+                    _logger.LogInformation($"Staff {staff.FullName} info updated successfully by user {currentAccount.AccountName}");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {

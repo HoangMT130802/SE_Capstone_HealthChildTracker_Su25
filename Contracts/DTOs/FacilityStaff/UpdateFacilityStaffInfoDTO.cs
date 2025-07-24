@@ -27,5 +27,20 @@ namespace Contracts.DTOs.FacilityStaff
         public string? Description { get; set; }
 
         public bool Status { get; set; } = true;
+
+        // ✅ DoctorProfile fields (chỉ dùng khi Position = "Doctor")
+        public int? Age { get; set; }
+        
+        [StringLength(200, ErrorMessage = "Chuyên khoa không được vượt quá 200 ký tự")]
+        public string? Specialization { get; set; }
+        
+        [StringLength(500, ErrorMessage = "Chứng chỉ không được vượt quá 500 ký tự")]
+        public string? Certifications { get; set; }
+        
+        [StringLength(200, ErrorMessage = "Trường đại học không được vượt quá 200 ký tự")]
+        public string? University { get; set; }
+        
+        [StringLength(1000, ErrorMessage = "Tiểu sử không được vượt quá 1000 ký tự")]
+        public string? Bio { get; set; }
     }
 } 

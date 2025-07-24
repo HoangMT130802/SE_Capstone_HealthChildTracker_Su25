@@ -201,6 +201,43 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Lỗi server nội bộ" });
             }
         }
+
+        /// <summary>
+        /// Doctor ghi nhận hoàn thành tiêm vaccine và tạo mũi tiếp theo nếu cần
+        /// </summary>
+        [HttpPost("complete-vaccination")]
+        [Authorize(Roles = "FacilityStaff")]
+        public async Task<IActionResult> CompleteVaccination([FromBody] CompleteVaccinationDTO completeDto)
+        {
+            try
+            {
+                _logger.LogInformation("Doctor completing vaccination for Appointment {AppointmentId}, Vaccine {VaccineId}, Dose {DoseNumber}", 
+                    completeDto.AppointmentId, completeDto.VaccineId, completeDto.DoseNumber);
+
+                var result = await _childVaccineProfileService.CompleteVaccinationAsync(completeDto);
+                
+                _logger.LogInformation("Successfully completed vaccination for Appointment {AppointmentId}, Vaccine {VaccineId}", 
+                    completeDto.AppointmentId, completeDto.VaccineId);
+                    
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "Not found when completing vaccination");
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation when completing vaccination");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi complete vaccination cho Appointment {AppointmentId}, Vaccine {VaccineId}", 
+                    completeDto.AppointmentId, completeDto.VaccineId);
+                return StatusCode(500, new { message = "Lỗi server nội bộ" });
+            }
+        }
     }
 
 }

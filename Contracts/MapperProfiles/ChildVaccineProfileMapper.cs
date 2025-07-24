@@ -22,7 +22,9 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.VaccineId, opt => opt.MapFrom(src => src.VaccineId))
                 .ForMember(dest => dest.DoseNum, opt => opt.MapFrom(src => src.DoseNum))
                 .ForMember(dest => dest.ExpectedDate, opt => opt.MapFrom(src => src.ExpectedDate))
-                .ForMember(dest => dest.ActualDate, opt => opt.MapFrom(src => src.ActualDate))
+                // ✅ ActualDate: nếu = DateOnly.MinValue thì trả về null (cho nextDose)
+                .ForMember(dest => dest.ActualDate, opt => opt.MapFrom(src => 
+                    src.ActualDate == DateOnly.MinValue ? (DateOnly?)null : src.ActualDate))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
                 .ForMember(dest => dest.IsRequired, opt => opt.MapFrom(src => src.IsRequired))
                 .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
