@@ -422,7 +422,7 @@ namespace Services.Implementations
                             Severity = ValidationSeverity.Error
                         });
                     }
-                    else if (order.Status != "Completed" && order.Status != "Paid")
+                   /* else if (order.Status != "Pending" || order.Status != "Paid")
                     {
                         validation.CanBook = false;
                         validation.Errors.Add(new ValidationErrorDTO
@@ -432,7 +432,7 @@ namespace Services.Implementations
                             Field = "OrderId",
                             Severity = ValidationSeverity.Error
                         });
-                    }
+                    }*/
                     else
                     {
                         // Kiểm tra Order có thuộc về Member của Child không
@@ -676,10 +676,10 @@ namespace Services.Implementations
                         throw new ArgumentException($"Không tìm thấy Order với ID {request.OrderId.Value}");
                     }
                     
-                    if (existingOrder.Status != "Completed" && existingOrder.Status != "Paid")
+                   /* if (existingOrder.Status != "Pending" || existingOrder.Status != "Paid")
                     {
                         throw new InvalidOperationException($"Order {request.OrderId.Value} chưa được thanh toán");
-                    }
+                    }*/
                     
                     appointment.OrderId = request.OrderId.Value;
                     _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công", request.OrderId.Value);
