@@ -1,6 +1,7 @@
 using Contracts.DTOs.Child;
 using Contracts.DTOs.Disease;
 using Contracts.DTOs.FacilitySchedule;
+using Contracts.DTOs.Order;
 using Contracts.DTOs.VaccinationFacility;
 using Contracts.DTOs.VaccinePackage;
 
@@ -24,6 +25,9 @@ namespace Contracts.DTOs.Appointment
 
         // Thông tin cơ sở
         public VaccinationFacilityDTO Facility { get; set; }
+
+        // Thông tin Order đã mua (nếu có)
+        public OrderDTO? Order { get; set; }
 
         // Thông tin gói vaccine (nếu có)
         public VaccinePackageDTO? Package { get; set; }

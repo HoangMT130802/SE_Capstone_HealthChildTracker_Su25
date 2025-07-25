@@ -17,12 +17,17 @@ namespace Contracts.DTOs.Appointment
         public int FacilityId { get; set; }
 
         /// <summary>
-        /// ID gói vaccine (tùy chọn - có thể chọn vaccine lẻ thay vì gói)
+        /// ID Order đã mua (sử dụng gói đã tồn tại)
+        /// </summary>
+        public int? OrderId { get; set; }
+
+        /// <summary>
+        /// ID gói vaccine (để mua gói mới cùng lúc với đặt lịch)
         /// </summary>
         public int? PackageId { get; set; }
 
         /// <summary>
-        /// Danh sách ID vaccine nếu không chọn gói
+        /// Danh sách ID vaccine nếu đặt vaccine lẻ (không qua gói)
         /// </summary>
         public List<int>? FacilityVaccineIds { get; set; }
 

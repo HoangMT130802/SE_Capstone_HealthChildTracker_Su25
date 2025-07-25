@@ -288,19 +288,21 @@ namespace KidTracking.API.Controllers
         /// Tính toán chi phí dự kiến
         /// </summary>
         /// <param name="facilityId">ID cơ sở</param>
-        /// <param name="packageId">ID gói vaccine (tùy chọn)</param>
-        /// <param name="facilityVaccineIds">Danh sách ID vaccine (nếu không chọn gói)</param>
+        /// <param name="orderId">ID Order đã mua (tùy chọn)</param>
+        /// <param name="packageId">ID gói vaccine mới (tùy chọn)</param>
+        /// <param name="facilityVaccineIds">Danh sách ID vaccine lẻ (tùy chọn)</param>
         /// <returns>Chi tiết chi phí</returns>
         [HttpPost("calculate-cost/{facilityId}")]
         public async Task<ActionResult<CostBreakdownDTO>> CalculateEstimatedCost(
             int facilityId,
+            [FromQuery] int? orderId = null,
             [FromQuery] int? packageId = null,
             [FromBody] List<int>? facilityVaccineIds = null)
         {
             try
             {
                 var result = await _appointmentBookingService.CalculateEstimatedCostAsync(
-                    facilityId, packageId, facilityVaccineIds);
+                    facilityId, orderId, packageId, facilityVaccineIds);
                 return Ok(result);
             }
             catch (Exception ex)

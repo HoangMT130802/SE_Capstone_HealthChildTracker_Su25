@@ -375,17 +375,81 @@ namespace Services.Implementations
                     }
                 }
 
-                // Validate vaccine selection
-                if (!request.PackageId.HasValue && (request.FacilityVaccineIds == null || !request.FacilityVaccineIds.Any()))
+                // Validate vaccine selection - chỉ được chọn 1 trong 3 options
+                var hasOrderId = request.OrderId.HasValue && request.OrderId.Value > 0;
+                var hasPackageId = request.PackageId.HasValue && request.PackageId.Value > 0;
+                var hasFacilityVaccineIds = request.FacilityVaccineIds != null && request.FacilityVaccineIds.Any();
+                
+                var selectionCount = (hasOrderId ? 1 : 0) + (hasPackageId ? 1 : 0) + (hasFacilityVaccineIds ? 1 : 0);
+                
+                if (selectionCount == 0)
                 {
                     validation.CanBook = false;
                     validation.Errors.Add(new ValidationErrorDTO
                     {
                         Code = "NO_VACCINE_SELECTED",
-                        Message = "Phải chọn gói vaccine hoặc vaccine lẻ",
-                        Field = "PackageId,FacilityVaccineIds",
+                        Message = "Phải chọn 1 trong 3: Order đã mua, gói vaccine mới, hoặc vaccine lẻ",
+                        Field = "OrderId,PackageId,FacilityVaccineIds",
                         Severity = ValidationSeverity.Error
                     });
+                }
+                else if (selectionCount > 1)
+                {
+                    validation.CanBook = false;
+                    validation.Errors.Add(new ValidationErrorDTO
+                    {
+                        Code = "MULTIPLE_VACCINE_SELECTION",
+                        Message = "Chỉ được chọn 1 trong 3: Order đã mua, gói vaccine mới, hoặc vaccine lẻ",
+                        Field = "OrderId,PackageId,FacilityVaccineIds",
+                        Severity = ValidationSeverity.Error
+                    });
+                }
+
+                // Validate Order nếu được chọn
+                if (hasOrderId)
+                {
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    var order = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value, "Member");
+                    
+                    if (order == null)
+                    {
+                        validation.CanBook = false;
+                        validation.Errors.Add(new ValidationErrorDTO
+                        {
+                            Code = "ORDER_NOT_FOUND",
+                            Message = "Không tìm thấy Order",
+                            Field = "OrderId",
+                            Severity = ValidationSeverity.Error
+                        });
+                    }
+                    else if (order.Status != "Completed" && order.Status != "Paid")
+                    {
+                        validation.CanBook = false;
+                        validation.Errors.Add(new ValidationErrorDTO
+                        {
+                            Code = "ORDER_NOT_PAID",
+                            Message = "Order chưa được thanh toán",
+                            Field = "OrderId",
+                            Severity = ValidationSeverity.Error
+                        });
+                    }
+                    else
+                    {
+                        // Kiểm tra Order có thuộc về Member của Child không
+                        var memberRepo = _unitOfWork.GetRepository<Member>();
+                        var member = await memberRepo.GetAsync(m => m.MemberId == child.MemberId);
+                        if (member != null && order.MemberId != member.MemberId)
+                        {
+                            validation.CanBook = false;
+                            validation.Errors.Add(new ValidationErrorDTO
+                            {
+                                Code = "ORDER_NOT_OWNED",
+                                Message = "Order không thuộc về Member này",
+                                Field = "OrderId",
+                                Severity = ValidationSeverity.Error
+                            });
+                        }
+                    }
                 }
 
                 return validation;
@@ -459,7 +523,7 @@ namespace Services.Implementations
 
         #region Cost Calculation Methods
 
-        public async Task<CostBreakdownDTO> CalculateEstimatedCostAsync(int facilityId, int? packageId = null, List<int>? facilityVaccineIds = null)
+        public async Task<CostBreakdownDTO> CalculateEstimatedCostAsync(int facilityId, int? orderId = null, int? packageId = null, List<int>? facilityVaccineIds = null)
         {
             try
             {
@@ -468,7 +532,25 @@ namespace Services.Implementations
                 decimal vaccineCost = 0;
                 var items = new List<CostItemDTO>();
 
-                if (packageId.HasValue)
+                if (orderId.HasValue)
+                {
+                    // Calculate cost from existing order
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    var order = await orderRepo.GetAsync(o => o.OrderId == orderId.Value, "Package");
+                    if (order != null)
+                    {
+                        vaccineCost = order.TotalAmount;
+                        items.Add(new CostItemDTO
+                        {
+                            Name = order.Package?.Name ?? "Order Package",
+                            Type = "Existing Order",
+                            Quantity = 1,
+                            UnitPrice = order.TotalAmount,
+                            TotalPrice = order.TotalAmount
+                        });
+                    }
+                }
+                else if (packageId.HasValue)
                 {
                     // Calculate package cost
                     var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
@@ -510,11 +592,19 @@ namespace Services.Implementations
                     }
                 }
 
-                // Calculate fees
-                decimal serviceFee = vaccineCost * 0.1m; // 10% service fee
-                decimal bookingFee = 50000; // 50k booking fee
-                decimal tax = (vaccineCost + serviceFee) * 0.1m; // 10% VAT
-                decimal totalCost = vaccineCost + serviceFee + bookingFee + tax;
+                // Calculate fees (skip for existing orders)
+                decimal serviceFee = 0;
+                decimal bookingFee = 0; 
+                decimal tax = 0;
+                decimal totalCost = vaccineCost;
+
+                if (!orderId.HasValue) // Chỉ tính phí cho Order mới hoặc vaccine lẻ
+                {
+                    serviceFee = vaccineCost * 0.1m; // 10% service fee
+                    bookingFee = 50000; // 50k booking fee
+                    tax = (vaccineCost + serviceFee) * 0.1m; // 10% VAT
+                    totalCost = vaccineCost + serviceFee + bookingFee + tax;
+                }
 
                 return new CostBreakdownDTO
                 {
@@ -542,8 +632,8 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Đặt lịch cho trẻ {ChildId}, PackageId: {PackageId}, FacilityVaccineIds: {FacilityVaccineIds}", 
-                    request.ChildId, request.PackageId, request.FacilityVaccineIds != null ? string.Join(",", request.FacilityVaccineIds) : "null");
+                _logger.LogInformation("Đặt lịch cho trẻ {ChildId}, OrderId: {OrderId}, PackageId: {PackageId}, FacilityVaccineIds: {FacilityVaccineIds}", 
+                    request.ChildId, request.OrderId, request.PackageId, request.FacilityVaccineIds != null ? string.Join(",", request.FacilityVaccineIds) : "null");
 
                 // Validate first
                 var validation = await ValidateBookingRequestAsync(request);
@@ -573,10 +663,31 @@ namespace Services.Implementations
                     UpdatedAt = DateTime.UtcNow
                 };
 
-                // LUỒNG 1: Tạo Order nếu chọn gói vaccine
-                if (request.PackageId.HasValue && request.PackageId.Value > 0)
+                // LUỒNG 1: Sử dụng Order đã mua
+                if (request.OrderId.HasValue && request.OrderId.Value > 0)
                 {
-                    _logger.LogInformation("Xử lý đặt lịch với gói vaccine {PackageId}", request.PackageId.Value);
+                    _logger.LogInformation("Xử lý đặt lịch với Order đã mua {OrderId}", request.OrderId.Value);
+                    
+                    // Validate Order exists và đã paid
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    var existingOrder = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value);
+                    if (existingOrder == null)
+                    {
+                        throw new ArgumentException($"Không tìm thấy Order với ID {request.OrderId.Value}");
+                    }
+                    
+                    if (existingOrder.Status != "Completed" && existingOrder.Status != "Paid")
+                    {
+                        throw new InvalidOperationException($"Order {request.OrderId.Value} chưa được thanh toán");
+                    }
+                    
+                    appointment.OrderId = request.OrderId.Value;
+                    _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công", request.OrderId.Value);
+                }
+                // LUỒNG 2: Tạo Order mới nếu chọn gói vaccine
+                else if (request.PackageId.HasValue && request.PackageId.Value > 0)
+                {
+                    _logger.LogInformation("Xử lý đặt lịch với gói vaccine mới {PackageId}", request.PackageId.Value);
                     
                     var memberRepo = _unitOfWork.GetRepository<Member>();
                     var member = await memberRepo.GetAsync(m => m.MemberId == child.MemberId);
@@ -590,7 +701,7 @@ namespace Services.Implementations
                         MemberId = member.MemberId,
                         PackageId = request.PackageId.Value,
                         OrderDate = DateTime.UtcNow,
-                        TotalAmount = (await CalculateEstimatedCostAsync(request.FacilityId, request.PackageId)).TotalCost,
+                        TotalAmount = (await CalculateEstimatedCostAsync(request.FacilityId, null, request.PackageId, null)).TotalCost,
                         Status = "Pending",
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -601,8 +712,9 @@ namespace Services.Implementations
                     await _unitOfWork.SaveChangesAsync();
                     appointment.OrderId = order.OrderId;
                     
-                    _logger.LogInformation("Tạo Order thành công với ID {OrderId}", order.OrderId);
+                    _logger.LogInformation("Tạo Order mới thành công với ID {OrderId}", order.OrderId);
                 }
+                // LUỒNG 3: Vaccine lẻ
                 else
                 {
                     _logger.LogInformation("Xử lý đặt lịch với vaccine lẻ");
@@ -624,7 +736,7 @@ namespace Services.Implementations
                     throw new ArgumentException($"Không tìm thấy schedule với ID {request.ScheduleId}");
                 }
 
-                // LUỒNG 2: Tạo VaccinationAppointmentDetails cho vaccine lẻ
+                // LUỒNG 4: Tạo VaccinationAppointmentDetails cho vaccine lẻ
                 if (request.FacilityVaccineIds != null && request.FacilityVaccineIds.Any())
                 {
                     _logger.LogInformation("Tạo VaccinationAppointmentDetails cho {Count} vaccine", request.FacilityVaccineIds.Count);
@@ -659,7 +771,7 @@ namespace Services.Implementations
                 }
 
                 // Calculate estimated cost
-                var estimatedCost = await CalculateEstimatedCostAsync(request.FacilityId, request.PackageId, request.FacilityVaccineIds);
+                var estimatedCost = await CalculateEstimatedCostAsync(request.FacilityId, request.OrderId, request.PackageId, request.FacilityVaccineIds);
 
                 // Load related data for response
                 var diseaseRepo = _unitOfWork.GetRepository<Disease>();
@@ -674,6 +786,14 @@ namespace Services.Implementations
                 {
                     var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
                     package = await packageRepo.GetByIdAsync(request.PackageId.Value);
+                }
+
+                // ✅ Load order data if exists
+                Order? orderForResponse = null;
+                if (request.OrderId.HasValue && request.OrderId.Value > 0)
+                {
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    orderForResponse = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value, "Member,Package,OrderDetails");
                 }
 
                 // Load selected vaccines data if exists
@@ -747,6 +867,9 @@ namespace Services.Implementations
                         Price = package.Price
                     } : null,
                     
+                    // ✅ Map order data
+                    Order = orderForResponse != null ? _mapper.Map<Contracts.DTOs.Order.OrderDTO>(orderForResponse) : null,
+                    
                     // Map selected vaccines data
                     SelectedVaccines = selectedVaccines,
                     
@@ -778,7 +901,9 @@ namespace Services.Implementations
 
                 _logger.LogInformation("Đặt lịch thành công cho trẻ {ChildId}, AppointmentId: {AppointmentId}, Luồng: {Flow}", 
                     request.ChildId, appointment.AppointmentId, 
-                    request.PackageId.HasValue ? "Package" : "Individual vaccines");
+                    request.OrderId.HasValue ? $"Order existing {request.OrderId}" :
+                    request.PackageId.HasValue ? $"Package new {request.PackageId}" : 
+                    "Individual vaccines");
                     
                 return response;
             }
@@ -1351,6 +1476,7 @@ namespace Services.Implementations
             
             var estimatedCost = await CalculateEstimatedCostAsync(
                 appointment.Schedule.FacilityId, 
+                appointment.Order?.OrderId, // Sử dụng OrderId từ Order
                 appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null, // Sử dụng PackageId từ Order
                 facilityVaccineIds);
             
@@ -1549,7 +1675,7 @@ namespace Services.Implementations
                         var packageId = vaccines.VaccinePackages.FirstOrDefault()?.PackageId;
                         var facilityVaccineIds = vaccines.IndividualVaccines.Take(1).Select(v => v.FacilityVaccineId).ToList();
                         
-                        var cost = await CalculateEstimatedCostAsync(facility.FacilityId, packageId, facilityVaccineIds.Any() ? facilityVaccineIds : null);
+                        var cost = await CalculateEstimatedCostAsync(facility.FacilityId, null, packageId, facilityVaccineIds.Any() ? facilityVaccineIds : null);
 
                         suggestions.Add(new AppointmentSuggestionDTO
                         {
@@ -1621,6 +1747,7 @@ namespace Services.Implementations
             var facilityVaccineIds = appointment.VaccinationAppointmentDetails?.Select(d => d.VaccineId).ToList();
             var estimatedCost = await CalculateEstimatedCostAsync(
                 appointment.Schedule.FacilityId, 
+                appointment.Order?.OrderId,
                 appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null,
                 facilityVaccineIds);
             

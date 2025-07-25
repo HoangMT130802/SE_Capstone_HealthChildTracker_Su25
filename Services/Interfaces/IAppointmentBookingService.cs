@@ -14,7 +14,7 @@ namespace Services.Interfaces
         Task<ChildVaccinationHistoryDTO> GetChildVaccinationHistoryAsync(int childId, int diseaseId);
         
         // Cost Calculation Methods
-        Task<CostBreakdownDTO> CalculateEstimatedCostAsync(int facilityId, int? packageId = null, List<int>? facilityVaccineIds = null);
+        Task<CostBreakdownDTO> CalculateEstimatedCostAsync(int facilityId, int? orderId = null, int? packageId = null, List<int>? facilityVaccineIds = null);
         
         // Booking Methods
         Task<AppointmentBookingResponseDTO> BookAppointmentAsync(AppointmentBookingRequestDTO request);
