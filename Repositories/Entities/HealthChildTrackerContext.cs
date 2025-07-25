@@ -13,7 +13,7 @@ public partial class HealthChildTrackerContext : DbContext
         : base(options)
     {
     }
-    public HealthChildTrackerContext ()  { }
+    public HealthChildTrackerContext() { }
     public virtual DbSet<Account> Accounts { get; set; }
 
     public virtual DbSet<AppointmentSchedule> AppointmentSchedules { get; set; }
@@ -242,9 +242,7 @@ public partial class HealthChildTrackerContext : DbContext
 
             entity.ToTable("ChildVaccineProfile");
 
-            entity.Property(e => e.Priority)
-                .IsRequired()
-                .HasMaxLength(255);
+            entity.Property(e => e.Priority).HasMaxLength(255);
             entity.Property(e => e.Status)
                 .IsRequired()
                 .HasMaxLength(255);
@@ -734,9 +732,7 @@ public partial class HealthChildTrackerContext : DbContext
             entity.ToTable("Transaction");
 
             entity.Property(e => e.TransactionId).HasColumnName("Transaction_id");
-            entity.Property(e => e.Amount)
-                .HasColumnType("decimal(8, 2)")
-                .HasColumnName("amount");
+            entity.Property(e => e.Amount).HasColumnType("decimal(10, 2)");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.Description)
                 .IsRequired()
@@ -747,6 +743,18 @@ public partial class HealthChildTrackerContext : DbContext
             entity.Property(e => e.TransactionCode)
                 .IsRequired()
                 .HasMaxLength(255);
+            entity.Property(e => e.TransactionType)
+                .IsRequired()
+                .HasMaxLength(10)
+                .IsFixedLength();
+
+            entity.HasOne(d => d.FacilityMembershipSubscription).WithMany(p => p.Transactions)
+                .HasForeignKey(d => d.FacilityMembershipSubscriptionId)
+                .HasConstraintName("FK_Transaction_FacilityMembershipSubscription");
+
+            entity.HasOne(d => d.UserMembership).WithMany(p => p.Transactions)
+                .HasForeignKey(d => d.UserMembershipId)
+                .HasConstraintName("FK_Transaction_UserMembership");
         });
 
         modelBuilder.Entity<UserMembership>(entity =>

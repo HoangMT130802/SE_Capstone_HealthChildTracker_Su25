@@ -26,4 +26,6 @@ public partial class FacilityMembershipSubscription
     public virtual VaccinationFacility Facility { get; set; }
 
     public virtual FacilityMembership FacilityMembership { get; set; }
+
+    public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 }

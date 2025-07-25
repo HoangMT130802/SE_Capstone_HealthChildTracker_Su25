@@ -26,4 +26,6 @@ public partial class UserMembership
     public virtual Account Account { get; set; }
 
     public virtual Membership Membership { get; set; }
+
+    public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 }
