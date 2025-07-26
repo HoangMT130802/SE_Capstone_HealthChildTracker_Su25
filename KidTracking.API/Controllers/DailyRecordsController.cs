@@ -40,7 +40,7 @@ namespace KidTracking.API.Controllers
                 }
 
                 // Admin và Doctor có quyền truy cập tất cả
-                if (User.IsInRole("Admin") || User.IsInRole("Doctor"))
+                if (User.IsInRole("Admin") || User.IsInRole("FacilityStaff"))
                 {
                     return true;
                 }

@@ -38,7 +38,7 @@ namespace KidTracking.API.Controllers
                     return false;
                 }
 
-                if (User.IsInRole("Admin") || User.IsInRole("Doctor"))
+                if (User.IsInRole("Admin") || User.IsInRole("FacilityStaff"))
                 {
                     return true;
                 }
@@ -211,13 +211,20 @@ namespace KidTracking.API.Controllers
         {
             try
             {
-                _logger.LogInformation("Doctor completing vaccination for Appointment {AppointmentId}, Vaccine {VaccineId}, Dose {DoseNumber}", 
-                    completeDto.AppointmentId, completeDto.VaccineId, completeDto.DoseNumber);
+                _logger.LogInformation("Doctor completing vaccination for Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
+                    completeDto.AppointmentId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
 
-                var result = await _childVaccineProfileService.CompleteVaccinationAsync(completeDto);
+                // Lấy current user ID từ token
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized("Không thể xác định tài khoản người dùng");
+                }
+
+                var result = await _childVaccineProfileService.CompleteVaccinationAsync(completeDto, currentUserId);
                 
-                _logger.LogInformation("Successfully completed vaccination for Appointment {AppointmentId}, Vaccine {VaccineId}", 
-                    completeDto.AppointmentId, completeDto.VaccineId);
+                _logger.LogInformation("Successfully completed vaccination for Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}", 
+                    completeDto.AppointmentId, completeDto.FacilityVaccineId);
                     
                 return Ok(result);
             }
@@ -233,8 +240,8 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi complete vaccination cho Appointment {AppointmentId}, Vaccine {VaccineId}", 
-                    completeDto.AppointmentId, completeDto.VaccineId);
+                _logger.LogError(ex, "Lỗi khi complete vaccination cho Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}", 
+                    completeDto.AppointmentId, completeDto.FacilityVaccineId);
                 return StatusCode(500, new { message = "Lỗi server nội bộ" });
             }
         }
