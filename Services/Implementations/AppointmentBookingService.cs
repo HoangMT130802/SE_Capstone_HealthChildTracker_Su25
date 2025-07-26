@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using Repositories.Entities;
 using Repositories.Interfaces;
 using Services.Interfaces;
+using Contracts.DTOs.Order;
+using Contracts.DTOs.FacilityVaccine;
 
 namespace Services.Implementations
 {
@@ -1142,7 +1144,7 @@ namespace Services.Implementations
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointments = await appointmentRepo.FindAsync(
                     a => a.Schedule.FacilityId == facilityId,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order,VaccinationAppointmentDetails.Vaccine");
+                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in appointments)
@@ -1181,7 +1183,7 @@ namespace Services.Implementations
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointments = await appointmentRepo.FindAsync(
                     a => a.Schedule.FacilityId == facilityId && a.Schedule.Date == dateOnly,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order,VaccinationAppointmentDetails.Vaccine");
+                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in appointments)
@@ -1223,7 +1225,7 @@ namespace Services.Implementations
                     a => a.Schedule.FacilityId == facilityId && 
                          a.Schedule.Date >= startDate && 
                          a.Schedule.Date <= endDate,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order,VaccinationAppointmentDetails.Vaccine");
+                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in appointments)
@@ -1265,7 +1267,7 @@ namespace Services.Implementations
                     a => a.Schedule.FacilityId == facilityId && 
                          a.Schedule.Date >= startDate && 
                          a.Schedule.Date <= endDate,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order,VaccinationAppointmentDetails.Vaccine");
+                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in appointments)
@@ -1715,41 +1717,64 @@ namespace Services.Implementations
                 appointment.Child = await childRepo.GetAsync(c => c.ChildId == appointment.ChildId, "Member,Member.Account");
             }
             
-            // Manual loading backup nếu VaccinationAppointmentDetails chưa được load
-            if (appointment.VaccinationAppointmentDetails == null || !appointment.VaccinationAppointmentDetails.Any())
+            // Manual loading backup nếu Order chưa được load
+            if (appointment.OrderId.HasValue && appointment.Order == null)
             {
-                _logger.LogWarning("VaccinationAppointmentDetails null/empty, trying manual load for appointment {AppointmentId}", appointment.AppointmentId);
-                var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
-                var details = await detailRepo.FindAsync(d => d.AppointmentId == appointment.AppointmentId, "Vaccine");
-                appointment.VaccinationAppointmentDetails = details.ToList();
+                _logger.LogWarning("Order null, trying manual load for appointment {AppointmentId}, OrderId {OrderId}", 
+                    appointment.AppointmentId, appointment.OrderId);
+                var orderRepo = _unitOfWork.GetRepository<Order>();
+                appointment.Order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, 
+                    "OrderDetails.FacilityVaccine.Vaccine,OrderDetails.Disease,Member,Package");
             }
             
-            // Get vaccine names from appointment details
-            var vaccineNames = new List<string>();
-            if (appointment.VaccinationAppointmentDetails != null && appointment.VaccinationAppointmentDetails.Any())
+            // Get FacilityVaccines from Order.OrderDetails (for package/custom orders)
+            var facilityVaccines = new List<FacilityVaccineDTO>();
+            if (appointment.Order?.OrderDetails != null && appointment.Order.OrderDetails.Any())
             {
-                foreach (var detail in appointment.VaccinationAppointmentDetails)
+                foreach (var orderDetail in appointment.Order.OrderDetails)
                 {
-                    vaccineNames.Add(detail.Vaccine?.Name ?? "");
+                    if (orderDetail.FacilityVaccine != null)
+                    {
+                        var facilityVaccineDto = _mapper.Map<FacilityVaccineDTO>(orderDetail.FacilityVaccine);
+                        facilityVaccines.Add(facilityVaccineDto);
+                    }
+                }
+            }
+            // Fallback: Get FacilityVaccines from VaccinationAppointmentDetails (for individual vaccines)
+            else
+            {
+                _logger.LogInformation("No Order found, trying to get FacilityVaccines from VaccinationAppointmentDetails for appointment {AppointmentId}", 
+                    appointment.AppointmentId);
+                
+                var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
+                var details = await detailRepo.FindAsync(d => d.AppointmentId == appointment.AppointmentId, "Vaccine");
+                
+                if (details.Any())
+                {
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    foreach (var detail in details)
+                    {
+                        // Find FacilityVaccine by VaccineId and FacilityId
+                        var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                            fv => fv.VaccineId == detail.VaccineId && fv.FacilityId == appointment.Schedule.FacilityId,
+                            "Vaccine");
+                        
+                        if (facilityVaccine != null)
+                        {
+                            var facilityVaccineDto = _mapper.Map<FacilityVaccineDTO>(facilityVaccine);
+                            facilityVaccines.Add(facilityVaccineDto);
+                        }
+                    }
                 }
             }
             
-            // Get package name if exists
-            string? packageName = null;
-            if (appointment.Order != null && appointment.Order.PackageId > 0)
-            {
-                var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
-                var packageEntity = await packageRepo.GetByIdAsync(appointment.Order.PackageId);
-                packageName = packageEntity?.Name;
-            }
-            
             // Calculate estimated cost
-            var facilityVaccineIds = appointment.VaccinationAppointmentDetails?.Select(d => d.VaccineId).ToList();
+            var facilityVaccineIds = facilityVaccines.Select(fv => fv.FacilityVaccineId).ToList();
             var estimatedCost = await CalculateEstimatedCostAsync(
                 appointment.Schedule.FacilityId, 
                 appointment.Order?.OrderId,
                 appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null,
-                facilityVaccineIds);
+                facilityVaccineIds.Any() ? facilityVaccineIds : null);
             
             var dto = new FacilityAppointmentDTO
             {
@@ -1768,9 +1793,10 @@ namespace Services.Implementations
                 // Child info
                 Child = _mapper.Map<ChildDTO>(appointment.Child),
                 
-                // Package and vaccines info
-                PackageName = packageName,
-                VaccineNames = vaccineNames,
+                // Order and vaccines info
+                OrderId = appointment.OrderId,
+                Order = appointment.Order != null ? _mapper.Map<OrderDTO>(appointment.Order) : null,
+                FacilityVaccines = facilityVaccines,
                 
                 // Appointment info
                 AppointmentDate = appointment.Schedule.Date,
