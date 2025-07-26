@@ -1,0 +1,215 @@
+using Contracts.DTOs.Transaction;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Services.Interfaces;
+using System.Security.Claims;
+
+namespace KidTracking.API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class PaymentController : ControllerBase
+    {
+        private readonly IPaymentService _paymentService;
+        private readonly ILogger<PaymentController> _logger;
+
+        public PaymentController(
+            IPaymentService paymentService,
+            ILogger<PaymentController> logger)
+        {
+            _paymentService = paymentService ?? throw new ArgumentNullException(nameof(paymentService));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        /// <summary>
+        /// Tạo payment link cho UserMembership hoặc FacilityMembership
+        /// </summary>
+        [HttpPost("create")]
+        [Authorize]
+        public async Task<ActionResult<PaymentResponseDTO>> CreatePayment([FromBody] PaymentRequestDTO request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                // Lấy AccountId từ token
+                var currentAccountIdClaim = User.FindFirst("AccountId")?.Value;
+                if (string.IsNullOrEmpty(currentAccountIdClaim) || !int.TryParse(currentAccountIdClaim, out int currentAccountId))
+                {
+                    return Unauthorized("Không thể xác định AccountId từ token");
+                }
+
+                // Validate quyền truy cập
+                if (request.AccountId != currentAccountId)
+                {
+                    var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                    if (userRole != "Admin")
+                    {
+                        return Forbid("Không có quyền tạo payment cho tài khoản khác");
+                    }
+                }
+
+                _logger.LogInformation("Tạo payment cho AccountId {AccountId}, Type: {TransactionType}", 
+                    request.AccountId, request.TransactionType);
+
+                var result = await _paymentService.CreatePaymentAsync(request);
+
+                if (result == null)
+                {
+                    return BadRequest(new { success = false, message = "Không thể tạo payment" });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    data = result
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid argument khi tạo payment");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation khi tạo payment");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tạo payment cho AccountId {AccountId}", request?.AccountId);
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi tạo payment" });
+            }
+        }
+
+        /// <summary>
+        /// Kiểm tra trạng thái thanh toán
+        /// </summary>
+        [HttpGet("check-status/{orderId}")]
+        [Authorize]
+        public async Task<ActionResult<PaymentStatusDTO>> CheckPaymentStatus(string orderId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(orderId))
+                {
+                    return BadRequest(new { success = false, message = "OrderId không được để trống" });
+                }
+
+                _logger.LogInformation("Kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
+                var result = await _paymentService.CheckPaymentStatusAsync(orderId);
+
+                return Ok(new
+                {
+                    success = true,
+                    data = result
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "Không tìm thấy payment cho OrderId: {OrderId}", orderId);
+                return NotFound(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
+            }
+        }
+
+        /// <summary>
+        /// Webhook từ PayOS để cập nhật trạng thái thanh toán
+        /// </summary>
+        [HttpPost("webhook")]
+        [AllowAnonymous]
+        public async Task<IActionResult> PaymentWebhook([FromBody] PaymentWebhookDTO webhook)
+        {
+            try
+            {
+                _logger.LogInformation("Nhận webhook từ PayOS: OrderId={OrderId}, Status={Status}, Amount={Amount}", 
+                    webhook.OrderId, webhook.Status, webhook.Amount);
+
+                var result = await _paymentService.ProcessPaymentWebhookAsync(webhook.OrderId, webhook.Status, webhook.Amount);
+
+                if (result)
+                {
+                    return Ok(new { success = true, message = "Webhook processed successfully" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Failed to process webhook" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý webhook: OrderId={OrderId}", webhook?.OrderId);
+                return StatusCode(500, new { success = false, message = "Lỗi server khi xử lý webhook" });
+            }
+        }
+
+        /// <summary>
+        /// Redirect page khi thanh toán thành công
+        /// </summary>
+        [HttpGet("success")]
+        [AllowAnonymous]
+        public async Task<IActionResult> PaymentSuccess([FromQuery] string orderId)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(orderId))
+                {
+                    _logger.LogInformation("Payment success redirect: OrderId={OrderId}", orderId);
+                    // Trigger check status
+                    await _paymentService.CheckPaymentStatusAsync(orderId);
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Thanh toán thành công",
+                    orderId = orderId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi trong PaymentSuccess: OrderId={OrderId}", orderId);
+                return Ok(new
+                {
+                    success = false,
+                    message = "Có lỗi xảy ra, vui lòng kiểm tra lại trạng thái thanh toán",
+                    orderId = orderId
+                });
+            }
+        }
+
+        /// <summary>
+        /// Redirect page khi hủy thanh toán
+        /// </summary>
+        [HttpGet("cancel")]
+        [AllowAnonymous]
+        public IActionResult PaymentCancel([FromQuery] string orderId)
+        {
+            _logger.LogInformation("Payment cancel redirect: OrderId={OrderId}", orderId);
+            
+            return Ok(new
+            {
+                success = false,
+                message = "Thanh toán đã bị hủy",
+                orderId = orderId
+            });
+        }
+    }
+
+    /// <summary>
+    /// DTO cho webhook từ PayOS
+    /// </summary>
+    public class PaymentWebhookDTO
+    {
+        public string OrderId { get; set; }
+        public string Status { get; set; }
+        public decimal Amount { get; set; }
+    }
+} 
