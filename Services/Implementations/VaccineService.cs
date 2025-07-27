@@ -219,7 +219,13 @@ namespace Services.Implementations
                 }
                 vaccine.UpdatedAt = currentTime;
                 _logger.LogInformation($"Vaccine UpdatedAt: {vaccine.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-                _logger.LogInformation($"Vaccine object before saving: {JsonConvert.SerializeObject(vaccine)}");
+
+                // Serialize vaccine object with ReferenceLoopHandling.Ignore
+                var settings = new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                };
+                _logger.LogInformation($"Vaccine object before saving: {JsonConvert.SerializeObject(vaccine, settings)}");
 
                 // Update VaccineDiseases
                 var vaccineDiseaseRepository = _unitOfWork.GetRepository<VaccineDisease>();
@@ -247,7 +253,7 @@ namespace Services.Implementations
                             UpdatedAt = currentTime
                         };
                         _logger.LogInformation($"Adding VaccineDisease with DiseaseId: {diseaseId}, CreatedAt: {vaccineDisease.CreatedAt:yyyy-MM-dd HH:mm:ss}, UpdatedAt: {vaccineDisease.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-                        _logger.LogInformation($"VaccineDisease object: {JsonConvert.SerializeObject(vaccineDisease)}");
+                        _logger.LogInformation($"VaccineDisease object: {JsonConvert.SerializeObject(vaccineDisease, settings)}");
                         await vaccineDiseaseRepository.AddAsync(vaccineDisease);
                     }
                 }

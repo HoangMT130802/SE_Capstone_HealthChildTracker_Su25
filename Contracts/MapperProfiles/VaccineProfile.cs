@@ -37,6 +37,14 @@ namespace Contracts.MapperProfiles
             .ForMember(dest => dest.ChildVaccineProfiles, opt => opt.Ignore())
             .ForMember(dest => dest.FacilityVaccines, opt => opt.Ignore())
             .ForMember(dest => dest.VaccinationAppointmentDetails, opt => opt.Ignore());
+            CreateMap<UpdateVaccineDTO, Vaccine>()
+                .ForMember(dest => dest.VaccineId, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.ChildVaccineProfiles, opt => opt.Ignore())
+                .ForMember(dest => dest.FacilityVaccines, opt => opt.Ignore())
+                .ForMember(dest => dest.VaccinationAppointmentDetails, opt => opt.Ignore())
+                .ForMember(dest => dest.VaccineDiseases, opt => opt.Ignore());
         }
     }
 }
