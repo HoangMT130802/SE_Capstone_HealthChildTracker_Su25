@@ -94,7 +94,6 @@ public partial class HealthChildTrackerContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder.UseSqlServer(GetConnectionString("DefaultConnection"));
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Account>(entity =>
@@ -934,12 +933,13 @@ public partial class HealthChildTrackerContext : DbContext
             entity.ToTable("VaccineTemplate");
 
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
-            entity.Property(e => e.Description)
+            entity.Property(e => e.Description).HasMaxLength(255);
+            entity.Property(e => e.PeriodFrom)
                 .IsRequired()
-                .HasMaxLength(255);
-            entity.Property(e => e.Priority)
+                .HasMaxLength(50);
+            entity.Property(e => e.PeriodTo)
                 .IsRequired()
-                .HasMaxLength(255);
+                .HasMaxLength(50);
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
 
             entity.HasOne(d => d.Disease).WithMany(p => p.VaccineTemplates)

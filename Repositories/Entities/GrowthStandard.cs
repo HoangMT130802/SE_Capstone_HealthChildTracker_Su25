@@ -9,6 +9,8 @@ public partial class GrowthStandard
 {
     public int Id { get; set; }
 
+    public int? NationId { get; set; }
+
     public string Gender { get; set; }
 
     public int AgeInMonths { get; set; }
