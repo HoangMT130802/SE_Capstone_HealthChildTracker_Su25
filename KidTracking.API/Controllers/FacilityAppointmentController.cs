@@ -68,6 +68,30 @@ namespace KidTracking.API.Controllers
         {
             return User.FindFirst(ClaimTypes.Role)?.Value ?? "";
         }
+
+        private async Task ValidateManagerPermissionAsync()
+        {
+            // Lấy AccountId từ token
+            var accountIdClaim = User.FindFirst("AccountId")?.Value;
+            if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+            {
+                throw new UnauthorizedAccessException("Không thể xác định AccountId từ token");
+            }
+
+            // Kiểm tra FacilityStaff có position Manager không
+            var facilityStaffRepo = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await facilityStaffRepo.GetAsync(s => s.AccountId == accountId);
+            
+            if (staff == null)
+            {
+                throw new UnauthorizedAccessException("User không phải là staff của facility");
+            }
+
+            if (staff.Position != "Manager")
+            {
+                throw new UnauthorizedAccessException("Chỉ có Manager mới có quyền duyệt hoàn tiền");
+            }
+        }
         #endregion
 
         /// <summary>
@@ -246,7 +270,7 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Cập nhật trạng thái lịch đặt (Duyệt/Từ chối/Hoàn thành)
+        /// Cập nhật trạng thái lịch đặt (Duyệt/Từ chối/Hoàn thành/Hoàn tiền)
         /// </summary>
         /// <param name="appointmentId">ID lịch đặt</param>
         /// <param name="updateDto">Thông tin cập nhật</param>
@@ -290,6 +314,56 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError(ex, "Lỗi khi cập nhật trạng thái lịch đặt {AppointmentId}", appointmentId);
                 return StatusCode(500, "Có lỗi xảy ra khi cập nhật trạng thái lịch đặt");
+            }
+        }
+
+        /// <summary>
+        /// Manager duyệt hoàn tiền (Refunding -> Accepted) - Chỉ Manager được phép
+        /// </summary>
+        /// <param name="appointmentId">ID lịch đặt</param>
+        /// <param name="refundDto">Thông tin duyệt hoàn tiền</param>
+        /// <returns>Kết quả duyệt</returns>
+        [HttpPut("{appointmentId}/approve-refund")]
+        public async Task<ActionResult<bool>> ApproveRefund(
+            int appointmentId,
+            [FromBody] ApproveRefundDTO refundDto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                // Kiểm tra quyền Manager
+                await ValidateManagerPermissionAsync();
+
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.ApproveRefundAsync(appointmentId, facilityId, refundDto.Note);
+                
+                _logger.LogInformation("Manager duyệt hoàn tiền cho appointment {AppointmentId} thành công", appointmentId);
+                
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to approve refund for appointment {AppointmentId}", appointmentId);
+                return Forbid();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Appointment not found for refund approval: {AppointmentId}", appointmentId);
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid refund approval for appointment {AppointmentId}", appointmentId);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi duyệt hoàn tiền cho appointment {AppointmentId}", appointmentId);
+                return StatusCode(500, "Có lỗi xảy ra khi duyệt hoàn tiền");
             }
         }
     }

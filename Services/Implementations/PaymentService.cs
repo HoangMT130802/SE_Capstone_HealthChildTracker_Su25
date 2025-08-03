@@ -18,19 +18,22 @@ namespace Services.Implementations
         private readonly ILogger<PaymentService> _logger;
         private readonly PayOS _payOS;
         private readonly IConfiguration _configuration;
+        private readonly IVietQRService _vietQRService;
         
         public PaymentService(
             IUnitOfWork unitOfWork,
             IMapper mapper,
             ILogger<PaymentService> logger,
             PayOS payOS,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IVietQRService vietQRService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _logger = logger;
             _payOS = payOS;
             _configuration = configuration;
+            _vietQRService = vietQRService;
         }
 
         public async Task<PaymentResponseDTO> CreatePaymentAsync(PaymentRequestDTO request)
@@ -38,23 +41,26 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                _logger.LogInformation("Bắt đầu tạo payment cho Account {AccountId}, Type: {TransactionType}", 
-                    request.AccountId, request.TransactionType);
+                _logger.LogInformation("Bắt đầu tạo payment cho Account {AccountId}", request.AccountId);
 
+                // Xác định loại transaction
+                string transactionType;
                 decimal amount = 0;
                 string description = "";
                 int? userMembershipId = null;
                 int? facilityMembershipSubscriptionId = null;
 
-                if (request.TransactionType == "UserMembership")
+                if (request.MembershipId.HasValue)
                 {
+                    transactionType = "User";
                     var result = await ProcessUserMembershipPayment(request);
                     amount = result.Amount;
                     description = result.Description;
                     userMembershipId = result.UserMembershipId;
                 }
-                else if (request.TransactionType == "FacilityMembership")
+                else if (request.FacilityMembershipId.HasValue)
                 {
+                    transactionType = "Facility";
                     var result = await ProcessFacilityMembershipPayment(request);
                     amount = result.Amount;
                     description = result.Description;
@@ -62,17 +68,22 @@ namespace Services.Implementations
                 }
                 else
                 {
-                    throw new ArgumentException("TransactionType không hợp lệ");
+                    throw new ArgumentException("Phải có MembershipId hoặc FacilityMembershipId");
                 }
 
                 // Tạo mã giao dịch unique
-                string orderCode = $"{DateTimeOffset.Now.ToUnixTimeMilliseconds()}_{request.AccountId}_{request.TransactionType}";
+                string orderCode = $"{DateTimeOffset.Now.ToUnixTimeMilliseconds()}_{request.AccountId}_{transactionType}";
 
+                // Đảm bảo description không quá 25 ký tự (giới hạn PayOS)
+                string shortDescription = description.Length > 25 ? description.Substring(0, 25) : description;
+                _logger.LogInformation("PayOS Data - OrderCode: {OrderCode}, Amount: {Amount}, Description: '{Description}' (Length: {Length}), TransactionType: '{TransactionType}'", 
+                    orderCode, amount, shortDescription, shortDescription.Length, transactionType);
+                
                 // Tạo payment link với PayOS
                 var paymentData = new PaymentData(
                     long.Parse(orderCode.Split('_')[0]),
                     (int)amount,
-                    description,
+                    shortDescription,
                     new List<ItemData>(),
                     $"{GetBaseUrl()}/payment/cancel",
                     $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
@@ -86,11 +97,11 @@ namespace Services.Implementations
                 {
                     UserMembershipId = userMembershipId,
                     FacilityMembershipSubscriptionId = facilityMembershipSubscriptionId,
-                    TransactionType = request.TransactionType,
+                    TransactionType = transactionType,
                     Amount = amount,
-                    PaymentMethod = request.PaymentMethod ?? "PAYOS",
+                    PaymentMethod = "PAYOS", // Tự động điền
                     TransactionCode = orderCode,
-                    Description = description,
+                    Description = description, // Tự động điền từ ProcessXXXPayment
                     CreatedAt = DateOnly.FromDateTime(DateTime.UtcNow)
                 };
 
@@ -99,16 +110,52 @@ namespace Services.Implementations
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
-                    orderCode, createPayment.checkoutUrl);
+                                _logger.LogInformation("Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
+orderCode, createPayment.checkoutUrl);
+
+                // ✅ Dual QR support: VietQR cho banking app + PayOS QR cho web
+                string vietQRString = null;
+                string qrDataURL = null;
+                
+                var vietQREnabled = _configuration.GetValue<bool>("VietQR:Enable", false);
+                if (vietQREnabled)
+                {
+                    try
+                    {
+                        var bankBin = _configuration.GetValue<string>("VietQR:BankBin");
+                        var accountNumber = _configuration.GetValue<string>("VietQR:AccountNumber");
+                        var accountName = _configuration.GetValue<string>("VietQR:AccountName");
+                        
+                        var vietQRResult = _vietQRService.CreateVietQR(bankBin, accountNumber, accountName, amount, shortDescription);
+                        vietQRString = vietQRResult.QrString;
+                        qrDataURL = vietQRResult.QrDataURL;
+                        
+                        _logger.LogInformation("Tạo VietQR thành công cho OrderCode: {OrderCode}, QR: {QRString}", orderCode, vietQRString);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Không thể tạo VietQR cho OrderCode: {OrderCode}, fallback to PayOS QR", orderCode);
+                        // Fallback to PayOS QR
+                        vietQRString = createPayment.checkoutUrl;
+                        qrDataURL = $"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={Uri.EscapeDataString(createPayment.checkoutUrl)}";
+                    }
+                }
+                else
+                {
+                    // VietQR disabled, use PayOS QR
+                    vietQRString = createPayment.checkoutUrl;
+                    qrDataURL = $"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={Uri.EscapeDataString(createPayment.checkoutUrl)}";
+                }
 
                 return new PaymentResponseDTO
                 {
-                    PaymentUrl = createPayment.checkoutUrl,
+                    PaymentUrl = createPayment.checkoutUrl,  // Web payment URL
                     OrderId = orderCode,
                     Amount = amount,
                     Status = "PENDING",
-                    Message = "Payment link đã được tạo thành công"
+                    Message = "Payment link đã được tạo thành công",
+                    QrCode = vietQRString,      // VietQR string cho banking app hoặc PayOS URL
+                    QrDataURL = qrDataURL       // QR image URL
                 };
             }
             catch (Exception ex)
@@ -245,12 +292,12 @@ namespace Services.Implementations
                 throw new ArgumentException("Không tìm thấy gói membership");
             }
 
-            // Kiểm tra user có membership active không
+            // ✅ VALIDATE: Kiểm tra user có membership active không (không được mua lại)
             var activeMembership = await userMembershipRepo.GetAsync(
                 um => um.AccountId == request.AccountId && um.Status == true);
             if (activeMembership != null)
             {
-                throw new InvalidOperationException("Tài khoản đã có membership đang hoạt động");
+                throw new InvalidOperationException($"Tài khoản đã có gói membership đang hoạt động. Gói hiện tại sẽ tự động gia hạn khi hết hạn vào {activeMembership.EndDate:dd/MM/yyyy}");
             }
 
             // Tạo UserMembership mới với trạng thái false (chờ thanh toán)
@@ -268,22 +315,40 @@ namespace Services.Implementations
             await userMembershipRepo.AddAsync(newUserMembership);
             await _unitOfWork.SaveChangesAsync();
 
-            return (membership.Price, $"Thanh toán gói {membership.Name}", newUserMembership.UserMembershipId);
+            return (membership.Price, "Goi thanh vien", newUserMembership.UserMembershipId);
         }
 
         private async Task<(decimal Amount, string Description, int? FacilityMembershipSubscriptionId)> ProcessFacilityMembershipPayment(PaymentRequestDTO request)
         {
-            if (!request.FacilityMembershipId.HasValue || !request.FacilityId.HasValue)
+            if (!request.FacilityMembershipId.HasValue)
             {
-                throw new ArgumentException("FacilityMembershipId và FacilityId là bắt buộc cho FacilityMembership");
+                throw new ArgumentException("FacilityMembershipId là bắt buộc cho FacilityMembership");
             }
 
+            // Lấy FacilityId từ FacilityStaff của AccountId
+            var facilityStaffRepo = _unitOfWork.GetRepository<FacilityStaff>();
+            var facilityStaff = await facilityStaffRepo.GetAsync(fs => fs.AccountId == request.AccountId);
+            if (facilityStaff == null)
+            {
+                throw new ArgumentException("Tài khoản không phải là FacilityStaff");
+            }
+
+            var facilityId = facilityStaff.FacilityId;
+
+            var accountRepo = _unitOfWork.GetRepository<Account>();
             var facilityRepo = _unitOfWork.GetRepository<VaccinationFacility>();
             var facilityMembershipRepo = _unitOfWork.GetRepository<FacilityMembership>();
             var subscriptionRepo = _unitOfWork.GetRepository<FacilityMembershipSubscription>();
 
+            // Kiểm tra account
+            var account = await accountRepo.GetByIdAsync(request.AccountId);
+            if (account == null)
+            {
+                throw new ArgumentException("Không tìm thấy tài khoản");
+            }
+
             // Kiểm tra facility
-            var facility = await facilityRepo.GetByIdAsync(request.FacilityId.Value);
+            var facility = await facilityRepo.GetByIdAsync(facilityId);
             if (facility == null)
             {
                 throw new ArgumentException("Không tìm thấy cơ sở");
@@ -296,18 +361,18 @@ namespace Services.Implementations
                 throw new ArgumentException("Không tìm thấy gói membership cho cơ sở");
             }
 
-            // Kiểm tra facility có subscription active không
+            // ✅ VALIDATE: Kiểm tra facility có subscription active không (không được mua lại)
             var activeSubscription = await subscriptionRepo.GetAsync(
-                s => s.FacilityId == request.FacilityId.Value && s.Status == true);
+                s => s.FacilityId == facilityId && s.Status == true);
             if (activeSubscription != null)
             {
-                throw new InvalidOperationException("Cơ sở đã có subscription đang hoạt động");
+                throw new InvalidOperationException($"Cơ sở đã có gói membership đang hoạt động. Gói hiện tại sẽ tự động gia hạn khi hết hạn vào {activeSubscription.EndDate:dd/MM/yyyy}");
             }
 
-            // Tạo FacilityMembershipSubscription mới
+            // Tạo FacilityMembershipSubscription mới với status = false (chờ thanh toán)
             var newSubscription = new FacilityMembershipSubscription
             {
-                FacilityId = request.FacilityId.Value,
+                FacilityId = facilityId,
                 FacilityMembershipId = request.FacilityMembershipId.Value,
                 StartDate = DateTime.UtcNow,
                 EndDate = DateTime.UtcNow.AddMonths(facilityMembership.Duration),
@@ -319,7 +384,7 @@ namespace Services.Implementations
             await subscriptionRepo.AddAsync(newSubscription);
             await _unitOfWork.SaveChangesAsync();
 
-            return (facilityMembership.Price, $"Thanh toán gói {facilityMembership.Name} cho {facility.FacilityName}", newSubscription.SubscriptionId);
+            return (facilityMembership.Price, "Goi co so", newSubscription.SubscriptionId);
         }
 
         private async Task ActivateUserMembership(int userMembershipId, string orderId)

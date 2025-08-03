@@ -29,7 +29,7 @@ namespace Services.Implementations
             try
             {
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
-                var profiles = await profileRepository.FindAsync(r => r.ChildId == childId, includeProperties: "Child,Vaccine");
+                var profiles = await profileRepository.FindAsync(r => r.ChildId == childId, includeProperties: "Child,Vaccine,Appointment,Appointment.Schedule,Appointment.Schedule.Facility");
                 return _mapper.Map<IEnumerable<ChildVaccineProfileDTO>>(profiles);
             }
             catch (Exception ex)
@@ -56,7 +56,7 @@ namespace Services.Implementations
                 }
 
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
-                var profiles = await profileRepository.FindAsync(r => r.ChildId == childId, includeProperties: "Child,Vaccine");
+                var profiles = await profileRepository.FindAsync(r => r.ChildId == childId, includeProperties: "Child,Vaccine,Appointment,Appointment.Schedule,Appointment.Schedule.Facility");
                 return _mapper.Map<IEnumerable<ChildVaccineProfileDTO>>(profiles);
             }
             catch (Exception ex)
@@ -272,12 +272,12 @@ namespace Services.Implementations
                 _logger.LogInformation("Doctor completing vaccination for Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
                     completeDto.AppointmentId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
 
-                // 1. Validate appointment có status "Payed" và lấy ChildId từ appointment
+                // 1. Validate appointment có status "Paid" và lấy ChildId từ appointment
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointment = await appointmentRepo.GetAsync(a => a.AppointmentId == completeDto.AppointmentId, "Child");
-                if (appointment == null || appointment.Status != "Payed")
+                if (appointment == null || appointment.Status != "Paid")
                 {
-                    throw new InvalidOperationException($"Appointment {completeDto.AppointmentId} not found or not in Payed status");
+                    throw new InvalidOperationException($"Appointment {completeDto.AppointmentId} not found or not in Paid status");
                 }
 
                 // ✅ Lấy ChildId từ appointment, không từ DTO

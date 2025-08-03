@@ -35,6 +35,17 @@ namespace KidTracking.API.Controllers
                     return BadRequest(ModelState);
                 }
 
+                // Validate chỉ có một trong hai: MembershipId hoặc FacilityMembershipId
+                if (!request.MembershipId.HasValue && !request.FacilityMembershipId.HasValue)
+                {
+                    return BadRequest(new { success = false, message = "Phải chọn một trong hai: MembershipId hoặc FacilityMembershipId" });
+                }
+
+                if (request.MembershipId.HasValue && request.FacilityMembershipId.HasValue)
+                {
+                    return BadRequest(new { success = false, message = "Chỉ được chọn một trong hai: MembershipId hoặc FacilityMembershipId" });
+                }
+
                 // Lấy AccountId từ token
                 var currentAccountIdClaim = User.FindFirst("AccountId")?.Value;
                 if (string.IsNullOrEmpty(currentAccountIdClaim) || !int.TryParse(currentAccountIdClaim, out int currentAccountId))
@@ -52,8 +63,9 @@ namespace KidTracking.API.Controllers
                     }
                 }
 
+                string transactionType = request.MembershipId.HasValue ? "UserMembership" : "FacilityMembership";
                 _logger.LogInformation("Tạo payment cho AccountId {AccountId}, Type: {TransactionType}", 
-                    request.AccountId, request.TransactionType);
+                    request.AccountId, transactionType);
 
                 var result = await _paymentService.CreatePaymentAsync(request);
 
@@ -118,7 +130,9 @@ namespace KidTracking.API.Controllers
                 _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
                 return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
             }
-        }     
+        }
+
+    
     }
 
     /// <summary>
@@ -126,8 +140,10 @@ namespace KidTracking.API.Controllers
     /// </summary>
     public class PaymentWebhookDTO
     {
-        public string OrderId { get; set; }
-        public string Status { get; set; }
+        public required string OrderId { get; set; }
+        public required string Status { get; set; }
         public decimal Amount { get; set; }
     }
+
+
 } 

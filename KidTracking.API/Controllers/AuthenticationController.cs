@@ -132,7 +132,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPost("create-staff")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<StaffResponseDTO>> CreateStaff([FromBody] CreateStaffDTO request)
         {
             try
@@ -206,7 +206,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPut("update-facility-staff-info")]
-        [Authorize(Roles = "Admin,Manager,Doctor,Staff")]
+        [Authorize(Roles = "Admin,FacilityStaff")]
         public async Task<ActionResult<FacilityStaffInfoResponseDTO>> UpdateFacilityStaffInfo([FromBody] UpdateFacilityStaffInfoDTO request)
         {
             try
@@ -280,7 +280,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpDelete("delete-staff/{staffId}")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult> DeleteStaff(int staffId)
         {
             try

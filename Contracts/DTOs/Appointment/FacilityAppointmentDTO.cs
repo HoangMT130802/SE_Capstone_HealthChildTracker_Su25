@@ -59,6 +59,8 @@ namespace Contracts.DTOs.Appointment
         public int ConfirmedCount { get; set; }
         public int CompletedCount { get; set; }
         public int CancelledCount { get; set; }
+        public int RefundingCount { get; set; }     // ✅ Đang chờ Manager duyệt hoàn tiền
+        public int RefundedCount { get; set; }      // ✅ Đã được duyệt hoàn tiền  
         public int TodayCount { get; set; }
     }
 
@@ -68,6 +70,14 @@ namespace Contracts.DTOs.Appointment
     public class UpdateAppointmentStatusDTO
     {
         public string Status { get; set; }
+        public string? Note { get; set; }
+    }
+
+    /// <summary>
+    /// DTO cho Manager duyệt hoàn tiền
+    /// </summary>
+    public class ApproveRefundDTO
+    {
         public string? Note { get; set; }
     }
 } 
