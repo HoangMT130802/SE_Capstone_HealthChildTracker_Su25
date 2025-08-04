@@ -30,4 +30,6 @@ public partial class GrowthStandard
     public decimal Sd2pos { get; set; }
 
     public decimal Sd3pos { get; set; }
+
+    public virtual Nationality Nation { get; set; }
 }

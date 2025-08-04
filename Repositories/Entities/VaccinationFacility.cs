@@ -39,5 +39,7 @@ public partial class VaccinationFacility
 
     public virtual ICollection<ScheduleSlot> ScheduleSlots { get; set; } = new List<ScheduleSlot>();
 
+    public virtual ICollection<VaccinationFacilityPaymentAccount> VaccinationFacilityPaymentAccounts { get; set; } = new List<VaccinationFacilityPaymentAccount>();
+
     public virtual ICollection<VaccinePackage> VaccinePackages { get; set; } = new List<VaccinePackage>();
 }

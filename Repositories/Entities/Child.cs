@@ -39,5 +39,7 @@ public partial class Child
 
     public virtual Member Member { get; set; }
 
+    public virtual Nationality Nation { get; set; }
+
     public virtual ICollection<VaccinationAppointment> VaccinationAppointments { get; set; } = new List<VaccinationAppointment>();
 }

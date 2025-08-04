@@ -19,7 +19,7 @@ namespace KidTracking.API.Controllers
 
         private bool IsAdminOrDoctor()
         {
-            return User.IsInRole("Admin") || User.IsInRole("Doctor");
+            return User.IsInRole("Admin") || User.IsInRole("Member") || User.IsInRole("FacilityStaff");
         }
 
         [HttpPost]

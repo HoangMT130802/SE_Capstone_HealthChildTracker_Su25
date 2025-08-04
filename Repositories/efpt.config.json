@@ -92,6 +92,10 @@
          "ObjectType": 0
       },
       {
+         "Name": "[dbo].[Nationality]",
+         "ObjectType": 0
+      },
+      {
          "Name": "[dbo].[Order]",
          "ObjectType": 0
       },
@@ -133,6 +137,10 @@
       },
       {
          "Name": "[dbo].[VaccinationFacility]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[VaccinationFacilityPaymentAccount]",
          "ObjectType": 0
       },
       {
