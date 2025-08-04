@@ -19,8 +19,6 @@ public partial class UserMembership
 
     public bool Status { get; set; }
 
-    public long RemainingConsultations { get; set; }
-
     public DateOnly LastRenewalDate { get; set; }
 
     public virtual Account Account { get; set; }
