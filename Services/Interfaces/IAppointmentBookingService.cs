@@ -21,6 +21,10 @@ namespace Services.Interfaces
         Task<AppointmentQuickBookingResponseDTO> QuickBookAppointmentAsync(AppointmentQuickBookingDTO request);
         Task<bool> CancelAppointmentAsync(int appointmentId, string reason);
         
+        // Rebooking Methods
+        Task<AppointmentRebookingValidationDTO> ValidateRebookingRequestAsync(int childVaccineProfileId, int accountId);
+        Task<AppointmentRebookingResponseDTO> RebookAppointmentAsync(AppointmentRebookingRequestDTO request, int accountId);
+        
         // History Methods
         Task<AppointmentHistoryResponseDTO> GetAppointmentHistoryAsync(int memberId, int? childId = null);
         
@@ -31,6 +35,9 @@ namespace Services.Interfaces
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByMonthAsync(int facilityId, DateTime month);
         Task<FacilityAppointmentDTO> GetFacilityAppointmentByIdAsync(int appointmentId, int facilityId);
         Task<bool> UpdateAppointmentStatusAsync(int appointmentId, int facilityId, UpdateAppointmentStatusDTO updateDto);
+        
+        // Manager Methods  
+        Task<bool> ApproveRefundAsync(int appointmentId, int facilityId, string? note = null);
         
         // Helper Methods
         Task<List<AppointmentSuggestionDTO>> GenerateAppointmentSuggestionsAsync(AppointmentQuickBookingDTO request, int maxSuggestions = 5);

@@ -1,4 +1,6 @@
 using Contracts.DTOs.Child;
+using Contracts.DTOs.Order;
+using Contracts.DTOs.FacilityVaccine;
 
 namespace Contracts.DTOs.Appointment
 {
@@ -22,11 +24,12 @@ namespace Contracts.DTOs.Appointment
         // Thông tin trẻ
         public ChildDTO Child { get; set; }
 
-        // Thông tin gói vaccine (nếu có)
-        public string? PackageName { get; set; }
+        // Thông tin Order (package đã được user custom)
+        public int? OrderId { get; set; }
+        public OrderDTO? Order { get; set; }
 
-        // Danh sách vaccines được chọn (nếu không chọn gói)
-        public List<string> VaccineNames { get; set; } = new List<string>();
+        // Danh sách FacilityVaccines (vaccines của cơ sở)
+        public List<FacilityVaccineDTO> FacilityVaccines { get; set; } = new List<FacilityVaccineDTO>();
 
         // Thông tin lịch hẹn
         public DateOnly AppointmentDate { get; set; }
@@ -56,6 +59,8 @@ namespace Contracts.DTOs.Appointment
         public int ConfirmedCount { get; set; }
         public int CompletedCount { get; set; }
         public int CancelledCount { get; set; }
+        public int RefundingCount { get; set; }     // ✅ Đang chờ Manager duyệt hoàn tiền
+        public int RefundedCount { get; set; }      // ✅ Đã được duyệt hoàn tiền  
         public int TodayCount { get; set; }
     }
 
@@ -65,6 +70,14 @@ namespace Contracts.DTOs.Appointment
     public class UpdateAppointmentStatusDTO
     {
         public string Status { get; set; }
+        public string? Note { get; set; }
+    }
+
+    /// <summary>
+    /// DTO cho Manager duyệt hoàn tiền
+    /// </summary>
+    public class ApproveRefundDTO
+    {
         public string? Note { get; set; }
     }
 } 

@@ -58,6 +58,25 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.AvailableCapacity, opt => opt.MapFrom(src => src.Slot.MaxCapacity - (src.BookedCount ?? 0)))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status));
 
+            // ✅ Mapping cho Rebooking DTOs
+            CreateMap<VaccinationAppointment, AppointmentRebookingResponseDTO>()
+                .ForMember(dest => dest.AppointmentId, opt => opt.MapFrom(src => src.AppointmentId))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
+                .ForMember(dest => dest.Child, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.Disease, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.Vaccine, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.DoseNumber, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.Schedule, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.EstimatedCost, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.UsedExistingOrder, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.UsedOrder, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.RemainingVaccinesInOrder, opt => opt.Ignore()) // Set trong service
+                .ForMember(dest => dest.Message, opt => opt.Ignore()); // Set trong service
+
+            // ✅ Mapping AppointmentSchedule cho rebooking
+            CreateMap<AppointmentSchedule, AppointmentScheduleDTO>();
 
         }
     }

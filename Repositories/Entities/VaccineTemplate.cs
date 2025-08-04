@@ -11,15 +11,15 @@ public partial class VaccineTemplate
 
     public int DiseaseId { get; set; }
 
-    public TimeOnly PeriodFrom { get; set; }
+    public string PeriodFrom { get; set; }
 
-    public TimeOnly PeriodTo { get; set; }
+    public string PeriodTo { get; set; }
+
+    public int DoseNum { get; set; }
 
     public string Description { get; set; }
 
     public bool IsRequired { get; set; }
-
-    public string Priority { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

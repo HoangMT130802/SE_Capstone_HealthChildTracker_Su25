@@ -11,6 +11,8 @@ public partial class Child
 
     public int MemberId { get; set; }
 
+    public int? NationId { get; set; }
+
     public string FullName { get; set; }
 
     public DateTime BirthDate { get; set; }

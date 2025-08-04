@@ -314,6 +314,81 @@ namespace KidTracking.API.Controllers
 
         #endregion
 
+        #region Rebooking APIs
+
+        /// <summary>
+        /// Validate khả năng đặt lại lịch cho ChildVaccineProfile
+        /// </summary>
+        /// <param name="childVaccineProfileId">ID ChildVaccineProfile cần đặt lại lịch</param>
+        /// <returns>Thông tin validation</returns>
+        [HttpGet("validate-rebooking/{childVaccineProfileId}")]
+        public async Task<ActionResult<AppointmentRebookingValidationDTO>> ValidateRebooking(
+            int childVaccineProfileId)
+        {
+            try
+            {
+                // Lấy AccountId từ JWT claims
+                var accountIdClaim = User.FindFirst("AccountId")?.Value;
+                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+                {
+                    return Unauthorized("Không tìm thấy thông tin người dùng");
+                }
+
+                var result = await _appointmentBookingService.ValidateRebookingRequestAsync(childVaccineProfileId, accountId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi validate rebooking cho ChildVaccineProfile {ProfileId}", childVaccineProfileId);
+                return StatusCode(500, "Có lỗi xảy ra khi kiểm tra khả năng đặt lại lịch");
+            }
+        }
+
+        /// <summary>
+        /// Đặt lại lịch tiêm cho ChildVaccineProfile
+        /// </summary>
+        /// <param name="request">Thông tin đặt lại lịch</param>
+        /// <returns>Kết quả đặt lại lịch</returns>
+        [HttpPost("rebook")]
+        public async Task<ActionResult<AppointmentRebookingResponseDTO>> RebookAppointment(
+            [FromBody] AppointmentRebookingRequestDTO request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                // Lấy AccountId từ JWT claims
+                var accountIdClaim = User.FindFirst("AccountId")?.Value;
+                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+                {
+                    return Unauthorized("Không tìm thấy thông tin người dùng");
+                }
+
+                var result = await _appointmentBookingService.RebookAppointmentAsync(request, accountId);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Không thể đặt lại lịch cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
+                return BadRequest(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Thông tin đặt lại lịch không hợp lệ cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi đặt lại lịch cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
+                return StatusCode(500, "Có lỗi xảy ra khi đặt lại lịch");
+            }
+        }
+
+        #endregion
+
         #region Helper APIs
 
         /// <summary>

@@ -104,7 +104,7 @@ namespace Services.Implementations
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
                 var facilityVaccine = await facilityVaccineRepository.GetAsync(
                     fv => fv.FacilityVaccineId == facilityVaccineId,
-                    includeProperties: "Vaccine,Vaccine.VaccineDiseases,Disease"
+                    includeProperties: "Vaccine,Vaccine.VaccineDiseases,Vaccine.VaccineDiseases.Disease"
                 );
                 if (facilityVaccine == null)
                 {

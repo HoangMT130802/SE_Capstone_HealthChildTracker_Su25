@@ -10,7 +10,7 @@ using Services.Interfaces;
 using Services.Implementations;
 using Contracts.MapperProfiles;
 using Microsoft.AspNetCore.Mvc;
-
+using Net.payOS;
 namespace KidTracking.API
 {
     public class Program
@@ -137,7 +137,6 @@ namespace KidTracking.API
                     }
                 };
             });
-
             // Swagger với JWT support
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
@@ -170,7 +169,11 @@ namespace KidTracking.API
             });
 
             builder.Services.AddHttpContextAccessor();
-
+            // singleton của payos
+            builder.Services.AddSingleton(new PayOS(
+                clientId: builder.Configuration["Environment:PAYOS_CLIENT_ID"],
+                apiKey: builder.Configuration["Environment:PAYOS_API_KEY"],
+                checksumKey: builder.Configuration["Environment:PAYOS_CHECKSUM_KEY"]));
             // Đăng ký db context
             builder.Services.AddDbContext<HealthChildTrackerContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -198,6 +201,10 @@ namespace KidTracking.API
             builder.Services.AddScoped<ISurveyService, SurveyService>();
             builder.Services.AddScoped<IMembershipService, MembershipService>();
             builder.Services.AddScoped<IUserMembershipService, UserMembershipService>();
+            // ✅ Thêm Payment và Transaction Services
+            builder.Services.AddScoped<IPaymentService, PaymentService>();
+            builder.Services.AddScoped<ITransactionService, TransactionService>();
+            builder.Services.AddScoped<IVietQRService, VietQRService>();
 
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);

@@ -12,6 +12,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
         public int ChildId { get; set; }
         public int DiseaseId { get; set; }
         public int? AppointmentId { get; set; }
+        public int? FacilityId { get; set; } // Facility ID từ appointment nếu có
         public int VaccineId { get; set; }
         public int DoseNum { get; set; }
         public DateOnly ExpectedDate { get; set; }

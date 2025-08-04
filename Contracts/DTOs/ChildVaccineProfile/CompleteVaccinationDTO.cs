@@ -8,7 +8,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
         public int AppointmentId { get; set; }
         
         [Required]
-        public int VaccineId { get; set; }
+        public int FacilityVaccineId { get; set; }
         
         /// <summary>
         /// ChildId sẽ được lấy từ appointment, không cần nhập

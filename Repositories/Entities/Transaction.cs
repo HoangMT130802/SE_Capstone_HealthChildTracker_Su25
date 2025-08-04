@@ -9,9 +9,11 @@ public partial class Transaction
 {
     public int TransactionId { get; set; }
 
-    public int TransactionType { get; set; }
+    public int? FacilityMembershipSubscriptionId { get; set; }
 
-    public int DocNo { get; set; }
+    public int? UserMembershipId { get; set; }
+
+    public string TransactionType { get; set; }
 
     public decimal Amount { get; set; }
 
@@ -22,4 +24,8 @@ public partial class Transaction
     public string Description { get; set; }
 
     public DateOnly CreatedAt { get; set; }
+
+    public virtual FacilityMembershipSubscription FacilityMembershipSubscription { get; set; }
+
+    public virtual UserMembership UserMembership { get; set; }
 }
