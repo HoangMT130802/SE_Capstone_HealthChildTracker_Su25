@@ -72,6 +72,36 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
 
             var qrcodeImageUrl = await UploadImageToCloudinary(paymentAccountDto.QrcodeImage);
 
+            var repository = _unitOfWork.GetRepository<VaccinationFacilityPaymentAccount>();
+            var existingAccountsResult = await repository.GetAllAsync(
+                filter: pa => pa.FacilityId == paymentAccountDto.FacilityId,
+                orderBy: null,
+                pageIndex: null,
+                pageSize: null
+            );
+
+            if (paymentAccountDto.IsActive)
+            {
+                var activeAccountIds = existingAccountsResult.Data
+                    .Where(pa => pa.IsActive == "true")
+                    .Select(pa => pa.Id)
+                    .ToList();
+
+                if (activeAccountIds.Any())
+                {
+                    foreach (var id in activeAccountIds)
+                    {
+                        var accountToUpdate = await repository.GetAsync(pa => pa.Id == id);
+                        if (accountToUpdate != null)
+                        {
+                            accountToUpdate.IsActive = "false";
+                            repository.Update(accountToUpdate);
+                        }
+                    }
+                    await _unitOfWork.SaveChangesAsync(); 
+                }
+            }
+
             var paymentAccount = new VaccinationFacilityPaymentAccount
             {
                 FacilityId = paymentAccountDto.FacilityId,
@@ -84,7 +114,6 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 UpdatedAt = DateOnly.FromDateTime(DateTime.UtcNow)
             };
 
-            var repository = _unitOfWork.GetRepository<VaccinationFacilityPaymentAccount>();
             await repository.AddAsync(paymentAccount);
             await _unitOfWork.SaveChangesAsync();
 
