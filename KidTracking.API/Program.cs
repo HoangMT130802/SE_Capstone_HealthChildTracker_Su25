@@ -11,6 +11,9 @@ using Services.Implementations;
 using Contracts.MapperProfiles;
 using Microsoft.AspNetCore.Mvc;
 using Net.payOS;
+using CloudinaryDotNet;
+using KidTracking.API.Extensions;
+using Repositories.Models;
 namespace KidTracking.API
 {
     public class Program
@@ -174,6 +177,14 @@ namespace KidTracking.API
                 clientId: builder.Configuration["Environment:PAYOS_CLIENT_ID"],
                 apiKey: builder.Configuration["Environment:PAYOS_API_KEY"],
                 checksumKey: builder.Configuration["Environment:PAYOS_CHECKSUM_KEY"]));
+            //Cloudinary luu anh
+            builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
+            builder.Services.AddScoped<Cloudinary>(sp =>
+            {
+                var config = sp.GetRequiredService<IConfiguration>().GetSection("Cloudinary").Get<CloudinarySettings>();
+                var account = new CloudinaryDotNet.Account(config.CloudName, config.ApiKey, config.ApiSecret);
+                return new Cloudinary(account);
+            });
             // Đăng ký db context
             builder.Services.AddDbContext<HealthChildTrackerContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -206,6 +217,7 @@ namespace KidTracking.API
             builder.Services.AddScoped<ITransactionService, TransactionService>();
             builder.Services.AddScoped<IVietQRService, VietQRService>();
             builder.Services.AddScoped<IVaccineTemplateService, VaccineTemplateService>();
+            builder.Services.AddScoped<IVaccinationFacilityPaymentAccountService, VaccinationFacilityPaymentAccountService>();
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);
 
