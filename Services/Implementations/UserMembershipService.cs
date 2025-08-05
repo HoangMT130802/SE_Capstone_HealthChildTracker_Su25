@@ -90,8 +90,7 @@ namespace Services.Implementations
                         MembershipId = subscribeDto.MembershipId,
                         StartDate = startDate,
                         EndDate = endDate,
-                        Status = true,
-                        RemainingConsultations = 1000, // Default value, có thể config từ membership
+                        Status = true,      
                         LastRenewalDate = DateOnly.FromDateTime(startDate)
                     };
 
@@ -209,7 +208,7 @@ namespace Services.Implementations
                         StartDate = startDate,
                         EndDate = endDate,
                         Status = true,
-                        RemainingConsultations = 1000, // Default value
+   
                         LastRenewalDate = DateOnly.FromDateTime(startDate)
                     };
 
@@ -355,7 +354,6 @@ namespace Services.Implementations
                 var newEndDate = userMembership.EndDate.AddMonths(userMembership.Membership.Duration);
                 userMembership.EndDate = newEndDate;
                 userMembership.LastRenewalDate = DateOnly.FromDateTime(DateTime.UtcNow);
-                userMembership.RemainingConsultations += 1000; // Add more consultations
 
                 userMembershipRepository.Update(userMembership);
                 await _unitOfWork.SaveChangesAsync();

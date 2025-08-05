@@ -215,7 +215,7 @@ namespace KidTracking.API
             // ✅ Thêm Payment và Transaction Services
             builder.Services.AddScoped<IPaymentService, PaymentService>();
             builder.Services.AddScoped<ITransactionService, TransactionService>();
-            builder.Services.AddScoped<IVietQRService, VietQRService>();
+
             builder.Services.AddScoped<IVaccineTemplateService, VaccineTemplateService>();
             builder.Services.AddScoped<IVaccinationFacilityPaymentAccountService, VaccinationFacilityPaymentAccountService>();
             // Đăng ký automapper

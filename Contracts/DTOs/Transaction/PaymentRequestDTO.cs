@@ -24,11 +24,8 @@ namespace Contracts.DTOs.Transaction
         public required string OrderId { get; set; }
         public decimal Amount { get; set; }
         public required string Status { get; set; }
-        public required string Message { get; set; }
-        
-        // ✅ Dual QR support - VietQR cho banking app, PayOS QR cho web fallback
-        public string? QrCode { get; set; }      // VietQR string (for banking) hoặc PayOS URL (fallback)
-        public string? QrDataURL { get; set; }   // QR image URL
+        public required string ReturnUrl { get; set; }
+        public required string CancelUrl { get; set; }
     }
     
     public class PaymentStatusDTO
