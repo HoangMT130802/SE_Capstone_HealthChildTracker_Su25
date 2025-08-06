@@ -18,17 +18,20 @@ namespace KidTracking.API.Controllers
         private readonly IGrowthRecordService _recordService;
         private readonly IMapper _mapper;
         private readonly ILogger<GrowthAssessmentController> _logger;
+        private readonly IUserMembershipService _userMembershipService;
 
         public GrowthAssessmentController(
             IGrowthAssessmentService assessmentService,
             IGrowthRecordService recordService,
             IMapper mapper,
-            ILogger<GrowthAssessmentController> logger)
+            ILogger<GrowthAssessmentController> logger,
+            IUserMembershipService userMembershipService)
         {
             _assessmentService = assessmentService;
             _recordService = recordService;
             _mapper = mapper;
             _logger = logger;
+            _userMembershipService = userMembershipService;
         }
 
         /// <summary>
@@ -122,6 +125,16 @@ namespace KidTracking.API.Controllers
         {
             try
             {
+                // Lấy AccountId từ token
+                var accountIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(accountIdStr) || !int.TryParse(accountIdStr, out int accountId))
+                    return Unauthorized("Không xác định được tài khoản");
+
+                // Kiểm tra UserMembership hợp lệ
+                var membership = await _userMembershipService.GetActiveUserMembershipAsync(accountId);
+                if (membership == null)
+                    return BadRequest(new { message = "Bạn cần đăng ký gói thành viên để sử dụng chức năng này" });
+
                 var validPeriods = new[] { "1day", "1week", "1month", "3months", "6months", "1year" };
                 if (!validPeriods.Contains(period.ToLower()))
                 {
