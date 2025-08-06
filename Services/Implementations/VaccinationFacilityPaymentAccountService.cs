@@ -98,7 +98,7 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                             repository.Update(accountToUpdate);
                         }
                     }
-                    await _unitOfWork.SaveChangesAsync(); 
+                    await _unitOfWork.SaveChangesAsync();
                 }
             }
 
@@ -138,7 +138,6 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
             if (paymentAccount == null)
                 throw new KeyNotFoundException($"Payment account with ID {id} not found");
 
-            // Nếu cập nhật IsActive = true, đặt các tài khoản khác của cùng Facility thành false
             if (paymentAccountDto.IsActive && paymentAccount.IsActive != "true")
             {
                 var existingAccountsResult = await repository.GetAllAsync(
@@ -163,11 +162,10 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                             repository.Update(accountToUpdate);
                         }
                     }
-                    await _unitOfWork.SaveChangesAsync(); // Lưu thay đổi trước
+                    await _unitOfWork.SaveChangesAsync();
                 }
             }
 
-            // Upload new QR code image if provided
             if (paymentAccountDto.QrcodeImage != null)
             {
                 var qrcodeImageUrl = await UploadImageToCloudinary(paymentAccountDto.QrcodeImage);
@@ -203,7 +201,6 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
             if (paymentAccount == null)
                 throw new KeyNotFoundException($"Payment account with ID {id} not found");
 
-            // Optional: Delete image from Cloudinary if needed
             if (!string.IsNullOrEmpty(paymentAccount.QrcodeImageUrl))
             {
                 var publicId = paymentAccount.QrcodeImageUrl.Split('/').Last().Split('.').First();
@@ -241,13 +238,13 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
         }
     }
 
-    public async Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetAllPaymentAccountsAsync(int? pageIndex = null, int? pageSize = null)
+    public async Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetAllPaymentAccountsAsync(bool? isActive = null, int? pageIndex = null, int? pageSize = null)
     {
         try
         {
             var repository = _unitOfWork.GetRepository<VaccinationFacilityPaymentAccount>();
             var paymentAccountsResult = await repository.GetAllAsync(
-                filter: null,
+                filter: isActive.HasValue ? pa => pa.IsActive == (isActive.Value ? "true" : "false") : null,
                 orderBy: null,
                 pageIndex: pageIndex,
                 pageSize: pageSize
@@ -266,13 +263,13 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
         }
     }
 
-    public async Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetPaymentAccountByFacilityIdAsync(int facilityId, int? pageIndex = null, int? pageSize = null)
+    public async Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetPaymentAccountByFacilityIdAsync(int facilityId, bool? isActive = null, int? pageIndex = null, int? pageSize = null)
     {
         try
         {
             var repository = _unitOfWork.GetRepository<VaccinationFacilityPaymentAccount>();
             var paymentAccountsResult = await repository.GetAllAsync(
-                filter: pa => pa.FacilityId == facilityId,
+                filter: pa => pa.FacilityId == facilityId && (!isActive.HasValue || pa.IsActive == (isActive.Value ? "true" : "false")),
                 orderBy: null,
                 pageIndex: pageIndex,
                 pageSize: pageSize

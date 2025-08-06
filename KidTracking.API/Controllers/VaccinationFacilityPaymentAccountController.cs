@@ -126,7 +126,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAllPaymentAccounts([FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
+        public async Task<IActionResult> GetAllPaymentAccounts([FromQuery] bool? isActive = null, [FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
         {
             if (pageIndex <= 0 || pageSize <= 0)
             {
@@ -135,7 +135,7 @@ namespace KidTracking.API.Controllers
 
             try
             {
-                var paymentAccounts = await _paymentAccountService.GetAllPaymentAccountsAsync(pageIndex, pageSize);
+                var paymentAccounts = await _paymentAccountService.GetAllPaymentAccountsAsync(isActive, pageIndex, pageSize);
                 return Ok(new
                 {
                     totalCount = paymentAccounts.TotalCount,
@@ -152,7 +152,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpGet("byFacility/{facilityId}")]
-        public async Task<IActionResult> GetPaymentAccountByFacilityId(int facilityId, [FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
+        public async Task<IActionResult> GetPaymentAccountByFacilityId(int facilityId, [FromQuery] bool? isActive = null, [FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
         {
             if (pageIndex <= 0 || pageSize <= 0)
             {
@@ -161,7 +161,7 @@ namespace KidTracking.API.Controllers
 
             try
             {
-                var paymentAccounts = await _paymentAccountService.GetPaymentAccountByFacilityIdAsync(facilityId, pageIndex, pageSize);
+                var paymentAccounts = await _paymentAccountService.GetPaymentAccountByFacilityIdAsync(facilityId, isActive, pageIndex, pageSize);
                 return Ok(new
                 {
                     totalCount = paymentAccounts.TotalCount,
@@ -172,6 +172,7 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, $"Error getting payment accounts for FacilityId {facilityId}: {ex.Message}");
                 return StatusCode(500, new { message = "Internal server error: " + ex.Message });
             }
         }
