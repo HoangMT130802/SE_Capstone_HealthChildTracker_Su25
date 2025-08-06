@@ -237,7 +237,51 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetMyOrdersAsync(string status = null, int accountId = 0, int? pageIndex = null, int? pageSize = null)
+        {
+            try
+            {
+                _logger.LogInformation($"Retrieving orders for AccountId: {accountId} with status: {status ?? "all"}");
+                if (accountId == 0)
+                {
+                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại");
+                }
 
+                var memberRepository = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepository.GetAsync(m => m.AccountId == accountId);
+                if (member == null)
+                {
+                    throw new KeyNotFoundException($"Không tìm thấy Member gắn với AccountId {accountId}");
+                }
+                var memberId = member.MemberId;
+
+                var orderRepository = _unitOfWork.GetRepository<Order>();
+                Expression<Func<Order, bool>>? filter = null;
+                if (!string.IsNullOrEmpty(status) || memberId != 0)
+                {
+                    filter = o => (string.IsNullOrEmpty(status) || o.Status == status) && o.MemberId == memberId;
+                }
+
+                var result = await orderRepository.GetAllAsync(
+                    filter: filter,
+                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine",
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
+
+                var orderDtos = _mapper.Map<IEnumerable<OrderDTO>>(result.Data);
+                return new QueryResultModel<IEnumerable<OrderDTO>>
+                {
+                    TotalCount = result.TotalCount,
+                    Data = orderDtos
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting my orders for AccountId {accountId}");
+                throw;
+            }
+        }
         public async Task DeleteOrderAsync(int orderId)
         {
             try
