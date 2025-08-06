@@ -314,6 +314,30 @@ namespace Services.Implementations
 
                 var validation = new AppointmentValidationDTO { CanBook = true };
 
+                // ✅ Validate disease selection - phải có ít nhất 1 bệnh
+                var diseaseIds = new List<int>();
+                if (request.DiseaseId.HasValue)
+                {
+                    diseaseIds.Add(request.DiseaseId.Value);
+                }
+                if (request.DiseaseIds != null && request.DiseaseIds.Any())
+                {
+                    diseaseIds.AddRange(request.DiseaseIds);
+                }
+                
+                if (!diseaseIds.Any())
+                {
+                    validation.CanBook = false;
+                    validation.Errors.Add(new ValidationErrorDTO
+                    {
+                        Code = "NO_DISEASE_SELECTED",
+                        Message = "Phải chọn ít nhất 1 bệnh",
+                        Field = "DiseaseId,DiseaseIds",
+                        Severity = ValidationSeverity.Error
+                    });
+                    return validation;
+                }
+
                 // Validate child exists
                 var childRepo = _unitOfWork.GetRepository<Child>();
                 var child = await childRepo.GetByIdAsync(request.ChildId);
@@ -343,36 +367,54 @@ namespace Services.Implementations
                         Severity = ValidationSeverity.Error
                     });
                 }
-                else if (schedule.Status != "Available" || (schedule.Slot.MaxCapacity - (schedule.BookedCount ?? 0)) <= 0)
+                else if (schedule.Status != "Available")
                 {
                     validation.CanBook = false;
                     validation.Errors.Add(new ValidationErrorDTO
                     {
                         Code = "SCHEDULE_NOT_AVAILABLE",
-                        Message = "Lịch hẹn đã hết chỗ hoặc không khả dụng",
+                        Message = "Lịch hẹn không khả dụng",
                         Field = "ScheduleId",
                         Severity = ValidationSeverity.Error
                     });
                 }
                 else
                 {
-                    // Validate booking time - không được book trong quá khứ
-                    if (schedule.Slot.StartTime.HasValue)
+                    // ✅ Kiểm tra BookedCount có vượt quá MaxCapacity không
+                    var currentBookedCount = schedule.BookedCount ?? 0;
+                    var maxCapacity = schedule.Slot?.MaxCapacity ?? 0;
+                    
+                    if (currentBookedCount >= maxCapacity)
                     {
-                        var slotDateTime = schedule.Date.ToDateTime(schedule.Slot.StartTime.Value);
-                        var now = DateTime.Now;
-                        
-                        // Chỉ kiểm tra không được book trong quá khứ (khi slot đã bắt đầu)
-                        if (slotDateTime < now)
+                        validation.CanBook = false;
+                        validation.Errors.Add(new ValidationErrorDTO
                         {
-                            validation.CanBook = false;
-                            validation.Errors.Add(new ValidationErrorDTO
+                            Code = "SCHEDULE_FULL",
+                            Message = $"Lịch hẹn đã hết chỗ (Đã đặt: {currentBookedCount}/{maxCapacity})",
+                            Field = "ScheduleId",
+                            Severity = ValidationSeverity.Error
+                        });
+                    }
+                    else
+                    {
+                        // Validate booking time - không được book trong quá khứ
+                        if (schedule.Slot.StartTime.HasValue)
+                        {
+                            var slotDateTime = schedule.Date.ToDateTime(schedule.Slot.StartTime.Value);
+                            var now = DateTime.Now;
+                            
+                            // Chỉ kiểm tra không được book trong quá khứ (khi slot đã bắt đầu)
+                            if (slotDateTime < now)
                             {
-                                Code = "BOOKING_IN_PAST",
-                                Message = "Không thể đặt lịch khi slot đã bắt đầu hoặc đã qua",
-                                Field = "ScheduleId",
-                                Severity = ValidationSeverity.Error
-                            });
+                                validation.CanBook = false;
+                                validation.Errors.Add(new ValidationErrorDTO
+                                {
+                                    Code = "BOOKING_IN_PAST",
+                                    Message = "Không thể đặt lịch khi slot đã bắt đầu hoặc đã qua",
+                                    Field = "ScheduleId",
+                                    Severity = ValidationSeverity.Error
+                                });
+                            }
                         }
                     }
                 }
@@ -405,6 +447,52 @@ namespace Services.Implementations
                         Field = "OrderId,PackageId,FacilityVaccineIds",
                         Severity = ValidationSeverity.Error
                     });
+                }
+
+                // ✅ Validate vaccine lẻ với disease nếu được chọn
+                if (hasFacilityVaccineIds)
+                {
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    var invalidVaccines = new List<string>();
+                    
+                    foreach (var facilityVaccineId in request.FacilityVaccineIds)
+                    {
+                        var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                            fv => fv.FacilityVaccineId == facilityVaccineId,
+                            includeProperties: "Vaccine,Vaccine.VaccineDiseases");
+                        
+                        if (facilityVaccine == null)
+                        {
+                            validation.CanBook = false;
+                            validation.Errors.Add(new ValidationErrorDTO
+                            {
+                                Code = "FACILITY_VACCINE_NOT_FOUND",
+                                Message = $"Không tìm thấy vaccine với ID {facilityVaccineId}",
+                                Field = "FacilityVaccineIds",
+                                Severity = ValidationSeverity.Error
+                            });
+                            break;
+                        }
+                        
+                        // Kiểm tra vaccine có điều trị được disease không
+                        var canTreatDisease = facilityVaccine.Vaccine?.VaccineDiseases?.Any(vd => diseaseIds.Contains(vd.DiseaseId)) ?? false;
+                        if (!canTreatDisease)
+                        {
+                            invalidVaccines.Add(facilityVaccine.Vaccine?.Name ?? $"Vaccine {facilityVaccineId}");
+                        }
+                    }
+                    
+                    if (invalidVaccines.Any())
+                    {
+                        validation.CanBook = false;
+                        validation.Errors.Add(new ValidationErrorDTO
+                        {
+                            Code = "VACCINE_DISEASE_MISMATCH",
+                            Message = $"Các vaccine sau không điều trị được bệnh đã chọn: {string.Join(", ", invalidVaccines)}",
+                            Field = "FacilityVaccineIds",
+                            Severity = ValidationSeverity.Error
+                        });
+                    }
                 }
 
                 // Validate Order nếu được chọn
@@ -672,7 +760,7 @@ namespace Services.Implementations
                     
                     // Validate Order exists và đã paid
                     var orderRepo = _unitOfWork.GetRepository<Order>();
-                    var existingOrder = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value);
+                    var existingOrder = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value, "OrderDetails");
                     if (existingOrder == null)
                     {
                         throw new ArgumentException($"Không tìm thấy Order với ID {request.OrderId.Value}");
@@ -682,6 +770,26 @@ namespace Services.Implementations
                     {
                         throw new InvalidOperationException($"Order {request.OrderId.Value} chưa được thanh toán");
                     }*/
+                    
+                    // ✅ Trừ số lượng vaccine trong OrderDetail
+                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                    var orderDetails = await orderDetailRepo.FindAsync(od => od.OrderId == request.OrderId.Value);
+                    
+                    foreach (var orderDetail in orderDetails)
+                    {
+                        if (orderDetail.RemainingQuantity > 0)
+                        {
+                            orderDetail.RemainingQuantity -= 1; // Trừ 1 vaccine
+                            orderDetail.UpdatedAt = DateTime.UtcNow;
+                            orderDetailRepo.Update(orderDetail);
+                            _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId}, còn lại: {RemainingQuantity}", 
+                                orderDetail.OrderDetailId, orderDetail.RemainingQuantity);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("OrderDetail {OrderDetailId} đã hết vaccine (RemainingQuantity = 0)", orderDetail.OrderDetailId);
+                        }
+                    }
                     
                     appointment.OrderId = request.OrderId.Value;
                     _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công", request.OrderId.Value);
@@ -777,7 +885,17 @@ namespace Services.Implementations
 
                 // Load related data for response
                 var diseaseRepo = _unitOfWork.GetRepository<Disease>();
-                var disease = await diseaseRepo.GetByIdAsync(request.DiseaseId);
+                // Lấy diseaseIds từ request
+                var requestDiseaseIds = new List<int>();
+                if (request.DiseaseId.HasValue)
+                {
+                    requestDiseaseIds.Add(request.DiseaseId.Value);
+                }
+                if (request.DiseaseIds != null && request.DiseaseIds.Any())
+                {
+                    requestDiseaseIds.AddRange(request.DiseaseIds);
+                }
+                var disease = await diseaseRepo.GetByIdAsync(requestDiseaseIds.First()); // Lấy bệnh đầu tiên cho response
                 
                 var scheduleRepo2 = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var scheduleWithDetails = await scheduleRepo2.GetAsync(s => s.ScheduleId == request.ScheduleId, "Slot,Facility");
@@ -900,6 +1018,22 @@ namespace Services.Implementations
                         } : null
                     } : null
                 };
+
+                // ✅ Tăng BookedCount trong AppointmentSchedule
+                var scheduleRepoForUpdate = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var scheduleToUpdate = await scheduleRepoForUpdate.GetByIdAsync(request.ScheduleId);
+                if (scheduleToUpdate != null)
+                {
+                    // Tăng BookedCount lên 1 (mỗi appointment = 1 người)
+                    var oldBookedCount = scheduleToUpdate.BookedCount ?? 0;
+                    scheduleToUpdate.BookedCount = oldBookedCount + 1;
+                    scheduleToUpdate.UpdatedAt = DateTime.UtcNow;
+                    scheduleRepoForUpdate.Update(scheduleToUpdate);
+                    await _unitOfWork.SaveChangesAsync();
+                    
+                    _logger.LogInformation("Đã tăng BookedCount cho Schedule {ScheduleId} từ {OldCount} lên {NewCount}", 
+                        request.ScheduleId, oldBookedCount, scheduleToUpdate.BookedCount);
+                }
 
                 _logger.LogInformation("Đặt lịch thành công cho trẻ {ChildId}, AppointmentId: {AppointmentId}, Luồng: {Flow}", 
                     request.ChildId, appointment.AppointmentId, 
@@ -1027,6 +1161,9 @@ namespace Services.Implementations
                     throw new ArgumentException($"Không tìm thấy lịch hẹn với ID {appointmentId}");
                 }
 
+                // ✅ Lưu ScheduleId trước khi xóa appointment
+                var scheduleId = appointment.ScheduleId;
+
                 // Xóa các VaccinationAppointmentDetails nếu có (individual vaccines)
                 var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
                 var appointmentDetails = await appointmentDetailRepo.FindAsync(d => d.AppointmentId == appointmentId);
@@ -1041,6 +1178,21 @@ namespace Services.Implementations
                 appointmentRepo.HardDelete(appointment);
                 
                 await _unitOfWork.SaveChangesAsync();
+
+                // ✅ Giảm BookedCount trong AppointmentSchedule
+                var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var scheduleToUpdate = await scheduleRepo.GetByIdAsync(scheduleId);
+                if (scheduleToUpdate != null && scheduleToUpdate.BookedCount > 0)
+                {
+                    var oldBookedCount = scheduleToUpdate.BookedCount ?? 0;
+                    scheduleToUpdate.BookedCount = Math.Max(0, oldBookedCount - 1); // Không để âm
+                    scheduleToUpdate.UpdatedAt = DateTime.UtcNow;
+                    scheduleRepo.Update(scheduleToUpdate);
+                    await _unitOfWork.SaveChangesAsync();
+                    
+                    _logger.LogInformation("Đã giảm BookedCount cho Schedule {ScheduleId} từ {OldCount} xuống {NewCount}", 
+                        scheduleId, oldBookedCount, scheduleToUpdate.BookedCount);
+                }
 
                 _logger.LogInformation("Xóa lịch hẹn {AppointmentId} thành công", appointmentId);
                 return true;
@@ -1400,10 +1552,10 @@ namespace Services.Implementations
                 appointment.Note = updateDto.Note ?? appointment.Note;
                 appointment.UpdatedAt = DateTime.UtcNow;
                 
-                                 // Nếu chuyển sang Paid, cập nhật VaccinationAppointmentDetails
-                 if (updateDto.Status == "Paid")
+                                 // ✅ Nếu chuyển sang Paid, cập nhật VaccinationAppointmentDetails VÀ Order status
+                if (updateDto.Status == "Paid")
                 {
-                    _logger.LogInformation("Đang cập nhật VaccinationAppointmentDetails cho appointment {AppointmentId}", appointmentId);
+                    _logger.LogInformation("Đang cập nhật VaccinationAppointmentDetails và Order status cho appointment {AppointmentId}", appointmentId);
                     
                     if (appointment.Schedule == null)
                     {
@@ -1411,6 +1563,7 @@ namespace Services.Implementations
                         throw new InvalidOperationException("Không thể lấy thông tin lịch hẹn");
                     }
                     
+                    // ✅ Cập nhật VaccinationAppointmentDetails
                     var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
                     var details = await detailRepo.FindAsync(d => d.AppointmentId == appointmentId);
                     
@@ -1420,6 +1573,36 @@ namespace Services.Implementations
                     {
                         detail.VaccinationDate = appointment.Schedule.Date;
                         _logger.LogInformation("Cập nhật VaccinationDate cho appointment {AppointmentId} thành {Date}", appointmentId, appointment.Schedule.Date);
+                    }
+                    
+                    // ✅ Cập nhật Order status nếu appointment có OrderId
+                    if (appointment.OrderId.HasValue)
+                    {
+                        var orderRepo = _unitOfWork.GetRepository<Order>();
+                        var order = await orderRepo.GetByIdAsync(appointment.OrderId.Value);
+                        
+                        if (order != null)
+                        {
+                            if (order.Status == "Pending")
+                            {
+                                order.Status = "Paid";
+                                order.UpdatedAt = DateTime.UtcNow;
+                                orderRepo.Update(order);
+                                _logger.LogInformation("Đã cập nhật Order {OrderId} status từ Pending sang Paid", order.OrderId);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("Order {OrderId} đã có status {Status}, không cần cập nhật", order.OrderId, order.Status);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Không tìm thấy Order {OrderId} cho appointment {AppointmentId}", appointment.OrderId.Value, appointmentId);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Appointment {AppointmentId} không có OrderId, chỉ cập nhật VaccinationAppointmentDetails", appointmentId);
                     }
                 }
                 

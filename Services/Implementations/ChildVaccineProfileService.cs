@@ -450,7 +450,7 @@ namespace Services.Implementations
                             AppointmentId = null, // ✅ NextDose chưa có appointment
                             DoseNum = nextDoseNumber,
                             ExpectedDate = nextExpectedDate.Value,
-                            ActualDate = DateOnly.MinValue, // ✅ NextDose chưa tiêm (null trong entity)
+                            ActualDate = null, // ✅ NextDose chưa tiêm nên ActualDate = null
                             Status = "Scheduled", // Đã lên lịch
                             IsRequired = true,
                             Priority = "High",

@@ -10,6 +10,11 @@ namespace Contracts.DTOs.Appointment
         [Required(ErrorMessage = "ScheduleId là bắt buộc")]
         public int ScheduleId { get; set; }
         
+        /// <summary>
+        /// ID Order đã mua (nếu có) - để sử dụng vaccine từ gói đã mua
+        /// </summary>
+        public int? OrderId { get; set; }
+        
         public string? Note { get; set; }
     }
 }

@@ -126,11 +126,44 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Lịch này đã hết chỗ");
                 }
 
-                // 4. Xử lý Order (nếu có gói áp dụng)
+                // 4. Xử lý Order (ưu tiên OrderId từ request, nếu không có thì dùng validation)
                 Order usedOrder = null;
                 int? remainingVaccines = null;
                 
-                if (validation.HasApplicableOrder && validation.ApplicableOrder != null)
+                // ✅ Ưu tiên OrderId từ request nếu có
+                if (request.OrderId.HasValue)
+                {
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    usedOrder = await orderRepo.GetAsync(
+                        o => o.OrderId == request.OrderId.Value,
+                        includeProperties: "OrderDetails,OrderDetails.FacilityVaccine"
+                    );
+
+                    if (usedOrder != null)
+                    {
+                        var relevantOrderDetail = usedOrder.OrderDetails
+                            .FirstOrDefault(od => od.FacilityVaccine.VaccineId == profile.VaccineId 
+                                               && od.DiseaseId == profile.DiseaseId);
+                        
+                        if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
+                        {
+                            // Trừ 1 vaccine từ gói
+                            relevantOrderDetail.RemainingQuantity -= 1;
+                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            
+                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                            orderDetailRepo.Update(relevantOrderDetail);
+                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, trừ vaccine thành công", request.OrderId.Value);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("OrderId {OrderId} không có vaccine phù hợp hoặc đã hết", request.OrderId.Value);
+                            usedOrder = null; // Reset nếu không có vaccine phù hợp
+                        }
+                    }
+                }
+                // Fallback: Sử dụng validation nếu không có OrderId từ request
+                else if (validation.HasApplicableOrder && validation.ApplicableOrder != null)
                 {
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     usedOrder = await orderRepo.GetAsync(
@@ -152,6 +185,7 @@ namespace Services.Implementations
                             
                             var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
                             orderDetailRepo.Update(relevantOrderDetail);
+                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, trừ vaccine thành công", validation.ApplicableOrder.OrderId);
                         }
                     }
                 }

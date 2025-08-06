@@ -10,8 +10,15 @@ namespace Contracts.DTOs.Appointment
         [Required(ErrorMessage = "ID trẻ là bắt buộc")]
         public int ChildId { get; set; }
 
-        [Required(ErrorMessage = "ID bệnh là bắt buộc")]
-        public int DiseaseId { get; set; }
+        /// <summary>
+        /// ID bệnh (cho tương thích ngược)
+        /// </summary>
+        public int? DiseaseId { get; set; }
+
+        /// <summary>
+        /// Danh sách ID bệnh (hỗ trợ đặt nhiều bệnh cùng lúc)
+        /// </summary>
+        public List<int>? DiseaseIds { get; set; }
 
         [Required(ErrorMessage = "ID cơ sở tiêm chủng là bắt buộc")]
         public int FacilityId { get; set; }
