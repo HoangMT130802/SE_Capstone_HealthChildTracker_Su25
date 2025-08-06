@@ -53,7 +53,7 @@ namespace Contracts.DTOs.Appointment
         /// <summary>
         /// Có thể đặt lịch không
         /// </summary>
-        public bool IsBookable => AvailableCapacity > 0 && Status == "Active";
+        public bool IsBookable => AvailableCapacity > 0 && Status == "active";
         
         /// <summary>
         /// Phần trăm đã đặt

@@ -31,6 +31,6 @@ namespace Contracts.DTOs.Appointment
 
         // Thông tin bổ sung
         public int AvailableCapacity => Slot?.MaxCapacity - BookedCount ?? 0;
-        public bool IsAvailable => AvailableCapacity > 0 && Status == "Active";
+        public bool IsAvailable => AvailableCapacity > 0 && Status == "active";
     }
 } 
