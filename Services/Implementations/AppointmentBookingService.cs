@@ -60,7 +60,7 @@ namespace Services.Implementations
                     var vaccineCount = facilityVaccines
                         .Where(fv => fv.FacilityId == facility.FacilityId && 
                                    fv.Vaccine.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId) &&
-                                   fv.Status == "Active" && fv.AvailableQuantity > 0)
+                                   fv.Status == "active" && fv.AvailableQuantity > 0)
                         .Count();
 
                     if (vaccineCount > 0)
@@ -68,14 +68,14 @@ namespace Services.Implementations
                         var prices = facilityVaccines
                             .Where(fv => fv.FacilityId == facility.FacilityId && 
                                        fv.Vaccine.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId) &&
-                                       fv.Status == "Active")
+                                       fv.Status == "active")
                             .Select(fv => fv.Price);
 
                         // Kiểm tra có gói vaccine không
                         var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
                         var packages = await packageRepo.GetAllAsync("");
                         var hasPackages = packages.Any(p => p.FacilityId == facility.FacilityId && 
-                                                          p.Status == "Active" &&
+                                                          p.Status == "active" &&
                                                           p.PackageVaccines.Any(pv => pv.DiseaseId == diseaseId));
 
                         var facilityWithVaccines = _mapper.Map<VaccinationFacilityWithVaccinesDTO>(facility);
@@ -2195,6 +2195,32 @@ namespace Services.Implementations
                     {
                         CanRebook = false,
                         ReasonCannotRebook = "Chưa có ngày dự kiến tiêm vaccine này",
+                        HasApplicableOrder = false,
+                        RequiresPayment = true,
+                        EstimatedCost = 0
+                    };
+                }
+
+                // 5. Validate DoseNum - phải nhỏ hơn hoặc bằng số liều tối đa của vaccine
+                if (profile.DoseNum > profile.Vaccine.NumberOfDoses)
+                {
+                    return new AppointmentRebookingValidationDTO
+                    {
+                        CanRebook = false,
+                        ReasonCannotRebook = $"Số mũi {profile.DoseNum} vượt quá số liều tối đa {profile.Vaccine.NumberOfDoses} của vaccine {profile.Vaccine.Name}",
+                        HasApplicableOrder = false,
+                        RequiresPayment = true,
+                        EstimatedCost = 0
+                    };
+                }
+
+                // 6. Validate ActualDate - nếu đã có ActualDate thì không cho rebook (đã tiêm xong)
+                if (profile.ActualDate.HasValue)
+                {
+                    return new AppointmentRebookingValidationDTO
+                    {
+                        CanRebook = false,
+                        ReasonCannotRebook = $"Mũi {profile.DoseNum} của vaccine {profile.Vaccine.Name} đã được tiêm vào ngày {profile.ActualDate.Value:dd/MM/yyyy}",
                         HasApplicableOrder = false,
                         RequiresPayment = true,
                         EstimatedCost = 0

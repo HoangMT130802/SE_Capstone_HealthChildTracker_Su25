@@ -32,7 +32,7 @@ namespace Contracts.DTOs.Appointment
         /// <summary>
         /// Có thể đặt lịch không (còn hàng, chưa hết hạn)
         /// </summary>
-        public bool IsBookable => AvailableQuantity > 0 && ExpiryDate > DateOnly.FromDateTime(DateTime.Now) && Status == "Active";
+        public bool IsBookable => AvailableQuantity > 0 && ExpiryDate > DateOnly.FromDateTime(DateTime.Now) && Status == "active";
 
         /// <summary>
         /// Số ngày còn lại trước khi hết hạn
@@ -48,7 +48,7 @@ namespace Contracts.DTOs.Appointment
         /// <summary>
         /// Có thể đặt lịch không
         /// </summary>
-        public bool IsBookable => Status == "Active" && PackageVaccines.All(pv => pv.FacilityVaccine.AvailableQuantity >= pv.Quantity);
+        public bool IsBookable => Status == "active" && PackageVaccines.All(pv => pv.FacilityVaccine.AvailableQuantity >= pv.Quantity);
 
         /// <summary>
         /// Số lượng vaccine trong gói có thể điều trị bệnh này

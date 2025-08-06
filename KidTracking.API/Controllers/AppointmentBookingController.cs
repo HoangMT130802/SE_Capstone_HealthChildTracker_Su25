@@ -372,18 +372,20 @@ namespace KidTracking.API.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning(ex, "Không thể đặt lại lịch cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
-                return BadRequest(ex.Message);
+                _logger.LogWarning(ex, "Không thể đặt lại lịch cho ChildVaccineProfile {ProfileId}. Lý do: {Message}", 
+                    request.ChildVaccineProfileId, ex.Message);
+                return BadRequest(new { message = ex.Message, errorType = "InvalidOperation" });
             }
             catch (ArgumentException ex)
             {
-                _logger.LogWarning(ex, "Thông tin đặt lại lịch không hợp lệ cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
-                return BadRequest(ex.Message);
+                _logger.LogWarning(ex, "Thông tin đặt lại lịch không hợp lệ cho ChildVaccineProfile {ProfileId}. Lý do: {Message}", 
+                    request.ChildVaccineProfileId, ex.Message);
+                return BadRequest(new { message = ex.Message, errorType = "ArgumentException" });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi đặt lại lịch cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
-                return StatusCode(500, "Có lỗi xảy ra khi đặt lại lịch");
+                return StatusCode(500, new { message = "Có lỗi xảy ra khi đặt lại lịch", errorType = "InternalError" });
             }
         }
 

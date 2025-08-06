@@ -49,22 +49,28 @@ namespace Services.Implementations
             {
                 // Nếu không có gói, cần tính chi phí mua lẻ
                 var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
-                var cheapestFacilityVaccine = await facilityVaccineRepo.FindAsync(
+                var availableFacilityVaccines = await facilityVaccineRepo.FindAsync(
                     fv => fv.Vaccine.VaccineId == profile.VaccineId 
-                       && fv.Status == "Available" 
-                       && fv.AvailableQuantity > 0
+                       && fv.Status == "active" 
+                       && fv.AvailableQuantity > 0,
+                    includeProperties: "Facility,Vaccine"
                 );
                 
-                if (cheapestFacilityVaccine.Any())
+                if (availableFacilityVaccines.Any())
                 {
-                    estimatedCost = cheapestFacilityVaccine.Min(fv => fv.Price);
+                    estimatedCost = availableFacilityVaccines.Min(fv => fv.Price);
+                    
+                    // Log thông tin các cơ sở có vaccine này
+                    var facilityNames = string.Join(", ", availableFacilityVaccines.Select(fv => fv.Facility.FacilityName));
+                    _logger.LogInformation("Tìm thấy vaccine {VaccineId} ({VaccineName}) tại các cơ sở: {FacilityNames}", 
+                        profile.VaccineId, profile.Vaccine.Name, facilityNames);
                 }
                 else
                 {
                     return new AppointmentRebookingValidationDTO
                     {
                         CanRebook = false,
-                        ReasonCannotRebook = "Hiện tại không có cơ sở nào cung cấp vaccine này",
+                        ReasonCannotRebook = $"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}",
                         HasApplicableOrder = false,
                         RequiresPayment = true,
                         EstimatedCost = 0
@@ -124,6 +130,39 @@ namespace Services.Implementations
                 if (schedule.BookedCount >= schedule.Slot.MaxCapacity)
                 {
                     throw new InvalidOperationException("Lịch này đã hết chỗ");
+                }
+
+                // 3.5. Kiểm tra cơ sở có vaccine phù hợp không (nếu không dùng order)
+                if (!request.OrderId.HasValue)
+                {
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                        fv => fv.FacilityId == schedule.FacilityId 
+                           && fv.Vaccine.VaccineId == profile.VaccineId
+                           && fv.Status == "active"
+                           && fv.AvailableQuantity > 0
+                    );
+
+                    if (facilityVaccine == null)
+                    {
+                        // Tìm tất cả cơ sở có vaccine này để gợi ý
+                        var allFacilityVaccines = await facilityVaccineRepo.FindAsync(
+                            fv => fv.Vaccine.VaccineId == profile.VaccineId
+                               && fv.Status == "active"
+                               && fv.AvailableQuantity > 0,
+                            includeProperties: "Facility"
+                        );
+
+                        if (allFacilityVaccines.Any())
+                        {
+                            var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
+                            throw new InvalidOperationException($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
+                        }
+                    }
                 }
 
                 // 4. Xử lý Order (ưu tiên OrderId từ request, nếu không có thì dùng validation)
@@ -206,8 +245,9 @@ namespace Services.Implementations
                 await appointmentRepo.AddAsync(newAppointment);
                 await _unitOfWork.SaveChangesAsync();
 
-                // 6. Cập nhật ChildVaccineProfile với AppointmentId
+                // 6. Cập nhật ChildVaccineProfile với AppointmentId và Status
                 profile.AppointmentId = newAppointment.AppointmentId;
+                profile.Status = "Pending"; // Cập nhật status từ "Scheduled" thành "Pending" khi có appointmentId
                 profileRepo.Update(profile);
 
                 // 7. Cập nhật BookedCount của Schedule
@@ -222,26 +262,48 @@ namespace Services.Implementations
                     var facilityVaccine = await facilityVaccineRepo.GetAsync(
                         fv => fv.FacilityId == schedule.FacilityId 
                            && fv.Vaccine.VaccineId == profile.VaccineId
-                           && fv.Status == "Available"
-                           && fv.AvailableQuantity > 0
+                           && fv.Status == "active"
+                           && fv.AvailableQuantity > 0,
+                        includeProperties: "Vaccine"
                     );
 
-                    if (facilityVaccine != null)
+                    if (facilityVaccine == null)
                     {
-                        var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
-                        var appointmentDetail = new VaccinationAppointmentDetail
-                        {
-                            AppointmentId = newAppointment.AppointmentId,
-                            VaccineId = profile.VaccineId,
-                            DoseNumber = profile.DoseNum.ToString(),
-                            VaccinationDate = DateOnly.FromDateTime(DateTime.UtcNow), // Ngày tiêm dự kiến
-                            Notes = request.Note,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        };
+                        // Nếu không tìm thấy vaccine tại cơ sở này, tìm tất cả cơ sở có vaccine này
+                        var allFacilityVaccines = await facilityVaccineRepo.FindAsync(
+                            fv => fv.Vaccine.VaccineId == profile.VaccineId
+                               && fv.Status == "active"
+                               && fv.AvailableQuantity > 0,
+                            includeProperties: "Facility,Vaccine"
+                        );
 
-                        await appointmentDetailRepo.AddAsync(appointmentDetail);
+                        if (allFacilityVaccines.Any())
+                        {
+                            var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
+                            throw new InvalidOperationException($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
+                        }
                     }
+
+                    var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
+                    var appointmentDetail = new VaccinationAppointmentDetail
+                    {
+                        AppointmentId = newAppointment.AppointmentId,
+                        VaccineId = profile.VaccineId,
+                        DoseNumber = profile.DoseNum.ToString(),
+                        VaccinationDate = DateOnly.FromDateTime(DateTime.UtcNow), // Ngày tiêm dự kiến
+                        Notes = request.Note,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await appointmentDetailRepo.AddAsync(appointmentDetail);
+                    
+                    _logger.LogInformation("Tạo appointment detail cho vaccine {VaccineId} tại cơ sở {FacilityId}", 
+                        profile.VaccineId, schedule.FacilityId);
                 }
 
                 await _unitOfWork.SaveChangesAsync();

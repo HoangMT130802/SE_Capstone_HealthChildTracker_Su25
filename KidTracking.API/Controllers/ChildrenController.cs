@@ -14,11 +14,13 @@ namespace KidTracking.API.Controllers
     {
         private readonly IChildService _childService;
         private readonly ILogger<ChildrenController> _logger;
+        private readonly IUserMembershipService _userMembershipService;
 
-        public ChildrenController(IChildService childService, ILogger<ChildrenController> logger)
+        public ChildrenController(IChildService childService, ILogger<ChildrenController> logger, IUserMembershipService userMembershipService)
         {
             _childService = childService ?? throw new ArgumentNullException(nameof(childService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _userMembershipService = userMembershipService ?? throw new ArgumentNullException(nameof(userMembershipService));
         }
 
         private int GetCurrentAccountId()
@@ -138,6 +140,15 @@ namespace KidTracking.API.Controllers
             try
             {
                 var accountId = GetCurrentAccountId();
+                // Kiểm tra membership
+                var membership = await _userMembershipService.GetActiveUserMembershipAsync(accountId);
+                if (membership == null)
+                {
+                    // Nếu chưa có membership, chỉ cho phép tạo 1 trẻ
+                    var children = await _childService.GetAllChildrenByAccountIdAsync(accountId);
+                    if (children.Count() >= 1)
+                        return BadRequest(new { message = "Bạn cần đăng ký gói thành viên để tạo thêm trẻ" });
+                }
                 var child = await _childService.CreateChildAsync(accountId, childDTO);
                 return CreatedAtAction(nameof(GetChildById), new { childId = child.ChildId }, child);
             }
@@ -158,6 +169,15 @@ namespace KidTracking.API.Controllers
             try
             {
                 var accountId = GetCurrentAccountId();
+                // Kiểm tra membership
+                var membership = await _userMembershipService.GetActiveUserMembershipAsync(accountId);
+                if (membership == null)
+                {
+                    // Nếu chưa có membership, chỉ cho phép tạo 1 trẻ
+                    var children = await _childService.GetAllChildrenByAccountIdAsync(accountId);
+                    if (children.Count() >= 1)
+                        return BadRequest(new { message = "Bạn cần đăng ký gói thành viên để tạo thêm trẻ" });
+                }
                 var result = await _childService.CreateChildWithGrowthRecordAsync(accountId, createDTO);
                 return CreatedAtAction(nameof(GetChildById), new { childId = result.Child.ChildId }, result);
             }
