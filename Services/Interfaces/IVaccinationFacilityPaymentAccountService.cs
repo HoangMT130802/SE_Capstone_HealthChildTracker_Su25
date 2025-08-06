@@ -14,7 +14,7 @@ namespace Services.Interfaces
         Task UpdatePaymentAccountAsync(int id, UpdateVaccinationFacilityPaymentAccountDto paymentAccountDto, int accountId);
         Task DeletePaymentAccountAsync(int id, int accountId);
         Task<VaccinationFacilityPaymentAccountDto> GetPaymentAccountByIdAsync(int id);
-        Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetAllPaymentAccountsAsync(int? pageIndex = null, int? pageSize = null);
-        Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetPaymentAccountByFacilityIdAsync(int facilityId, int? pageIndex = null, int? pageSize = null);
+        Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetAllPaymentAccountsAsync(bool? isActive = null, int? pageIndex = null, int? pageSize = null);
+        Task<QueryResultModel<IEnumerable<VaccinationFacilityPaymentAccountDto>>> GetPaymentAccountByFacilityIdAsync(int facilityId, bool? isActive = null, int? pageIndex = null, int? pageSize = null);
     }
 }
