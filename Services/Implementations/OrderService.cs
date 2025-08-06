@@ -31,19 +31,20 @@ namespace Services.Implementations
             _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         }
 
-        private int GetCurrentMemberId()
+        private int GetCurrentAccountId()
         {
             var user = _httpContextAccessor.HttpContext?.User;
             if (user?.Identity?.IsAuthenticated == true)
             {
-                var memberIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (int.TryParse(memberIdClaim, out int memberId))
+                var accountIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(accountIdClaim, out int accountId))
                 {
-                    return memberId;
+                    return accountId;
                 }
             }
             return 0;
         }
+
 
         public async Task<OrderDTO> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
         {
@@ -51,18 +52,21 @@ namespace Services.Implementations
             {
                 _logger.LogInformation($"Creating package order for PackageId: {orderDto.PackageId}");
 
-                var memberId = GetCurrentMemberId();
-                if (memberId == 0)
+                var accountId = GetCurrentAccountId();
+                if (accountId == 0)
                 {
-                    throw new InvalidOperationException("Không thể xác định MemberId của người dùng hiện tại");
+                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại từ token");
                 }
 
+                // Tra cứu Member dựa trên AccountId
                 var memberRepository = _unitOfWork.GetRepository<Member>();
-                var memberExists = await memberRepository.AnyAsync(m => m.MemberId == memberId);
-                if (!memberExists)
+                var member = await memberRepository.GetAsync(m => m.AccountId == accountId);
+                if (member == null)
                 {
-                    throw new InvalidOperationException($"Member với ID {memberId} không tồn tại");
+                    throw new UnauthorizedAccessException($"Không tìm thấy Member gắn với AccountId {accountId}. Chỉ thành viên mới có thể tạo đơn hàng.");
                 }
+
+                var memberId = member.MemberId;
 
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
                 var package = await packageRepository.GetAsync(
@@ -79,10 +83,10 @@ namespace Services.Implementations
                 order.OrderDate = orderDto.OrderDate != default ? orderDto.OrderDate : currentTime;
                 order.CreatedAt = currentTime;
                 order.UpdatedAt = currentTime;
-                order.Status = orderDto.Status ?? "Pending"; 
+                order.Status = orderDto.Status ?? "Pending";
                 order.TotalAmount = 0;
                 order.MemberId = memberId;
-                order.Package = package; 
+                order.Package = package;
 
                 var orderDetailRepository = _unitOfWork.GetRepository<OrderDetail>();
                 var selectedDiseaseIds = orderDto.SelectedVaccines.Select(v => v.DiseaseId).Distinct().ToList();
@@ -116,7 +120,7 @@ namespace Services.Implementations
                     }
 
                     var orderDetail = _mapper.Map<OrderDetail>(selectedVaccine);
-                    orderDetail.OrderId = order.OrderId;
+                    orderDetail.OrderId = order.OrderId; // OrderId sẽ được gán sau khi lưu
                     orderDetail.Price = facilityVaccine.Price * selectedVaccine.Quantity;
                     orderDetail.CreatedAt = currentTime;
                     orderDetail.UpdatedAt = currentTime;
@@ -131,6 +135,7 @@ namespace Services.Implementations
                 await orderRepository.AddAsync(order);
                 await _unitOfWork.SaveChangesAsync();
 
+                // Lấy lại order đã lưu để đảm bảo OrderId được gán
                 var savedOrder = await orderRepository.GetAsync(
                     o => o.OrderId == order.OrderId,
                     includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
@@ -139,7 +144,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error creating package order for PackageId {orderDto.PackageId}");
+                _logger.LogError(ex, $"Error creating package order for PackageId {orderDto?.PackageId}");
                 throw;
             }
         }
