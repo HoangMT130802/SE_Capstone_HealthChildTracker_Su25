@@ -20,5 +20,6 @@ namespace Services.Interfaces
         /// Doctor ghi nhận hoàn thành tiêm vaccine và tạo mũi tiếp theo nếu cần
         /// </summary>
         Task<VaccinationCompletionResponseDTO> CompleteVaccinationAsync(CompleteVaccinationDTO completeDto, int currentUserId);
+        Task<IEnumerable<VaccineRecordDTO>> GetVaccineRecordAsync(int childId, int? diseaseId = null);
     }
 }

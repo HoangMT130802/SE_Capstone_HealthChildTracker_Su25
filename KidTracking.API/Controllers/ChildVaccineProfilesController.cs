@@ -245,6 +245,24 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Lỗi server nội bộ" });
             }
         }
+        [HttpGet("record/{childId}")]
+        public async Task<IActionResult> GetVaccineRecord(int childId, [FromQuery] int? diseaseId = null)
+        {
+            try
+            {
+                var vaccineRecords = await _childVaccineProfileService.GetVaccineRecordAsync(childId, diseaseId);
+                return Ok(vaccineRecords);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error retrieving vaccine record for ChildId {childId}");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
     }
 
 }

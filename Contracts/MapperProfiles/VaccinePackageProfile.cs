@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Contracts.DTOs.ChildVaccineProfile;
 using Contracts.DTOs.VaccinePackage;
 using Repositories.Entities;
 
@@ -72,6 +73,9 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.Package, opt => opt.Ignore())
                 .ForMember(dest => dest.FacilityVaccine, opt => opt.Ignore());
+            CreateMap<VaccineTemplate, VaccineRecordDTO>()
+            .ForMember(dest => dest.DiseaseName, opt => opt.MapFrom(src => src.Disease.Name))
+            .ForMember(dest => dest.RequiredDoseNum, opt => opt.MapFrom(src => src.DoseNum));
         }
     }
 }

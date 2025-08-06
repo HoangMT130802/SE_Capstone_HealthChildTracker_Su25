@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
+using Newtonsoft.Json;
+using System.Linq.Expressions;
 
 namespace Services.Implementations
 {
@@ -531,6 +533,90 @@ namespace Services.Implementations
             {
                 _logger.LogError(ex, "Error completing vaccination for Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
                     completeDto.AppointmentId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
+                throw;
+            }
+        }
+        public async Task<IEnumerable<VaccineRecordDTO>> GetVaccineRecordAsync(int childId, int? diseaseId = null)
+        {
+            try
+            {
+                // Get child information
+                var childRepository = _unitOfWork.GetRepository<Child>();
+                var child = await childRepository.GetAsync(c => c.ChildId == childId);
+                if (child == null)
+                {
+                    _logger.LogWarning($"Child with ID {childId} not found");
+                    throw new KeyNotFoundException($"Child with ID {childId} not found");
+                }
+
+                // Get all vaccine profiles for the child with optional diseaseId filter
+                var vaccineProfileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                Expression<Func<ChildVaccineProfile, bool>> filter = cvp => cvp.ChildId == childId && cvp.Status == "Completed";
+                if (diseaseId.HasValue)
+                {
+                    filter = cvp => cvp.ChildId == childId && cvp.Status == "Completed" && cvp.DiseaseId == diseaseId.Value;
+                }
+
+                var childVaccineProfilesResult = await vaccineProfileRepository.GetAllAsync(
+                    filter: filter,
+                    include: "Disease"
+                );
+                var childVaccineProfiles = childVaccineProfilesResult.Data ?? new List<ChildVaccineProfile>();
+                _logger.LogInformation($"Retrieved {childVaccineProfiles.Count} completed vaccine profiles for ChildId {childId}");
+
+                // Get all vaccine templates
+                var vaccineTemplateRepository = _unitOfWork.GetRepository<VaccineTemplate>();
+                var vaccineTemplatesResult = await vaccineTemplateRepository.GetAllAsync(
+                    include: "Disease"
+                );
+                var vaccineTemplates = vaccineTemplatesResult.Data ?? new List<VaccineTemplate>();
+                _logger.LogInformation($"Retrieved {vaccineTemplates.Count} vaccine templates");
+
+                // Group child vaccine profiles by DiseaseId and count completed doses
+                var completedDosesByDisease = childVaccineProfiles
+                    .GroupBy(cvp => cvp.DiseaseId)
+                    .Select(g => new
+                    {
+                        DiseaseId = g.Key,
+                        DiseaseName = g.First().Disease?.Name ?? "Unknown",
+                        CompletedDoseNum = g.Count()
+                    })
+                    .ToList();
+
+                // Build vaccine record for all vaccine templates or filtered by diseaseId
+                var vaccineRecords = new List<VaccineRecordDTO>();
+                var relevantTemplates = diseaseId.HasValue ? vaccineTemplates.Where(t => t.DiseaseId == diseaseId.Value) : vaccineTemplates;
+
+                foreach (var template in relevantTemplates)
+                {
+                    var completedProfile = completedDosesByDisease.FirstOrDefault(c => c.DiseaseId == template.DiseaseId);
+                    int completedDoseNum = completedProfile?.CompletedDoseNum ?? 0;
+                    string status = completedDoseNum >= template.DoseNum ? "Đã đủ liều" :
+                                    completedDoseNum == 0 ? "Chưa tiêm" : "Chưa đủ liều";
+
+                    vaccineRecords.Add(new VaccineRecordDTO
+                    {
+                        DiseaseId = template.DiseaseId,
+                        DiseaseName = template.Disease?.Name ?? "Unknown",
+                        RequiredDoseNum = template.DoseNum,
+                        CompletedDoseNum = completedDoseNum,
+                        IsRequired = template.IsRequired,
+                        Status = status,
+                        PeriodFrom = template.PeriodFrom,
+                        PeriodTo = template.PeriodTo
+                    });
+                }
+
+                // Log result
+                var settings = new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                };
+                return vaccineRecords;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error retrieving vaccine record for ChildId {childId} with DiseaseId {diseaseId}");
                 throw;
             }
         }
