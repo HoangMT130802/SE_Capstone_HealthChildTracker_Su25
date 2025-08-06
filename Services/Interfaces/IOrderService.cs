@@ -15,5 +15,6 @@ namespace Services.Interfaces
         Task<OrderDTO> GetOrderByIdAsync(int orderId);
         Task<OrderDTO> UpdateOrderAsync(int orderId, UpdateOrderDTO orderDto);
         Task DeleteOrderAsync(int orderId);
+        Task<QueryResultModel<IEnumerable<OrderDTO>>> GetMyOrdersAsync(string status = null, int accountId = 0, int? pageIndex = null, int? pageSize = null);
     }
 }

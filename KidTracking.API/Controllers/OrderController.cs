@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
+using System.Security.Claims;
 
 namespace KidTracking.API.Controllers
 {
@@ -53,7 +54,6 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, "An error occurred while retrieving orders");
             }
         }
-
         [HttpGet("{id}")]
         public async Task<IActionResult> GetOrderById(int id)
         {
@@ -71,7 +71,41 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, "An error occurred while retrieving the order");
             }
         }
+        [HttpGet("my-orders")]
+        [Authorize]
+        public async Task<IActionResult> GetMyOrders([FromQuery] string status = null, [FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
+        {
+            if (pageIndex <= 0 || pageSize <= 0)
+            {
+                return BadRequest(new { message = "PageIndex and PageSize must be positive" });
+            }
 
+            try
+            {
+                var accountId = int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out int id) ? id : 0;
+                if (accountId == 0)
+                {
+                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại");
+                }
+
+                var orders = await _orderService.GetMyOrdersAsync(status, accountId, pageIndex, pageSize);
+                return Ok(new
+                {
+                    totalCount = orders.TotalCount,
+                    pageIndex,
+                    pageSize,
+                    data = orders.Data
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateOrder(int id, [FromBody] UpdateOrderDTO orderDto)
         {
