@@ -23,6 +23,8 @@ public partial class Transaction
 
     public string Description { get; set; }
 
+    public string Status { get; set; }
+
     public DateOnly CreatedAt { get; set; }
 
     public virtual FacilityMembershipSubscription FacilityMembershipSubscription { get; set; }

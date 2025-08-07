@@ -32,9 +32,9 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.IsRequired, opt => opt.MapFrom(src => src.IsRequired))
                 .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
                 .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
-                // ✅ Convert long timestamp to DateTime
-                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTimeOffset.FromUnixTimeSeconds(src.CreatedAt).DateTime))
-                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTimeOffset.FromUnixTimeSeconds(src.UpdatedAt).DateTime));
+                // ✅ Convert long timestamp to DateTime with strong validation
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => ConvertUnixTimestampToDateTime(src.CreatedAt)))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => ConvertUnixTimestampToDateTime(src.UpdatedAt)));
 
             // ✅ CreateDTO → Entity: Convert DateTime to long timestamp
             CreateMap<CreateChildVaccineProfileDTO, ChildVaccineProfile>()
@@ -81,6 +81,19 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Child, opt => opt.Ignore())
                 .ForMember(dest => dest.Disease, opt => opt.Ignore())
                 .ForMember(dest => dest.Vaccine, opt => opt.Ignore());
+        }
+
+        // ✅ Helper method để convert Unix timestamp to DateTime với validation
+        private static DateTime ConvertUnixTimestampToDateTime(long timestamp)
+        {
+            try
+            {
+                return timestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime : DateTime.MinValue;
+            }
+            catch
+            {
+                return DateTime.MinValue;
+            }
         }
     }
 }

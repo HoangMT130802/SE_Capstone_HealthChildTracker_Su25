@@ -93,7 +93,8 @@ namespace Services.Implementations
 
                 // Lưu transaction vào database (chỉ lưu transaction, không tạo membership/subscription)
                 // Lưu AccountId và MembershipId trong Description để sử dụng sau
-                var transactionDescription = $"{description}|AccountId:{request.AccountId}|MembershipId:{request.MembershipId ?? request.FacilityMembershipId}";
+                var membershipId = request.MembershipId ?? request.FacilityMembershipId;
+                var transactionDescription = $"{description}|AccountId:{request.AccountId}|MembershipId:{membershipId}";
                 
                 var newTransaction = new Transaction
                 {
@@ -207,10 +208,18 @@ orderCode, createPayment.checkoutUrl);
 
                 if (status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
                 {
+                    _logger.LogInformation("Thanh toán thành công, bắt đầu xử lý membership cho OrderId: {OrderId}", orderId);
+                    
                     // Parse MembershipId từ Description để xác định loại payment
                     var descriptionParts = existingTransaction.Description.Split('|');
+                    _logger.LogInformation("Transaction Description: {Description}", existingTransaction.Description);
+                    _logger.LogInformation("Description Parts: {Parts}", string.Join(", ", descriptionParts));
+                    
                     var membershipIdPart = descriptionParts.FirstOrDefault(p => p.StartsWith("MembershipId:"));
+                    _logger.LogInformation("MembershipId Part: {MembershipIdPart}", membershipIdPart);
+                    
                     var membershipId = int.Parse(membershipIdPart?.Split(':')[1] ?? "0");
+                    _logger.LogInformation("Parsed MembershipId: {MembershipId}", membershipId);
                     
                     if (membershipId > 0)
                     {
@@ -220,14 +229,20 @@ orderCode, createPayment.checkoutUrl);
                         
                         if (membership != null)
                         {
+                            _logger.LogInformation("Tìm thấy Membership, xử lý UserMembership cho MembershipId: {MembershipId}", membershipId);
                             // UserMembership
                             await ActivateUserMembership(membershipId, orderId);
                         }
                         else
                         {
+                            _logger.LogInformation("Không tìm thấy Membership, xử lý FacilityMembership cho MembershipId: {MembershipId}", membershipId);
                             // FacilityMembership
                             await ActivateFacilityMembershipSubscription(membershipId, orderId);
                         }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MembershipId không hợp lệ: {MembershipId}", membershipId);
                     }
                 }
 
@@ -357,6 +372,8 @@ orderCode, createPayment.checkoutUrl);
 
         private async Task ActivateUserMembership(int membershipId, string orderId)
         {
+            _logger.LogInformation("Bắt đầu ActivateUserMembership cho MembershipId: {MembershipId}, OrderId: {OrderId}", membershipId, orderId);
+            
             // Lấy thông tin transaction để biết AccountId
             var transactionRepo = _unitOfWork.GetRepository<Transaction>();
             var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
@@ -403,12 +420,14 @@ orderCode, createPayment.checkoutUrl);
             await userMembershipRepo.AddAsync(newUserMembership);
             await _unitOfWork.SaveChangesAsync();
 
+            _logger.LogInformation("Đã tạo UserMembership với ID: {UserMembershipId}", newUserMembership.UserMembershipId);
+
             // Cập nhật transaction với UserMembershipId
             transaction.UserMembershipId = newUserMembership.UserMembershipId;
             transactionRepo.Update(transaction);
             await _unitOfWork.SaveChangesAsync();
 
-            _logger.LogInformation("Created and activated UserMembership {UserMembershipId} cho OrderId: {OrderId}", 
+            _logger.LogInformation("Đã cập nhật Transaction với UserMembershipId: {UserMembershipId} cho OrderId: {OrderId}", 
                 newUserMembership.UserMembershipId, orderId);
         }
 

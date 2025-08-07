@@ -766,6 +766,9 @@ public partial class HealthChildTrackerContext : DbContext
             entity.Property(e => e.PaymentMethod)
                 .IsRequired()
                 .HasMaxLength(255);
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
             entity.Property(e => e.TransactionCode)
                 .IsRequired()
                 .HasMaxLength(255);
