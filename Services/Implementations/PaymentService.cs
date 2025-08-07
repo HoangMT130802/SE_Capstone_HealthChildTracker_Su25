@@ -280,6 +280,14 @@ orderCode, createPayment.checkoutUrl);
                 throw new InvalidOperationException($"Tài khoản đã có gói membership đang hoạt động. Gói hiện tại sẽ tự động gia hạn khi hết hạn vào {activeMembership.EndDate:dd/MM/yyyy}");
             }
 
+            // ✅ VALIDATE: Kiểm tra không có UserMembership pending nào (status = false)
+            var pendingMembership = await userMembershipRepo.GetAsync(
+                um => um.AccountId == request.AccountId && um.Status == false);
+            if (pendingMembership != null)
+            {
+                throw new InvalidOperationException($"Tài khoản đã có gói membership đang chờ thanh toán. Vui lòng hoàn tất thanh toán trước khi mua gói mới.");
+            }
+
             // ✅ CHỈ TRẢ VỀ THÔNG TIN, KHÔNG TẠO UserMembership - sẽ tạo khi thanh toán thành công
             return (membership.Price, "Goi thanh vien", null);
         }
@@ -333,6 +341,14 @@ orderCode, createPayment.checkoutUrl);
             if (activeSubscription != null)
             {
                 throw new InvalidOperationException($"Cơ sở đã có gói membership đang hoạt động. Gói hiện tại sẽ tự động gia hạn khi hết hạn vào {activeSubscription.EndDate:dd/MM/yyyy}");
+            }
+
+            // ✅ VALIDATE: Kiểm tra không có FacilityMembershipSubscription pending nào (status = false)
+            var pendingSubscription = await subscriptionRepo.GetAsync(
+                s => s.FacilityId == facilityId && s.Status == false);
+            if (pendingSubscription != null)
+            {
+                throw new InvalidOperationException($"Cơ sở đã có gói membership đang chờ thanh toán. Vui lòng hoàn tất thanh toán trước khi mua gói mới.");
             }
 
             // ✅ CHỈ TRẢ VỀ THÔNG TIN, KHÔNG TẠO FacilityMembershipSubscription - sẽ tạo khi thanh toán thành công
