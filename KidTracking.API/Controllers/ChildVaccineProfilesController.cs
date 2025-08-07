@@ -32,9 +32,10 @@ namespace KidTracking.API.Controllers
         {
             try
             {
-                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                var currentAccountIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentAccountIdClaim) || !int.TryParse(currentAccountIdClaim, out int currentAccountId))
                 {
+                    _logger.LogWarning("Invalid token for ValidateChildAccess request");
                     return false;
                 }
 
@@ -43,12 +44,24 @@ namespace KidTracking.API.Controllers
                     return true;
                 }
 
+                // Tra cứu MemberId từ AccountId
+                var memberRepository = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepository.GetAsync(m => m.AccountId == currentAccountId);
+                if (member == null)
+                {
+                    _logger.LogWarning($"No Member found for AccountId {currentAccountId}");
+                    return false;
+                }
+
+                var currentMemberId = member.MemberId;
+
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == currentUserId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == currentMemberId);
                 return child != null;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, $"Error validating child access for childId {childId}");
                 return false;
             }
         }

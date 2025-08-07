@@ -13,15 +13,16 @@ namespace KidTracking.API.Controllers
     [Authorize]
     public class DailyRecordsController : ControllerBase
     {
-        private readonly IDailyRecordService _dailyRecordService; 
+        private readonly IDailyRecordService _dailyRecordService;
         private readonly IChildService _childService;
-        private readonly ILogger _logger;
+        private readonly ILogger<DailyRecordsController> _logger;
         private readonly IUnitOfWork _unitOfWork;
+
         public DailyRecordsController(
-    IDailyRecordService dailyRecordService,
-     IUnitOfWork unitOfWork,
-    IChildService childService,
-    ILogger<DailyRecordsController> logger)
+            IDailyRecordService dailyRecordService,
+            IUnitOfWork unitOfWork,
+            IChildService childService,
+            ILogger<DailyRecordsController> logger)
         {
             _dailyRecordService = dailyRecordService ?? throw new ArgumentNullException(nameof(dailyRecordService));
             _childService = childService ?? throw new ArgumentNullException(nameof(childService));
@@ -33,25 +34,38 @@ namespace KidTracking.API.Controllers
         {
             try
             {
-                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                var currentAccountIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentAccountIdClaim) || !int.TryParse(currentAccountIdClaim, out int currentAccountId))
                 {
+                    _logger.LogWarning("Invalid token for ValidateChildAccess request");
                     return false;
                 }
 
-                // Admin và Doctor có quyền truy cập tất cả
+                // Admin và FacilityStaff có quyền truy cập tất cả
                 if (User.IsInRole("Admin") || User.IsInRole("FacilityStaff"))
                 {
                     return true;
                 }
 
+                // Tra cứu MemberId từ AccountId
+                var memberRepository = _unitOfWork.GetRepository<Member>();
+                var member = await memberRepository.GetAsync(m => m.AccountId == currentAccountId);
+                if (member == null)
+                {
+                    _logger.LogWarning($"No Member found for AccountId {currentAccountId}");
+                    return false;
+                }
+
+                var currentMemberId = member.MemberId;
+
                 // Kiểm tra nếu người dùng là phụ huynh (Member) của trẻ
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == currentUserId);
+                var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == currentMemberId);
                 return child != null;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, $"Error validating child access for childId {childId}");
                 return false;
             }
         }
