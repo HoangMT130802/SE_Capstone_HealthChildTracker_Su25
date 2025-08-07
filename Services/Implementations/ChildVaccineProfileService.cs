@@ -486,9 +486,59 @@ namespace Services.Implementations
                 var appointmentRepository = _unitOfWork.GetRepository<VaccinationAppointment>();
                 appointmentRepository.Update(appointment);
 
+                // ✅ 8. Trừ RemainingQuantity từ OrderDetail khi tiêm thành công
+                if (appointment.OrderId.HasValue)
+                {
+                    _logger.LogInformation("Trừ RemainingQuantity từ Order {OrderId} cho vaccine {VaccineId} disease {DiseaseId}", 
+                        appointment.OrderId.Value, facilityVaccine.VaccineId, diseaseId);
+                    
+                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                    var orderDetails = await orderDetailRepo.FindAsync(od => od.OrderId == appointment.OrderId.Value, "FacilityVaccine");
+                    
+                    bool hasSubtracted = false; // Flag để tránh trừ nhiều lần
+                    
+                    foreach (var orderDetail in orderDetails)
+                    {
+                        // ✅ Kiểm tra null trước khi truy cập FacilityVaccine
+                        if (orderDetail.FacilityVaccine == null)
+                        {
+                            _logger.LogWarning("OrderDetail {OrderDetailId} có FacilityVaccine null, bỏ qua", orderDetail.OrderDetailId);
+                            continue;
+                        }
+                        
+                        // Chỉ trừ OrderDetail phù hợp với vaccine và disease đã tiêm
+                        if (orderDetail.FacilityVaccine.VaccineId == facilityVaccine.VaccineId && 
+                            orderDetail.DiseaseId == diseaseId && 
+                            orderDetail.RemainingQuantity > 0 && 
+                            !hasSubtracted) // Chỉ trừ 1 lần
+                        {
+                            var oldRemainingQuantity = orderDetail.RemainingQuantity;
+                            orderDetail.RemainingQuantity -= 1; // Trừ 1 vaccine
+                            orderDetail.UpdatedAt = DateTime.UtcNow;
+                            orderDetailRepo.Update(orderDetail);
+                            
+                            hasSubtracted = true; // Đánh dấu đã trừ
+                            
+                            _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} cho VaccineId {VaccineId} DiseaseId {DiseaseId}. Từ {OldQuantity} xuống {NewQuantity}", 
+                                orderDetail.OrderDetailId, facilityVaccine.VaccineId, diseaseId, oldRemainingQuantity, orderDetail.RemainingQuantity);
+                            break; // Chỉ trừ 1 lần cho mỗi lần tiêm
+                        }
+                    }
+                    
+                    if (!hasSubtracted)
+                    {
+                        _logger.LogWarning("Không tìm thấy OrderDetail phù hợp để trừ RemainingQuantity cho VaccineId {VaccineId} DiseaseId {DiseaseId}", 
+                            facilityVaccine.VaccineId, diseaseId);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Appointment {AppointmentId} không có OrderId, không cần trừ RemainingQuantity", appointment.AppointmentId);
+                }
+
                 await _unitOfWork.SaveChangesAsync();
 
-                // 8. Đếm số mũi đã hoàn thành
+                // 9. Đếm số mũi đã hoàn thành
                 var completedProfiles = await profileRepository.FindAsync(p =>
                     p.ChildId == childId &&
                     p.VaccineId == facilityVaccine.VaccineId &&
@@ -497,7 +547,7 @@ namespace Services.Implementations
                 var completedDoses = completedProfiles.Count();
                 var isVaccineCourseCompleted = completedDoses >= totalDoses;
 
-                // 9. Load full data để return
+                // 10. Load full data để return
                 var completedProfile = await profileRepository.GetAsync(
                     p => p.VaccineProfileId == currentProfile.VaccineProfileId,
                     includeProperties: "Child,Vaccine"

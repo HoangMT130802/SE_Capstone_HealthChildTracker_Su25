@@ -186,13 +186,11 @@ namespace Services.Implementations
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
-                            // Trừ 1 vaccine từ gói
-                            relevantOrderDetail.RemainingQuantity -= 1;
+                            // ✅ KHÔNG trừ vaccine ngay khi rebook - sẽ trừ khi tiêm thành công
                             remainingVaccines = relevantOrderDetail.RemainingQuantity;
                             
-                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                            orderDetailRepo.Update(relevantOrderDetail);
-                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, trừ vaccine thành công", request.OrderId.Value);
+                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, có {RemainingQuantity} vaccine khả dụng - sẽ trừ khi tiêm thành công", 
+                                request.OrderId.Value, remainingVaccines);
                         }
                         else
                         {
@@ -218,13 +216,11 @@ namespace Services.Implementations
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
-                            // Trừ 1 vaccine từ gói
-                            relevantOrderDetail.RemainingQuantity -= 1;
+                            // ✅ KHÔNG trừ vaccine ngay khi rebook - sẽ trừ khi tiêm thành công
                             remainingVaccines = relevantOrderDetail.RemainingQuantity;
                             
-                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                            orderDetailRepo.Update(relevantOrderDetail);
-                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, trừ vaccine thành công", validation.ApplicableOrder.OrderId);
+                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, có {RemainingQuantity} vaccine khả dụng - sẽ trừ khi tiêm thành công", 
+                                validation.ApplicableOrder.OrderId, remainingVaccines);
                         }
                     }
                 }
