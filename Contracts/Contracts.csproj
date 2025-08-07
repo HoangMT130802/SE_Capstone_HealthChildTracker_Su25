@@ -12,7 +12,6 @@
     <Folder Include="DTOs\FacilitySubcription\" />
     <Folder Include="DTOs\Appointment\" />
     <Folder Include="DTOs\FacilitySchedule\" />
-    <Folder Include="DTOs\Blog\" />
     <Folder Include="DTOs\Transaction\" />
   </ItemGroup>
 
