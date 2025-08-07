@@ -336,5 +336,54 @@ namespace KidTracking.API.Controllers
                 });
             }
         }
+
+        /// <summary>
+        /// Cập nhật trạng thái transaction (Admin only)
+        /// </summary>
+        [HttpPut("status/{transactionCode}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> UpdateTransactionStatus(string transactionCode, [FromBody] string status)
+        {
+            try
+            {
+                if (!await ValidateAdminAccess())
+                {
+                    return Forbid("Chỉ Admin mới có quyền cập nhật transaction status");
+                }
+
+                if (string.IsNullOrEmpty(status))
+                {
+                    return BadRequest(new { success = false, message = "Status không được để trống" });
+                }
+
+                // Validate status values
+                var validStatuses = new[] { "PENDING", "PAID", "CANCELLED", "FAILED" };
+                if (!validStatuses.Contains(status.ToUpper()))
+                {
+                    return BadRequest(new { success = false, message = "Status không hợp lệ. Các giá trị hợp lệ: PENDING, PAID, CANCELLED, FAILED" });
+                }
+
+                var result = await _transactionService.UpdateTransactionStatusAsync(transactionCode, status.ToUpper());
+                
+                if (result)
+                {
+                    return Ok(new { success = true, message = $"Cập nhật status thành công cho TransactionCode: {transactionCode}" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Không thể cập nhật status" });
+                }
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "Không tìm thấy transaction với TransactionCode: {TransactionCode}", transactionCode);
+                return NotFound(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cập nhật status cho TransactionCode: {TransactionCode}", transactionCode);
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi cập nhật status" });
+            }
+        }
     }
 } 

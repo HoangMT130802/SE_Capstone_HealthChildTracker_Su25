@@ -36,4 +36,12 @@ namespace Contracts.DTOs.Transaction
         public decimal Amount { get; set; }
         public DateTime? PaidAt { get; set; }
     }
+    
+    public class PaymentDetailResponseDTO : PaymentResponseDTO
+    {
+        public int? UserMembershipId { get; set; }
+        public int? FacilityMembershipSubscriptionId { get; set; }
+        public string TransactionType { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
 } 

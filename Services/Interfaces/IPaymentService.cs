@@ -7,7 +7,7 @@ namespace Services.Interfaces
         /// <summary>
         /// Tạo payment cho UserMembership hoặc FacilityMembership
         /// </summary>
-        Task<PaymentResponseDTO> CreatePaymentAsync(PaymentRequestDTO request);
+        Task<PaymentDetailResponseDTO> CreatePaymentAsync(PaymentRequestDTO request);
         
         /// <summary>
         /// Kiểm tra trạng thái thanh toán

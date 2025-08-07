@@ -131,10 +131,11 @@ namespace Services.Implementations
                 }
 
                 var transaction = _mapper.Map<Transaction>(createDto);
+                transaction.CreatedAt = DateOnly.FromDateTime(DateTime.UtcNow);
                 await transactionRepo.AddAsync(transaction);
                 await _unitOfWork.SaveChangesAsync();
 
-                _logger.LogInformation("Tạo transaction thành công với ID: {TransactionId}", transaction.TransactionId);
+                _logger.LogInformation("Tạo transaction thành công với ID: {TransactionId}, Status: {Status}", transaction.TransactionId, transaction.Status);
                 return _mapper.Map<TransactionDTO>(transaction);
             }
             catch (Exception ex)
@@ -158,14 +159,14 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Không tìm thấy transaction với TransactionCode: {transactionCode}");
                 }
 
-                // Cập nhật PaymentMethod để track status
-                if (!transaction.PaymentMethod.Contains(status))
+                // Cập nhật Status
+                if (transaction.Status != status)
                 {
-                    transaction.PaymentMethod = $"{transaction.PaymentMethod}_{status}";
+                    transaction.Status = status;
                     transactionRepo.Update(transaction);
                     await _unitOfWork.SaveChangesAsync();
 
-                    _logger.LogInformation("Cập nhật status thành công cho TransactionCode: {TransactionCode}", transactionCode);
+                    _logger.LogInformation("Cập nhật status thành công cho TransactionCode: {TransactionCode} -> {Status}", transactionCode, status);
                 }
 
                 return true;

@@ -35,14 +35,14 @@ namespace Services.Implementations
 
         }
 
-        public async Task<PaymentResponseDTO> CreatePaymentAsync(PaymentRequestDTO request)
+        public async Task<PaymentDetailResponseDTO> CreatePaymentAsync(PaymentRequestDTO request)
         {
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 _logger.LogInformation("Bắt đầu tạo payment cho Account {AccountId}", request.AccountId);
 
-                // Xác định loại transaction
+                // Xác định loại transaction và tạo membership/subscription
                 string transactionType;
                 decimal amount = 0;
                 string description = "";
@@ -91,20 +91,17 @@ namespace Services.Implementations
 
                 var createPayment = await _payOS.createPaymentLink(paymentData);
 
-                // Lưu transaction vào database (chỉ lưu transaction, không tạo membership/subscription)
-                // Lưu AccountId và MembershipId trong Description để sử dụng sau
-                var membershipId = request.MembershipId ?? request.FacilityMembershipId;
-                var transactionDescription = $"{description}|AccountId:{request.AccountId}|MembershipId:{membershipId}";
-                
+                // Lưu transaction vào database với membership/subscription đã tạo
                 var newTransaction = new Transaction
                 {
-                    UserMembershipId = null, // Sẽ cập nhật khi thanh toán thành công
-                    FacilityMembershipSubscriptionId = null, // Sẽ cập nhật khi thanh toán thành công
+                    UserMembershipId = userMembershipId,
+                    FacilityMembershipSubscriptionId = facilityMembershipSubscriptionId,
                     TransactionType = transactionType,
                     Amount = amount,
-                    PaymentMethod = "PAYOS", // Tự động điền
+                    PaymentMethod = "PAYOS",
                     TransactionCode = orderCode,
-                    Description = transactionDescription, // Lưu thông tin cần thiết
+                    Description = description,
+                    Status = "PENDING", // Trạng thái ban đầu
                     CreatedAt = DateOnly.FromDateTime(DateTime.UtcNow)
                 };
 
@@ -113,17 +110,21 @@ namespace Services.Implementations
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
-orderCode, createPayment.checkoutUrl);
+                _logger.LogInformation("Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}, UserMembershipId: {UserMembershipId}, FacilityMembershipSubscriptionId: {FacilityMembershipSubscriptionId}", 
+                    orderCode, createPayment.checkoutUrl, userMembershipId, facilityMembershipSubscriptionId);
 
-                return new PaymentResponseDTO
+                return new PaymentDetailResponseDTO
                 {
                     PaymentUrl = createPayment.checkoutUrl,
                     OrderId = orderCode,
                     Amount = amount,
                     Status = "PENDING",
                     ReturnUrl = $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
-                    CancelUrl = $"{GetBaseUrl()}/payment/cancel"
+                    CancelUrl = $"{GetBaseUrl()}/payment/cancel",
+                    UserMembershipId = userMembershipId,
+                    FacilityMembershipSubscriptionId = facilityMembershipSubscriptionId,
+                    TransactionType = transactionType,
+                    Description = description
                 };
             }
             catch (Exception ex)
@@ -169,12 +170,11 @@ orderCode, createPayment.checkoutUrl);
 
                 return new PaymentStatusDTO
                 {
-                    Success = existingTransaction.PaymentMethod.Contains("PAID"),
-                    Status = existingTransaction.PaymentMethod.Contains("PAID") ? "PAID" : 
-                             existingTransaction.PaymentMethod.Contains("CANCELLED") ? "CANCELLED" : "PENDING",
-                    Message = GetPaymentStatusMessage(existingTransaction.PaymentMethod),
+                    Success = existingTransaction.Status == "PAID",
+                    Status = existingTransaction.Status,
+                    Message = GetPaymentStatusMessage(existingTransaction.Status),
                     Amount = existingTransaction.Amount,
-                    PaidAt = existingTransaction.PaymentMethod.Contains("PAID") ? DateTime.UtcNow : null
+                    PaidAt = existingTransaction.Status == "PAID" ? DateTime.UtcNow : null
                 };
             }
             catch (Exception ex)
@@ -202,47 +202,23 @@ orderCode, createPayment.checkoutUrl);
                 }
 
                 // Cập nhật transaction status
+                existingTransaction.Status = status;
                 existingTransaction.PaymentMethod = $"{existingTransaction.PaymentMethod}_{status}";
                 existingTransaction.Amount = amount;
                 transactionRepo.Update(existingTransaction);
 
                 if (status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogInformation("Thanh toán thành công, bắt đầu xử lý membership cho OrderId: {OrderId}", orderId);
+                    _logger.LogInformation("Thanh toán thành công, cập nhật status membership cho OrderId: {OrderId}", orderId);
                     
-                    // Parse MembershipId từ Description để xác định loại payment
-                    var descriptionParts = existingTransaction.Description.Split('|');
-                    _logger.LogInformation("Transaction Description: {Description}", existingTransaction.Description);
-                    _logger.LogInformation("Description Parts: {Parts}", string.Join(", ", descriptionParts));
-                    
-                    var membershipIdPart = descriptionParts.FirstOrDefault(p => p.StartsWith("MembershipId:"));
-                    _logger.LogInformation("MembershipId Part: {MembershipIdPart}", membershipIdPart);
-                    
-                    var membershipId = int.Parse(membershipIdPart?.Split(':')[1] ?? "0");
-                    _logger.LogInformation("Parsed MembershipId: {MembershipId}", membershipId);
-                    
-                    if (membershipId > 0)
+                    // Cập nhật status của UserMembership hoặc FacilityMembershipSubscription
+                    if (existingTransaction.UserMembershipId.HasValue)
                     {
-                        // Kiểm tra xem là UserMembership hay FacilityMembership
-                        var membershipRepo = _unitOfWork.GetRepository<Membership>();
-                        var membership = await membershipRepo.GetAsync(m => m.MembershipId == membershipId);
-                        
-                        if (membership != null)
-                        {
-                            _logger.LogInformation("Tìm thấy Membership, xử lý UserMembership cho MembershipId: {MembershipId}", membershipId);
-                            // UserMembership
-                            await ActivateUserMembership(membershipId, orderId);
-                        }
-                        else
-                        {
-                            _logger.LogInformation("Không tìm thấy Membership, xử lý FacilityMembership cho MembershipId: {MembershipId}", membershipId);
-                            // FacilityMembership
-                            await ActivateFacilityMembershipSubscription(membershipId, orderId);
-                        }
+                        await ActivateUserMembership(existingTransaction.UserMembershipId.Value);
                     }
-                    else
+                    else if (existingTransaction.FacilityMembershipSubscriptionId.HasValue)
                     {
-                        _logger.LogWarning("MembershipId không hợp lệ: {MembershipId}", membershipId);
+                        await ActivateFacilityMembershipSubscription(existingTransaction.FacilityMembershipSubscriptionId.Value);
                     }
                 }
 
@@ -303,8 +279,24 @@ orderCode, createPayment.checkoutUrl);
                 throw new InvalidOperationException($"Tài khoản đã có gói membership đang chờ thanh toán. Vui lòng hoàn tất thanh toán trước khi mua gói mới.");
             }
 
-            // ✅ CHỈ TRẢ VỀ THÔNG TIN, KHÔNG TẠO UserMembership - sẽ tạo khi thanh toán thành công
-            return (membership.Price, "Goi thanh vien", null);
+            // ✅ TẠO UserMembership với status = false (chờ thanh toán)
+            var newUserMembership = new UserMembership
+            {
+                AccountId = request.AccountId,
+                MembershipId = request.MembershipId.Value,
+                StartDate = DateTime.UtcNow,
+                EndDate = DateTime.UtcNow.AddMonths(membership.Duration),
+                Status = false, // Chờ thanh toán
+                LastRenewalDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            };
+
+            await userMembershipRepo.AddAsync(newUserMembership);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Đã tạo UserMembership với ID: {UserMembershipId} cho AccountId: {AccountId}", 
+                newUserMembership.UserMembershipId, request.AccountId);
+
+            return (membership.Price, "Goi thanh vien", newUserMembership.UserMembershipId);
         }
 
         private async Task<(decimal Amount, string Description, int? FacilityMembershipSubscriptionId)> ProcessFacilityMembershipPayment(PaymentRequestDTO request)
@@ -366,122 +358,14 @@ orderCode, createPayment.checkoutUrl);
                 throw new InvalidOperationException($"Cơ sở đã có gói membership đang chờ thanh toán. Vui lòng hoàn tất thanh toán trước khi mua gói mới.");
             }
 
-            // ✅ CHỈ TRẢ VỀ THÔNG TIN, KHÔNG TẠO FacilityMembershipSubscription - sẽ tạo khi thanh toán thành công
-            return (facilityMembership.Price, "Goi co so", null);
-        }
-
-        private async Task ActivateUserMembership(int membershipId, string orderId)
-        {
-            _logger.LogInformation("Bắt đầu ActivateUserMembership cho MembershipId: {MembershipId}, OrderId: {OrderId}", membershipId, orderId);
-            
-            // Lấy thông tin transaction để biết AccountId
-            var transactionRepo = _unitOfWork.GetRepository<Transaction>();
-            var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
-            
-            if (transaction == null)
-            {
-                _logger.LogError("Không tìm thấy transaction cho OrderId: {OrderId}", orderId);
-                return;
-            }
-
-            // Parse AccountId từ Description
-            var descriptionParts = transaction.Description.Split('|');
-            var accountIdPart = descriptionParts.FirstOrDefault(p => p.StartsWith("AccountId:"));
-            var accountId = int.Parse(accountIdPart?.Split(':')[1] ?? "0");
-            
-            if (accountId == 0)
-            {
-                _logger.LogError("Không thể lấy AccountId từ transaction description cho OrderId: {OrderId}", orderId);
-                return;
-            }
-            
-            // Lấy thông tin membership
-            var membershipRepo = _unitOfWork.GetRepository<Membership>();
-            var membership = await membershipRepo.GetAsync(m => m.MembershipId == membershipId);
-            
-            if (membership == null)
-            {
-                _logger.LogError("Không tìm thấy membership với ID: {MembershipId}", membershipId);
-                return;
-            }
-
-            // Tạo UserMembership mới với status = true (đã thanh toán thành công)
-            var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
-            var newUserMembership = new UserMembership
-            {
-                AccountId = accountId,
-                MembershipId = membershipId,
-                StartDate = DateTime.UtcNow,
-                EndDate = DateTime.UtcNow.AddMonths(membership.Duration),
-                Status = true, // Đã thanh toán thành công
-                LastRenewalDate = DateOnly.FromDateTime(DateTime.UtcNow)
-            };
-
-            await userMembershipRepo.AddAsync(newUserMembership);
-            await _unitOfWork.SaveChangesAsync();
-
-            _logger.LogInformation("Đã tạo UserMembership với ID: {UserMembershipId}", newUserMembership.UserMembershipId);
-
-            // Cập nhật transaction với UserMembershipId
-            transaction.UserMembershipId = newUserMembership.UserMembershipId;
-            transactionRepo.Update(transaction);
-            await _unitOfWork.SaveChangesAsync();
-
-            _logger.LogInformation("Đã cập nhật Transaction với UserMembershipId: {UserMembershipId} cho OrderId: {OrderId}", 
-                newUserMembership.UserMembershipId, orderId);
-        }
-
-        private async Task ActivateFacilityMembershipSubscription(int facilityMembershipId, string orderId)
-        {
-            // Lấy thông tin transaction để biết AccountId
-            var transactionRepo = _unitOfWork.GetRepository<Transaction>();
-            var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
-            
-            if (transaction == null)
-            {
-                _logger.LogError("Không tìm thấy transaction cho OrderId: {OrderId}", orderId);
-                return;
-            }
-
-            // Parse AccountId từ Description
-            var descriptionParts = transaction.Description.Split('|');
-            var accountIdPart = descriptionParts.FirstOrDefault(p => p.StartsWith("AccountId:"));
-            var accountId = int.Parse(accountIdPart?.Split(':')[1] ?? "0");
-            
-            if (accountId == 0)
-            {
-                _logger.LogError("Không thể lấy AccountId từ transaction description cho OrderId: {OrderId}", orderId);
-                return;
-            }
-
-            // Lấy FacilityId từ FacilityStaff của AccountId
-            var facilityStaffRepo = _unitOfWork.GetRepository<FacilityStaff>();
-            var facilityStaff = await facilityStaffRepo.GetAsync(fs => fs.AccountId == accountId);
-            if (facilityStaff == null)
-            {
-                _logger.LogError("Không tìm thấy FacilityStaff cho AccountId: {AccountId}", accountId);
-                return;
-            }
-
-            // Lấy thông tin facility membership
-            var facilityMembershipRepo = _unitOfWork.GetRepository<FacilityMembership>();
-            var facilityMembership = await facilityMembershipRepo.GetAsync(fm => fm.FacilityMembershipId == facilityMembershipId);
-            
-            if (facilityMembership == null)
-            {
-                _logger.LogError("Không tìm thấy facility membership với ID: {FacilityMembershipId}", facilityMembershipId);
-                return;
-            }
-
-            // Tạo FacilityMembershipSubscription mới với status = true (đã thanh toán thành công)
-            var subscriptionRepo = _unitOfWork.GetRepository<FacilityMembershipSubscription>();
+            // ✅ TẠO FacilityMembershipSubscription với status = false (chờ thanh toán)
             var newSubscription = new FacilityMembershipSubscription
             {
-                FacilityId = facilityStaff.FacilityId,
-                FacilityMembershipId = facilityMembershipId,
+                FacilityId = facilityId,
+                FacilityMembershipId = request.FacilityMembershipId.Value,
                 StartDate = DateTime.UtcNow,
                 EndDate = DateTime.UtcNow.AddMonths(facilityMembership.Duration),
-                Status = true, // Đã thanh toán thành công
+                Status = false, // Chờ thanh toán
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -489,23 +373,64 @@ orderCode, createPayment.checkoutUrl);
             await subscriptionRepo.AddAsync(newSubscription);
             await _unitOfWork.SaveChangesAsync();
 
-            // Cập nhật transaction với FacilityMembershipSubscriptionId
-            transaction.FacilityMembershipSubscriptionId = newSubscription.SubscriptionId;
-            transactionRepo.Update(transaction);
-            await _unitOfWork.SaveChangesAsync();
+            _logger.LogInformation("Đã tạo FacilityMembershipSubscription với ID: {SubscriptionId} cho FacilityId: {FacilityId}", 
+                newSubscription.SubscriptionId, facilityId);
 
-            _logger.LogInformation("Created and activated FacilityMembershipSubscription {SubscriptionId} cho OrderId: {OrderId}", 
-                newSubscription.SubscriptionId, orderId);
+            return (facilityMembership.Price, "Goi co so", newSubscription.SubscriptionId);
         }
 
-        private string GetPaymentStatusMessage(string paymentMethod)
+        private async Task ActivateUserMembership(int userMembershipId)
         {
-            if (paymentMethod.Contains("PAID"))
-                return "Thanh toán thành công";
-            else if (paymentMethod.Contains("CANCELLED"))
-                return "Thanh toán đã bị hủy";
-            else
-                return "Đang chờ thanh toán";
+            _logger.LogInformation("Bắt đầu ActivateUserMembership cho UserMembershipId: {UserMembershipId}", userMembershipId);
+            
+            var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
+            var userMembership = await userMembershipRepo.GetAsync(um => um.UserMembershipId == userMembershipId);
+            
+            if (userMembership == null)
+            {
+                _logger.LogError("Không tìm thấy UserMembership với ID: {UserMembershipId}", userMembershipId);
+                return;
+            }
+
+            // Cập nhật status thành true (đã thanh toán thành công)
+            userMembership.Status = true;
+            userMembershipRepo.Update(userMembership);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Đã cập nhật UserMembership với ID: {UserMembershipId} thành status = true", userMembershipId);
+        }
+
+        private async Task ActivateFacilityMembershipSubscription(int subscriptionId)
+        {
+            _logger.LogInformation("Bắt đầu ActivateFacilityMembershipSubscription cho SubscriptionId: {SubscriptionId}", subscriptionId);
+            
+            var subscriptionRepo = _unitOfWork.GetRepository<FacilityMembershipSubscription>();
+            var subscription = await subscriptionRepo.GetAsync(s => s.SubscriptionId == subscriptionId);
+            
+            if (subscription == null)
+            {
+                _logger.LogError("Không tìm thấy FacilityMembershipSubscription với ID: {SubscriptionId}", subscriptionId);
+                return;
+            }
+
+            // Cập nhật status thành true (đã thanh toán thành công)
+            subscription.Status = true;
+            subscriptionRepo.Update(subscription);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Đã cập nhật FacilityMembershipSubscription với ID: {SubscriptionId} thành status = true", subscriptionId);
+        }
+
+        private string GetPaymentStatusMessage(string status)
+        {
+            return status switch
+            {
+                "PAID" => "Thanh toán thành công",
+                "CANCELLED" => "Thanh toán đã bị hủy",
+                "PENDING" => "Đang chờ thanh toán",
+                "FAILED" => "Thanh toán thất bại",
+                _ => "Trạng thái không xác định"
+            };
         }
 
         private string GetBaseUrl()

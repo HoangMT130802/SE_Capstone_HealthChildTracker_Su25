@@ -1474,7 +1474,7 @@ namespace Services.Implementations
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointments = await appointmentRepo.FindAsync(
                     a => a.AppointmentId == appointmentId,
-                    "Schedule,Schedule.Slot,Schedule.Facility,Child,Child.Member,Child.Member.Account,Order,Order.OrderDetails,VaccinationAppointmentDetails,VaccinationAppointmentDetails.Vaccine");
+                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails,Order.OrderDetails.FacilityVaccine,Order.OrderDetails.Disease,Order.OrderDetails.FacilityVaccine.Vaccine,Order.Member");
                 
                 var appointment = appointments.FirstOrDefault();
                 
@@ -1494,7 +1494,7 @@ namespace Services.Implementations
                 {
                     _logger.LogWarning("Schedule null, trying manual load for appointment {AppointmentId}", appointmentId);
                     var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
-                    appointment.Schedule = await scheduleRepo.GetAsync(s => s.ScheduleId == appointment.ScheduleId);
+                    appointment.Schedule = await scheduleRepo.GetAsync(s => s.ScheduleId == appointment.ScheduleId, "Slot,Facility");
                     
                     if (appointment.Schedule == null)
                     {
@@ -2000,19 +2000,28 @@ namespace Services.Implementations
             var facilityVaccines = new List<FacilityVaccineDTO>();
             if (appointment.Order?.OrderDetails != null && appointment.Order.OrderDetails.Any())
             {
+                _logger.LogInformation("Found {OrderDetailsCount} OrderDetails for appointment {AppointmentId}", 
+                    appointment.Order.OrderDetails.Count, appointment.AppointmentId);
+                
                 foreach (var orderDetail in appointment.Order.OrderDetails)
                 {
                     if (orderDetail.FacilityVaccine != null)
                     {
                         var facilityVaccineDto = _mapper.Map<FacilityVaccineDTO>(orderDetail.FacilityVaccine);
                         facilityVaccines.Add(facilityVaccineDto);
+                        _logger.LogInformation("Added FacilityVaccine {FacilityVaccineId} from OrderDetail {OrderDetailId}", 
+                            orderDetail.FacilityVaccine.FacilityVaccineId, orderDetail.OrderDetailId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("OrderDetail {OrderDetailId} has null FacilityVaccine", orderDetail.OrderDetailId);
                     }
                 }
             }
             // Fallback: Get FacilityVaccines from VaccinationAppointmentDetails (for individual vaccines)
             else
             {
-                _logger.LogInformation("No Order found, trying to get FacilityVaccines from VaccinationAppointmentDetails for appointment {AppointmentId}", 
+                _logger.LogInformation("No Order or OrderDetails found, trying to get FacilityVaccines from VaccinationAppointmentDetails for appointment {AppointmentId}", 
                     appointment.AppointmentId);
                 
                 var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
@@ -2032,8 +2041,19 @@ namespace Services.Implementations
                         {
                             var facilityVaccineDto = _mapper.Map<FacilityVaccineDTO>(facilityVaccine);
                             facilityVaccines.Add(facilityVaccineDto);
+                            _logger.LogInformation("Added FacilityVaccine {FacilityVaccineId} from VaccinationAppointmentDetail {DetailId}", 
+                                facilityVaccine.FacilityVaccineId, detail.DetailId);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("No FacilityVaccine found for VaccineId {VaccineId} and FacilityId {FacilityId}", 
+                                detail.VaccineId, appointment.Schedule.FacilityId);
                         }
                     }
+                }
+                else
+                {
+                    _logger.LogWarning("No VaccinationAppointmentDetails found for appointment {AppointmentId}", appointment.AppointmentId);
                 }
             }
             
@@ -2082,6 +2102,9 @@ namespace Services.Implementations
                 CanReject = appointment.Status == "Pending" && slotDateTime > now,
                 CanComplete = appointment.Status == "Approval" && slotDateTime <= now
             };
+            
+            _logger.LogInformation("Mapped FacilityAppointmentDTO for appointment {AppointmentId} with {FacilityVaccinesCount} vaccines", 
+                appointment.AppointmentId, facilityVaccines.Count);
             
             return dto;
         }

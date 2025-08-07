@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace Contracts.DTOs.ChildVaccineProfile
 {
@@ -21,7 +22,11 @@ namespace Contracts.DTOs.ChildVaccineProfile
         public bool IsRequired { get; set; }
         public string Priority { get; set; }
         public string Note { get; set; }
+        
+        [JsonIgnore]
         public DateTime CreatedAt { get; set; }
+        
+        [JsonIgnore]
         public DateTime UpdatedAt { get; set; }
     }
 }

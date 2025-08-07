@@ -21,5 +21,8 @@ namespace Contracts.DTOs.Transaction
         public string TransactionCode { get; set; }
         
         public string? Description { get; set; }
+        
+        [Required(ErrorMessage = "Status là bắt buộc")]
+        public string Status { get; set; }
     }
 } 

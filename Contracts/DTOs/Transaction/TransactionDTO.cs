@@ -13,6 +13,7 @@ namespace Contracts.DTOs.Transaction
         public string PaymentMethod { get; set; }
         public string TransactionCode { get; set; }
         public string Description { get; set; }
+        public string Status { get; set; }
         public DateOnly CreatedAt { get; set; }
         
         // Navigation properties
