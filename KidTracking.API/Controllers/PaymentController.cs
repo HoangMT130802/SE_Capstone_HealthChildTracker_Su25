@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 using System.Security.Claims;
+using Repositories.Interfaces;
+using Repositories.Entities;
 
 namespace KidTracking.API.Controllers
 {
@@ -12,13 +14,16 @@ namespace KidTracking.API.Controllers
     {
         private readonly IPaymentService _paymentService;
         private readonly ILogger<PaymentController> _logger;
+        private readonly IUnitOfWork _unitOfWork;
 
         public PaymentController(
             IPaymentService paymentService,
-            ILogger<PaymentController> logger)
+            ILogger<PaymentController> logger,
+            IUnitOfWork unitOfWork)
         {
             _paymentService = paymentService ?? throw new ArgumentNullException(nameof(paymentService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
         }
 
         /// <summary>
@@ -98,7 +103,8 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Kiểm tra lại trạng thái thanh toán (dành cho trường hợp PENDING)
+        /// Kiểm tra trạng thái thanh toán từ database (chỉ đọc, không gọi PayOS)
+        /// Webhook sẽ tự động cập nhật status khi payment thành công
         /// </summary>
         [HttpGet("status/{orderId}")]
         [Authorize]
@@ -111,19 +117,31 @@ namespace KidTracking.API.Controllers
                     return BadRequest(new { success = false, message = "OrderId không được để trống" });
                 }
 
-                _logger.LogInformation("Kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
-                var result = await _paymentService.GetTransactionStatusAsync(orderId);
+                _logger.LogInformation("Kiểm tra trạng thái payment từ DB cho OrderId: {OrderId}", orderId);
+                
+                // Chỉ lấy status từ database, webhook sẽ tự động cập nhật
+                var transactionRepo = _unitOfWork.GetRepository<Transaction>();
+                var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
+
+                if (transaction == null)
+                {
+                    return NotFound(new { success = false, message = $"Không tìm thấy giao dịch với mã {orderId}" });
+                }
+
+                var result = new PaymentStatusDTO
+                {
+                    Success = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase),
+                    Status = transaction.Status,
+                    Message = GetPaymentStatusMessage(transaction.Status),
+                    Amount = transaction.Amount,
+                    PaidAt = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : null
+                };
 
                 return Ok(new
                 {
                     success = true,
                     data = result
                 });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                _logger.LogWarning(ex, "Không tìm thấy payment cho OrderId: {OrderId}", orderId);
-                return NotFound(new { success = false, message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -132,21 +150,44 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        private string GetPaymentStatusMessage(string status)
+        {
+            return status switch
+            {
+                "PAID" => "Thanh toán thành công",
+                "CANCELLED" => "Thanh toán đã bị hủy", 
+                "PENDING" => "Đang chờ thanh toán",
+                "FAILED" => "Thanh toán thất bại",
+                _ => "Trạng thái không xác định"
+            };
+        }
+
         /// <summary>
-        /// Webhook endpoint cho PayOS - tự động xử lý khi thanh toán hoàn thành
+        /// 🔔 Webhook endpoint cho PayOS - tự động xử lý khi thanh toán hoàn thành
+        /// Đây là endpoint chính để PayOS gọi khi có thay đổi status payment
         /// </summary>
         [HttpPost("webhook")]
+        [AllowAnonymous] // PayOS cần gọi được mà không cần auth
         public async Task<ActionResult> PaymentWebhook([FromBody] PaymentWebhookDTO webhookData)
         {
             try
             {
-                if (webhookData == null)
+                if (webhookData == null || string.IsNullOrEmpty(webhookData.OrderId))
                 {
+                    _logger.LogWarning("❌ Webhook data không hợp lệ: {WebhookData}", 
+                        webhookData != null ? $"OrderId: {webhookData.OrderId}" : "null");
                     return BadRequest(new { success = false, message = "Webhook data không hợp lệ" });
                 }
 
-                _logger.LogInformation("Nhận webhook từ PayOS - OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
+                _logger.LogInformation("🔔 Nhận webhook từ PayOS - OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
                     webhookData.OrderId, webhookData.Status, webhookData.Amount);
+
+                // Validate webhook data
+                if (string.IsNullOrEmpty(webhookData.Status))
+                {
+                    _logger.LogWarning("❌ Webhook thiếu Status cho OrderId: {OrderId}", webhookData.OrderId);
+                    return BadRequest(new { success = false, message = "Status không được để trống" });
+                }
 
                 // Xử lý webhook
                 var result = await _paymentService.ProcessPaymentWebhookAsync(
@@ -156,18 +197,33 @@ namespace KidTracking.API.Controllers
 
                 if (result)
                 {
-                    _logger.LogInformation("Xử lý webhook thành công cho OrderId: {OrderId}", webhookData.OrderId);
-                    return Ok(new { success = true, message = "Webhook processed successfully" });
+                    _logger.LogInformation("✅ Xử lý webhook thành công cho OrderId: {OrderId}, Status: {Status}", 
+                        webhookData.OrderId, webhookData.Status);
+                    return Ok(new { 
+                        success = true, 
+                        message = "Webhook processed successfully",
+                        orderId = webhookData.OrderId,
+                        status = webhookData.Status
+                    });
                 }
                 else
                 {
-                    _logger.LogWarning("Xử lý webhook thất bại cho OrderId: {OrderId}", webhookData.OrderId);
-                    return BadRequest(new { success = false, message = "Failed to process webhook" });
+                    _logger.LogWarning("❌ Xử lý webhook thất bại cho OrderId: {OrderId}", webhookData.OrderId);
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "Failed to process webhook",
+                        orderId = webhookData.OrderId
+                    });
                 }
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "❌ Không tìm thấy transaction cho webhook OrderId: {OrderId}", webhookData?.OrderId);
+                return NotFound(new { success = false, message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý webhook cho OrderId: {OrderId}", webhookData?.OrderId);
+                _logger.LogError(ex, "❌ Lỗi khi xử lý webhook cho OrderId: {OrderId}", webhookData?.OrderId);
                 return StatusCode(500, new { success = false, message = "Internal server error" });
             }
         }

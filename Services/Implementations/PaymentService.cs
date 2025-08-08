@@ -77,16 +77,20 @@ namespace Services.Implementations
                 _logger.LogInformation("PayOS Data - OrderCode: {OrderCode}, Amount: {Amount}, Description: '{Description}' (Length: {Length}), TransactionType: '{TransactionType}'", 
                     orderCode, amount, shortDescription, shortDescription.Length, transactionType);
                 
-                // Tạo payment link với PayOS (bao gồm webhook URL)
+                // ✅ Tạo payment link với PayOS - webhook URL là key để tự động cập nhật status
+                var webhookUrl = $"{GetBaseUrl()}/api/payment/webhook";
                 var paymentData = new PaymentData(
                     long.Parse(orderCode.Split('_')[0]),
                     (int)amount,
                     shortDescription,
                     new List<ItemData>(),
-                    $"{GetBaseUrl()}/payment/cancel",
+                    $"{GetBaseUrl()}/payment/cancel?orderId={orderCode}",
                     $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
-                    $"{GetBaseUrl()}/api/payment/webhook"
+                    webhookUrl
                 );
+
+                _logger.LogInformation("🔗 Tạo PayOS payment link - WebhookUrl: {WebhookUrl}, OrderCode: {OrderCode}", 
+                    webhookUrl, orderCode);
 
                 var createPayment = await _payOS.createPaymentLink(paymentData);
 
@@ -124,11 +128,11 @@ namespace Services.Implementations
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
+                _logger.LogInformation("✅ Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
                     orderCode, createPayment.checkoutUrl);
 
-                // Không chạy background check nữa - dựa vào API /status/{orderId} 
-                _logger.LogInformation("Payment tạo thành công. Frontend sẽ dùng API /status để check và kích hoạt membership cho OrderCode: {OrderCode}", orderCode);
+                // ✅ Webhook sẽ tự động cập nhật status khi user thanh toán thành công
+                _logger.LogInformation("🔔 Payment tạo thành công. Webhook sẽ tự động kích hoạt membership khi user thanh toán cho OrderCode: {OrderCode}", orderCode);
 
                 return new PaymentDetailResponseDTO
                 {
@@ -162,7 +166,7 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Kiểm tra trạng thái transaction cho OrderId: {OrderId}", orderId);
+                _logger.LogInformation("Lấy trạng thái transaction từ DB cho OrderId: {OrderId}", orderId);
 
                 var transactionRepo = _unitOfWork.GetRepository<Transaction>();
                 var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
@@ -172,54 +176,8 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Không tìm thấy giao dịch với mã {orderId}");
                 }
 
-                // Nếu vẫn PENDING, thử check PayOS một lần nữa
-                if (string.Equals(transaction.Status, "PENDING", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        _logger.LogInformation("Transaction đang PENDING, check PayOS cho OrderId: {OrderId}", orderId);
-                        var paymentInfo = await _payOS.getPaymentLinkInformation(long.Parse(orderId.Split('_')[0]));
-                        
-                        if (paymentInfo.status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _logger.LogInformation("PayOS báo PAID, kích hoạt membership cho OrderId: {OrderId}", orderId);
-                            
-                            // Cập nhật transaction thành PAID
-                            transaction.Status = "PAID";
-                            transaction.Amount = paymentInfo.amount;
-                            transactionRepo.Update(transaction);
-
-                            // Kích hoạt membership/subscription
-                            if (transaction.UserMembershipId.HasValue)
-                            {
-                                await ActivateUserMembership(transaction.UserMembershipId.Value);
-                                _logger.LogInformation("Đã kích hoạt UserMembership Id: {UserMembershipId} cho OrderId: {OrderId}", 
-                                    transaction.UserMembershipId.Value, orderId);
-                            }
-                            else if (transaction.FacilityMembershipSubscriptionId.HasValue)
-                            {
-                                await ActivateFacilitySubscription(transaction.FacilityMembershipSubscriptionId.Value);
-                                _logger.LogInformation("Đã kích hoạt FacilitySubscription Id: {SubscriptionId} cho OrderId: {OrderId}", 
-                                    transaction.FacilityMembershipSubscriptionId.Value, orderId);
-                            }
-
-                            await _unitOfWork.SaveChangesAsync();
-                            _logger.LogInformation("Hoàn thành kích hoạt membership cho OrderId: {OrderId}", orderId);
-                        }
-                        else if (paymentInfo.status.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _logger.LogInformation("PayOS báo CANCELLED cho OrderId: {OrderId}", orderId);
-                            transaction.Status = "CANCELLED";
-                            transactionRepo.Update(transaction);
-                            await _unitOfWork.SaveChangesAsync();
-                        }
-                    }
-                    catch (Exception checkEx)
-                    {
-                        _logger.LogWarning(checkEx, "Lỗi khi check PayOS cho OrderId: {OrderId}", orderId);
-                        // Tiếp tục trả về status hiện tại từ DB
-                    }
-                }
+                // ✅ Chỉ đọc status từ database - webhook sẽ tự động cập nhật khi có thay đổi
+                _logger.LogInformation("Transaction status từ DB: {Status} cho OrderId: {OrderId}", transaction.Status, orderId);
 
                 return new PaymentStatusDTO
                 {
@@ -242,7 +200,7 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                _logger.LogInformation("Xử lý webhook payment. OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
+                _logger.LogInformation("🔔 Webhook PayOS - OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
                     orderId, status, amount);
 
                 var transactionRepo = _unitOfWork.GetRepository<Transaction>();
@@ -250,52 +208,80 @@ namespace Services.Implementations
 
                 if (existingTransaction == null)
                 {
-                    _logger.LogWarning("Không tìm thấy transaction cho OrderId: {OrderId}", orderId);
+                    _logger.LogWarning("❌ Không tìm thấy transaction cho OrderId: {OrderId}", orderId);
                     return false;
                 }
+
+                _logger.LogInformation("📊 Transaction hiện tại - Status: {CurrentStatus}, Amount: {CurrentAmount}, Type: {TransactionType}", 
+                    existingTransaction.Status, existingTransaction.Amount, existingTransaction.TransactionType);
 
                 // Nếu đã PAID rồi thì không xử lý nữa
                 if (string.Equals(existingTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogInformation("Transaction đã PAID trước đó cho OrderId: {OrderId}", orderId);
+                    _logger.LogInformation("✅ Transaction đã PAID trước đó cho OrderId: {OrderId}", orderId);
                     return true;
                 }
 
                 // Cập nhật status và amount
-                existingTransaction.Status = status;
+                var oldStatus = existingTransaction.Status;
+                existingTransaction.Status = status.ToUpper();
                 existingTransaction.Amount = amount;
                 transactionRepo.Update(existingTransaction);
+
+                _logger.LogInformation("🔄 Cập nhật transaction status: {OldStatus} → {NewStatus}", oldStatus, status.ToUpper());
 
                 // Nếu webhook báo PAID, kích hoạt membership/subscription
                 if (status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogInformation("Webhook báo PAID, kích hoạt membership cho OrderId: {OrderId}", orderId);
+                    _logger.LogInformation("💰 Webhook báo PAID, bắt đầu kích hoạt membership cho OrderId: {OrderId}", orderId);
 
                     // Kích hoạt membership/subscription đã tạo trước đó
                     if (existingTransaction.UserMembershipId.HasValue)
                     {
                         await ActivateUserMembership(existingTransaction.UserMembershipId.Value);
-                        _logger.LogInformation("Đã kích hoạt UserMembership Id: {UserMembershipId} cho OrderId: {OrderId}", 
+                        _logger.LogInformation("✅ Đã kích hoạt UserMembership Id: {UserMembershipId} cho OrderId: {OrderId}", 
                             existingTransaction.UserMembershipId.Value, orderId);
                     }
                     else if (existingTransaction.FacilityMembershipSubscriptionId.HasValue)
                     {
                         await ActivateFacilitySubscription(existingTransaction.FacilityMembershipSubscriptionId.Value);
-                        _logger.LogInformation("Đã kích hoạt FacilitySubscription Id: {SubscriptionId} cho OrderId: {OrderId}", 
+                        _logger.LogInformation("✅ Đã kích hoạt FacilitySubscription Id: {SubscriptionId} cho OrderId: {OrderId}", 
                             existingTransaction.FacilityMembershipSubscriptionId.Value, orderId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Transaction không có UserMembershipId hoặc FacilityMembershipSubscriptionId");
+                    }
+                }
+                else if (status.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("❌ Webhook báo CANCELLED cho OrderId: {OrderId}", orderId);
+                    
+                    // Xóa membership/subscription đã tạo nếu bị cancel
+                    if (existingTransaction.UserMembershipId.HasValue)
+                    {
+                        await CancelUserMembership(existingTransaction.UserMembershipId.Value);
+                        _logger.LogInformation("🗑️ Đã xóa UserMembership Id: {UserMembershipId} do payment bị cancel", 
+                            existingTransaction.UserMembershipId.Value);
+                    }
+                    else if (existingTransaction.FacilityMembershipSubscriptionId.HasValue)
+                    {
+                        await CancelFacilitySubscription(existingTransaction.FacilityMembershipSubscriptionId.Value);
+                        _logger.LogInformation("🗑️ Đã xóa FacilitySubscription Id: {SubscriptionId} do payment bị cancel", 
+                            existingTransaction.FacilityMembershipSubscriptionId.Value);
                     }
                 }
 
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
                 
-                _logger.LogInformation("Hoàn thành xử lý webhook cho OrderId: {OrderId}", orderId);
+                _logger.LogInformation("✅ Hoàn thành xử lý webhook cho OrderId: {OrderId}, Status: {Status}", orderId, status);
                 return true;
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Lỗi khi xử lý webhook cho OrderId: {OrderId}", orderId);
+                _logger.LogError(ex, "❌ Lỗi khi xử lý webhook cho OrderId: {OrderId}", orderId);
                 throw;
             }
         }
@@ -435,6 +421,33 @@ namespace Services.Implementations
                 subscription.StartDate = DateTime.UtcNow;
                 subscription.UpdatedAt = DateTime.UtcNow;
                 subscriptionRepo.Update(subscription);
+                _logger.LogInformation("✅ Activated FacilitySubscription {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        // Xóa UserMembership khi payment bị cancel
+        private async Task CancelUserMembership(int userMembershipId)
+        {
+            var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
+            var userMembership = await userMembershipRepo.GetByIdAsync(userMembershipId);
+            
+            if (userMembership != null && !userMembership.Status) // Chỉ xóa nếu chưa active
+            {
+                userMembershipRepo.Delete(userMembership);
+                _logger.LogInformation("🗑️ Deleted pending UserMembership {UserMembershipId}", userMembershipId);
+            }
+        }
+
+        // Xóa FacilitySubscription khi payment bị cancel
+        private async Task CancelFacilitySubscription(int subscriptionId)
+        {
+            var subscriptionRepo = _unitOfWork.GetRepository<FacilityMembershipSubscription>();
+            var subscription = await subscriptionRepo.GetByIdAsync(subscriptionId);
+            
+            if (subscription != null && !subscription.Status) // Chỉ xóa nếu chưa active
+            {
+                subscriptionRepo.Delete(subscription);
+                _logger.LogInformation("🗑️ Deleted pending FacilitySubscription {SubscriptionId}", subscriptionId);
             }
         }
 
