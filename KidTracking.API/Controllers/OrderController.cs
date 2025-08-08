@@ -42,11 +42,11 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetOrders([FromQuery] string status = null, [FromQuery] int? pageIndex = null, [FromQuery] int? pageSize = null)
+        public async Task<IActionResult> GetOrders([FromQuery] string status = null, [FromQuery] int? facilityId = null, [FromQuery] int? pageIndex = null, [FromQuery] int? pageSize = null)
         {
             try
             {
-                var orders = await _orderService.GetOrdersAsync(status, pageIndex, pageSize);
+                var orders = await _orderService.GetOrdersAsync(status, facilityId, pageIndex, pageSize);
                 return Ok(orders);
             }
             catch (Exception ex)
