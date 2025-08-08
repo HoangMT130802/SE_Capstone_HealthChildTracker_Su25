@@ -150,21 +150,24 @@ namespace Services.Implementations
         }
 
 
-        public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? pageIndex = null, int? pageSize = null)
+        public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, int? pageIndex = null, int? pageSize = null)
         {
             try
             {
-                _logger.LogInformation($"Retrieving orders with status: {status ?? "all"}");
                 var orderRepository = _unitOfWork.GetRepository<Order>();
                 Expression<Func<Order, bool>>? filter = null;
-                if (!string.IsNullOrEmpty(status))
+
+                // Xây dựng filter kết hợp status và facilityId
+                if (!string.IsNullOrEmpty(status) || facilityId.HasValue)
                 {
-                    filter = o => o.Status == status;
+                    filter = o =>
+                        (string.IsNullOrEmpty(status) || o.Status == status) &&
+                        (!facilityId.HasValue || o.OrderDetails.Any(od => od.FacilityVaccine.FacilityId == facilityId));
                 }
 
                 var result = await orderRepository.GetAllAsync(
                     filter: filter,
-                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine", 
+                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine",
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
@@ -178,7 +181,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error retrieving orders with status {status}");
+                _logger.LogError(ex, $"Error retrieving orders with status {status} and facilityId {facilityId}");
                 throw;
             }
         }
