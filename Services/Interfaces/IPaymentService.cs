@@ -10,11 +10,6 @@ namespace Services.Interfaces
         Task<PaymentDetailResponseDTO> CreatePaymentAsync(PaymentRequestDTO request);
         
         /// <summary>
-        /// Kiểm tra trạng thái thanh toán
-        /// </summary>
-        Task<PaymentStatusDTO> CheckPaymentStatusAsync(string orderId);
-        
-        /// <summary>
         /// Xử lý webhook từ PayOS
         /// </summary>
         Task<bool> ProcessPaymentWebhookAsync(string orderId, string status, decimal amount);

@@ -97,40 +97,7 @@ namespace KidTracking.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Kiểm tra trạng thái thanh toán
-        /// </summary>
-        [HttpGet("check-status/{orderId}")]
-        [Authorize]
-        public async Task<ActionResult<PaymentStatusDTO>> CheckPaymentStatus(string orderId)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(orderId))
-                {
-                    return BadRequest(new { success = false, message = "OrderId không được để trống" });
-                }
 
-                _logger.LogInformation("Kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
-                var result = await _paymentService.CheckPaymentStatusAsync(orderId);
-
-                return Ok(new
-                {
-                    success = true,
-                    data = result
-                });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                _logger.LogWarning(ex, "Không tìm thấy payment cho OrderId: {OrderId}", orderId);
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
-                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
-            }
-        }
 
     
     }
