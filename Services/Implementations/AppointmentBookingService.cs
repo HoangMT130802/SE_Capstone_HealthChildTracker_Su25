@@ -980,13 +980,7 @@ namespace Services.Implementations
                     } : null,
                     
                     // Map facility data
-                    Facility = scheduleWithDetails?.Facility != null ? new Contracts.DTOs.VaccinationFacility.VaccinationFacilityDTO
-                    {
-                        FacilityId = scheduleWithDetails.Facility.FacilityId,
-                        FacilityName = scheduleWithDetails.Facility.FacilityName,
-                        Address = scheduleWithDetails.Facility.Address,
-                        Phone = scheduleWithDetails.Facility.Phone
-                    } : null,
+                    Facility = scheduleWithDetails?.Facility != null ? _mapper.Map<Contracts.DTOs.VaccinationFacility.VaccinationFacilityDTO>(scheduleWithDetails.Facility) : null,
                     
                     // Map package data
                     Package = package != null ? new Contracts.DTOs.VaccinePackage.VaccinePackageDTO
@@ -1011,13 +1005,7 @@ namespace Services.Implementations
                         SlotId = scheduleWithDetails.SlotId,
                         Date = scheduleWithDetails.Date,
                         Status = scheduleWithDetails.Status,
-                        Facility = scheduleWithDetails.Facility != null ? new Contracts.DTOs.VaccinationFacility.VaccinationFacilityDTO
-                        {
-                            FacilityId = scheduleWithDetails.Facility.FacilityId,
-                            FacilityName = scheduleWithDetails.Facility.FacilityName,
-                            Address = scheduleWithDetails.Facility.Address,
-                            Phone = scheduleWithDetails.Facility.Phone
-                        } : null,
+                        Facility = scheduleWithDetails.Facility != null ? _mapper.Map<Contracts.DTOs.VaccinationFacility.VaccinationFacilityDTO>(scheduleWithDetails.Facility) : null,
                         Slot = scheduleWithDetails.Slot != null ? new Contracts.DTOs.FacilitySchedule.ScheduleSlotDTO
                         {
                             SlotId = scheduleWithDetails.Slot.SlotId,

@@ -26,7 +26,7 @@ namespace KidTracking.API.Controllers
         /// </summary>
         [HttpPost("create")]
         [Authorize]
-        public async Task<ActionResult<PaymentDetailResponseDTO>> CreatePayment([FromBody] PaymentRequestDTO request)
+        public async Task<ActionResult<PaymentResponseDTO>> CreatePayment([FromBody] PaymentRequestDTO request)
         {
             try
             {
@@ -77,8 +77,7 @@ namespace KidTracking.API.Controllers
                 return Ok(new
                 {
                     success = true,
-                    data = result,
-                    message = "Tạo payment thành công. Vui lòng hoàn tất thanh toán để kích hoạt membership."
+                    data = result
                 });
             }
             catch (ArgumentException ex)

@@ -149,8 +149,8 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Không tìm thấy giao dịch với mã {orderId}");
                 }
 
-                // Kiểm tra từ PayOS nếu chưa PAID
-                if (!existingTransaction.PaymentMethod.Contains("PAID"))
+                // Chỉ gọi PayOS nếu chưa PAID
+                if (!string.Equals(existingTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase))
                 {
                     var paymentInfo = await _payOS.getPaymentLinkInformation(long.Parse(orderId.Split('_')[0]));
                     _logger.LogInformation("PayOS Status: {Status} cho OrderId: {OrderId}", paymentInfo.status, orderId);
@@ -170,11 +170,11 @@ namespace Services.Implementations
 
                 return new PaymentStatusDTO
                 {
-                    Success = existingTransaction.Status == "PAID",
+                    Success = string.Equals(existingTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase),
                     Status = existingTransaction.Status,
                     Message = GetPaymentStatusMessage(existingTransaction.Status),
                     Amount = existingTransaction.Amount,
-                    PaidAt = existingTransaction.Status == "PAID" ? DateTime.UtcNow : null
+                    PaidAt = string.Equals(existingTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : null
                 };
             }
             catch (Exception ex)
@@ -201,9 +201,15 @@ namespace Services.Implementations
                     return false;
                 }
 
+                // Nếu đã ở trạng thái mong muốn thì idempotent
+                if (string.Equals(existingTransaction.Status, status, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Transaction {OrderId} đã có trạng thái {Status}, bỏ qua cập nhật trùng.", orderId, status);
+                    return true;
+                }
+
                 // Cập nhật transaction status
                 existingTransaction.Status = status;
-                existingTransaction.PaymentMethod = $"{existingTransaction.PaymentMethod}_{status}";
                 existingTransaction.Amount = amount;
                 transactionRepo.Update(existingTransaction);
 
@@ -219,6 +225,10 @@ namespace Services.Implementations
                     else if (existingTransaction.FacilityMembershipSubscriptionId.HasValue)
                     {
                         await ActivateFacilityMembershipSubscription(existingTransaction.FacilityMembershipSubscriptionId.Value);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Transaction {OrderId} không có liên kết UserMembershipId/FacilityMembershipSubscriptionId", orderId);
                     }
                 }
 

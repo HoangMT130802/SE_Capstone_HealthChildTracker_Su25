@@ -1,5 +1,6 @@
 using AutoMapper;
 using Contracts.DTOs.VaccinationFacility;
+using Contracts.DTOs.Appointment;
 using Repositories.Entities;
 
 namespace Contracts.MapperProfiles
@@ -18,8 +19,26 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
-                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => ConvertUnixTimestampToDateTime(src.CreatedAt)))
-                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => ConvertUnixTimestampToDateTime(src.UpdatedAt)));
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
+
+            // Entity to VaccinationFacilityWithVaccinesDTO mapping
+            CreateMap<VaccinationFacility, VaccinationFacilityWithVaccinesDTO>()
+                .ForMember(dest => dest.FacilityId, opt => opt.MapFrom(src => src.FacilityId))
+                .ForMember(dest => dest.FacilityName, opt => opt.MapFrom(src => src.FacilityName))
+                .ForMember(dest => dest.LicenseNumber, opt => opt.MapFrom(src => src.LicenseNumber))
+                .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
+                .ForMember(dest => dest.Phone, opt => opt.MapFrom(src => src.Phone))
+                .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
+                .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt))
+                .ForMember(dest => dest.AvailableVaccineCount, opt => opt.Ignore())
+                .ForMember(dest => dest.MinPrice, opt => opt.Ignore())
+                .ForMember(dest => dest.MaxPrice, opt => opt.Ignore())
+                .ForMember(dest => dest.HasPackages, opt => opt.Ignore())
+                .ForMember(dest => dest.Distance, opt => opt.Ignore());
 
             // DTO to Entity mappings
             CreateMap<CreateVaccinationFacilityDTO, VaccinationFacility>()
@@ -57,19 +76,6 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.FacilityStaffs, opt => opt.Ignore())
                 .ForMember(dest => dest.FacilityVaccines, opt => opt.Ignore())
                 .ForMember(dest => dest.VaccinePackages, opt => opt.Ignore());
-        }
-
-        // ✅ Helper method để convert Unix timestamp to DateTime với validation
-        private static DateTime ConvertUnixTimestampToDateTime(long timestamp)
-        {
-            try
-            {
-                return timestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime : DateTime.MinValue;
-            }
-            catch
-            {
-                return DateTime.MinValue;
-            }
         }
     }
 } 
