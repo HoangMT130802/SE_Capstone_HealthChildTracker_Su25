@@ -48,10 +48,16 @@ namespace Contracts.DTOs.Appointment
     }
 
     /// <summary>
-    /// Response DTO cho danh sách lịch đặt của facility
+    /// Response DTO cho danh sách lịch đặt của facility với phân trang
     /// </summary>
     public class FacilityAppointmentResponseDTO
     {
+        // ✅ Phân trang
+        public int TotalCount { get; set; }
+        public int TotalPages { get; set; }
+        public int CurrentPage { get; set; }
+        public int PageSize { get; set; }
+        
         public List<FacilityAppointmentDTO> Appointments { get; set; } = new List<FacilityAppointmentDTO>();
         
         // Thống kê

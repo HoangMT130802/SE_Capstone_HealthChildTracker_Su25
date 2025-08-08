@@ -95,16 +95,24 @@ namespace KidTracking.API.Controllers
         #endregion
 
         /// <summary>
-        /// Lấy tất cả lịch đặt của facility
+        /// Lấy tất cả lịch đặt của facility với phân trang
         /// </summary>
-        /// <returns>Tất cả lịch đặt</returns>
+        /// <param name="pageIndex">Số trang (mặc định: 1)</param>
+        /// <param name="pageSize">Kích thước trang (mặc định: 50)</param>
+        /// <returns>Danh sách lịch đặt có phân trang</returns>
         [HttpGet]
-        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointments()
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointments(
+            [FromQuery] int pageIndex = 1, 
+            [FromQuery] int pageSize = 50)
         {
             try
             {
+                // ✅ Validate phân trang
+                if (pageIndex < 1) pageIndex = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 50; // Giới hạn max 100 items/page
+                
                 var facilityId = await GetFacilityIdAsync();
-                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId);
+                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId, pageIndex, pageSize);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -125,17 +133,26 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Lấy tất cả lịch đặt của facility cụ thể (dành cho Admin)
+        /// Lấy tất cả lịch đặt của facility cụ thể (dành cho Admin) với phân trang
         /// </summary>
         /// <param name="facilityId">ID cơ sở</param>
-        /// <returns>Tất cả lịch đặt của facility</returns>
+        /// <param name="pageIndex">Số trang (mặc định: 1)</param>
+        /// <param name="pageSize">Kích thước trang (mặc định: 50)</param>
+        /// <returns>Danh sách lịch đặt của facility có phân trang</returns>
         [HttpGet("admin/{facilityId}")]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointmentsByAdmin(int facilityId)
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointmentsByAdmin(
+            int facilityId,
+            [FromQuery] int pageIndex = 1, 
+            [FromQuery] int pageSize = 50)
         {
             try
             {
-                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId);
+                // ✅ Validate phân trang
+                if (pageIndex < 1) pageIndex = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 50;
+                
+                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId, pageIndex, pageSize);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -146,17 +163,26 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Lấy lịch đặt theo ngày
+        /// Lấy lịch đặt theo ngày với phân trang
         /// </summary>
         /// <param name="date">Ngày (yyyy-MM-dd)</param>
-        /// <returns>Lịch đặt trong ngày</returns>
+        /// <param name="pageIndex">Số trang (mặc định: 1)</param>
+        /// <param name="pageSize">Kích thước trang (mặc định: 50)</param>
+        /// <returns>Lịch đặt trong ngày có phân trang</returns>
         [HttpGet("date")]
-        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByDate([FromQuery] DateTime date)
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByDate(
+            [FromQuery] DateTime date,
+            [FromQuery] int pageIndex = 1, 
+            [FromQuery] int pageSize = 50)
         {
             try
             {
+                // ✅ Validate phân trang
+                if (pageIndex < 1) pageIndex = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 50;
+                
                 var facilityId = await GetFacilityIdAsync();
-                var result = await _appointmentBookingService.GetFacilityAppointmentsByDateAsync(facilityId, date);
+                var result = await _appointmentBookingService.GetFacilityAppointmentsByDateAsync(facilityId, date, pageIndex, pageSize);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -177,17 +203,26 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Lấy lịch đặt theo tuần
+        /// Lấy lịch đặt theo tuần với phân trang
         /// </summary>
         /// <param name="startOfWeek">Ngày đầu tuần (yyyy-MM-dd)</param>
-        /// <returns>Lịch đặt trong tuần</returns>
+        /// <param name="pageIndex">Số trang (mặc định: 1)</param>
+        /// <param name="pageSize">Kích thước trang (mặc định: 50)</param>
+        /// <returns>Lịch đặt trong tuần có phân trang</returns>
         [HttpGet("week")]
-        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByWeek([FromQuery] DateTime startOfWeek)
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByWeek(
+            [FromQuery] DateTime startOfWeek,
+            [FromQuery] int pageIndex = 1, 
+            [FromQuery] int pageSize = 50)
         {
             try
             {
+                // ✅ Validate phân trang
+                if (pageIndex < 1) pageIndex = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 50;
+                
                 var facilityId = await GetFacilityIdAsync();
-                var result = await _appointmentBookingService.GetFacilityAppointmentsByWeekAsync(facilityId, startOfWeek);
+                var result = await _appointmentBookingService.GetFacilityAppointmentsByWeekAsync(facilityId, startOfWeek, pageIndex, pageSize);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -208,17 +243,26 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Lấy lịch đặt theo tháng
+        /// Lấy lịch đặt theo tháng với phân trang
         /// </summary>
         /// <param name="month">Tháng (yyyy-MM-dd)</param>
-        /// <returns>Lịch đặt trong tháng</returns>
+        /// <param name="pageIndex">Số trang (mặc định: 1)</param>
+        /// <param name="pageSize">Kích thước trang (mặc định: 50)</param>
+        /// <returns>Lịch đặt trong tháng có phân trang</returns>
         [HttpGet("month")]
-        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByMonth([FromQuery] DateTime month)
+        public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetFacilityAppointmentsByMonth(
+            [FromQuery] DateTime month,
+            [FromQuery] int pageIndex = 1, 
+            [FromQuery] int pageSize = 50)
         {
             try
             {
+                // ✅ Validate phân trang
+                if (pageIndex < 1) pageIndex = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 50;
+                
                 var facilityId = await GetFacilityIdAsync();
-                var result = await _appointmentBookingService.GetFacilityAppointmentsByMonthAsync(facilityId, month);
+                var result = await _appointmentBookingService.GetFacilityAppointmentsByMonthAsync(facilityId, month, pageIndex, pageSize);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)

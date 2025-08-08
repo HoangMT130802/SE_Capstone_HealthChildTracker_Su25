@@ -1295,31 +1295,52 @@ namespace Services.Implementations
 
         #region Facility Staff Methods
 
-        public async Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId)
+        public async Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50)
         {
             try
             {
-                _logger.LogInformation("Lấy tất cả lịch đặt cho facility {FacilityId}", facilityId);
+                _logger.LogInformation("Lấy tất cả lịch đặt cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                    facilityId, pageIndex, pageSize);
                 
-                // Get appointments của facility
+                // Get appointments của facility với phân trang
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                var appointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
+                
+                // ✅ Sử dụng phân trang từ repository
+                var result = await appointmentRepo.GetAllAsync(
+                    filter: a => a.Schedule.FacilityId == facilityId,
+                    orderBy: q => q.OrderByDescending(a => a.Schedule.Date).ThenByDescending(a => a.Schedule.Slot.StartTime),
+                    include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
-                foreach (var appointment in appointments)
+                foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
                 
-                // Calculate statistics
-                var stats = CalculateFacilityAppointmentStatistics(appointments);
+                // ✅ Calculate statistics từ tất cả appointments (không phân trang)
+                var allAppointments = await appointmentRepo.FindAsync(
+                    a => a.Schedule.FacilityId == facilityId,
+                    "Schedule.Slot,Schedule.Facility");
+                var stats = CalculateFacilityAppointmentStatistics(allAppointments);
+                
+                // ✅ Tính total pages
+                var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
                 
                 return new FacilityAppointmentResponseDTO
                 {
-                    Appointments = appointmentDTOs.OrderByDescending(a => a.AppointmentDate).ThenByDescending(a => a.AppointmentTime).ToList(),
+                    // Phân trang
+                    TotalCount = result.TotalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = pageIndex,
+                    PageSize = pageSize,
+                    
+                    Appointments = appointmentDTOs,
+                    
+                    // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
                     CompletedCount = stats.CompletedCount,
@@ -1336,30 +1357,52 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByDateAsync(int facilityId, DateTime date)
+        public async Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByDateAsync(int facilityId, DateTime date, int pageIndex = 1, int pageSize = 50)
         {
             try
             {
-                _logger.LogInformation("Lấy lịch đặt theo ngày {Date} cho facility {FacilityId}", date.Date, facilityId);
+                _logger.LogInformation("Lấy lịch đặt theo ngày {Date} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                    date.Date, facilityId, pageIndex, pageSize);
                 
                 var dateOnly = DateOnly.FromDateTime(date.Date);
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                var appointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId && a.Schedule.Date == dateOnly,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
+                
+                // ✅ Sử dụng phân trang
+                var result = await appointmentRepo.GetAllAsync(
+                    filter: a => a.Schedule.FacilityId == facilityId && a.Schedule.Date == dateOnly,
+                    orderBy: q => q.OrderBy(a => a.Schedule.Slot.StartTime),
+                    include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
-                foreach (var appointment in appointments)
+                foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
                 
-                var stats = CalculateFacilityAppointmentStatistics(appointments);
+                // ✅ Calculate statistics từ tất cả appointments trong ngày
+                var allAppointments = await appointmentRepo.FindAsync(
+                    a => a.Schedule.FacilityId == facilityId && a.Schedule.Date == dateOnly,
+                    "Schedule.Slot,Schedule.Facility");
+                var stats = CalculateFacilityAppointmentStatistics(allAppointments);
+                
+                // ✅ Tính total pages
+                var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
                 
                 return new FacilityAppointmentResponseDTO
                 {
-                    Appointments = appointmentDTOs.OrderBy(a => a.AppointmentTime).ToList(),
+                    // Phân trang
+                    TotalCount = result.TotalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = pageIndex,
+                    PageSize = pageSize,
+                    
+                    Appointments = appointmentDTOs,
+                    
+                    // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
                     CompletedCount = stats.CompletedCount,
@@ -1376,34 +1419,58 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByWeekAsync(int facilityId, DateTime startOfWeek)
+        public async Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByWeekAsync(int facilityId, DateTime startOfWeek, int pageIndex = 1, int pageSize = 50)
         {
             try
             {
-                _logger.LogInformation("Lấy lịch đặt theo tuần {Week} cho facility {FacilityId}", startOfWeek.Date, facilityId);
+                _logger.LogInformation("Lấy lịch đặt theo tuần {Week} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                    startOfWeek.Date, facilityId, pageIndex, pageSize);
                 
                 var startDate = DateOnly.FromDateTime(startOfWeek.Date);
                 var endDate = startDate.AddDays(6);
                 
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                var appointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId && 
-                         a.Schedule.Date >= startDate && 
-                         a.Schedule.Date <= endDate,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
+                
+                // ✅ Sử dụng phân trang
+                var result = await appointmentRepo.GetAllAsync(
+                    filter: a => a.Schedule.FacilityId == facilityId && 
+                                a.Schedule.Date >= startDate && 
+                                a.Schedule.Date <= endDate,
+                    orderBy: q => q.OrderBy(a => a.Schedule.Date).ThenBy(a => a.Schedule.Slot.StartTime),
+                    include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
-                foreach (var appointment in appointments)
+                foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
                 
-                var stats = CalculateFacilityAppointmentStatistics(appointments);
+                // ✅ Calculate statistics từ tất cả appointments trong tuần
+                var allAppointments = await appointmentRepo.FindAsync(
+                    a => a.Schedule.FacilityId == facilityId && 
+                         a.Schedule.Date >= startDate && 
+                         a.Schedule.Date <= endDate,
+                    "Schedule.Slot,Schedule.Facility");
+                var stats = CalculateFacilityAppointmentStatistics(allAppointments);
+                
+                // ✅ Tính total pages
+                var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
                 
                 return new FacilityAppointmentResponseDTO
                 {
-                    Appointments = appointmentDTOs.OrderBy(a => a.AppointmentDate).ThenBy(a => a.AppointmentTime).ToList(),
+                    // Phân trang
+                    TotalCount = result.TotalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = pageIndex,
+                    PageSize = pageSize,
+                    
+                    Appointments = appointmentDTOs,
+                    
+                    // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
                     CompletedCount = stats.CompletedCount,
@@ -1420,34 +1487,58 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByMonthAsync(int facilityId, DateTime month)
+        public async Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByMonthAsync(int facilityId, DateTime month, int pageIndex = 1, int pageSize = 50)
         {
             try
             {
-                _logger.LogInformation("Lấy lịch đặt theo tháng {Month} cho facility {FacilityId}", month.ToString("yyyy-MM"), facilityId);
+                _logger.LogInformation("Lấy lịch đặt theo tháng {Month} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                    month.ToString("yyyy-MM"), facilityId, pageIndex, pageSize);
                 
                 var startDate = DateOnly.FromDateTime(new DateTime(month.Year, month.Month, 1));
                 var endDate = startDate.AddMonths(1).AddDays(-1);
                 
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                var appointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId && 
-                         a.Schedule.Date >= startDate && 
-                         a.Schedule.Date <= endDate,
-                    "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member");
+                
+                // ✅ Sử dụng phân trang
+                var result = await appointmentRepo.GetAllAsync(
+                    filter: a => a.Schedule.FacilityId == facilityId && 
+                                a.Schedule.Date >= startDate && 
+                                a.Schedule.Date <= endDate,
+                    orderBy: q => q.OrderBy(a => a.Schedule.Date).ThenBy(a => a.Schedule.Slot.StartTime),
+                    include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
+                    pageIndex: pageIndex,
+                    pageSize: pageSize
+                );
                 
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
-                foreach (var appointment in appointments)
+                foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
                 
-                var stats = CalculateFacilityAppointmentStatistics(appointments);
+                // ✅ Calculate statistics từ tất cả appointments trong tháng
+                var allAppointments = await appointmentRepo.FindAsync(
+                    a => a.Schedule.FacilityId == facilityId && 
+                         a.Schedule.Date >= startDate && 
+                         a.Schedule.Date <= endDate,
+                    "Schedule.Slot,Schedule.Facility");
+                var stats = CalculateFacilityAppointmentStatistics(allAppointments);
+                
+                // ✅ Tính total pages
+                var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
                 
                 return new FacilityAppointmentResponseDTO
                 {
-                    Appointments = appointmentDTOs.OrderBy(a => a.AppointmentDate).ThenBy(a => a.AppointmentTime).ToList(),
+                    // Phân trang
+                    TotalCount = result.TotalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = pageIndex,
+                    PageSize = pageSize,
+                    
+                    Appointments = appointmentDTOs,
+                    
+                    // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
                     CompletedCount = stats.CompletedCount,
