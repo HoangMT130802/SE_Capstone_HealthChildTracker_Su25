@@ -167,7 +167,7 @@ namespace Services.Implementations
 
                 var result = await orderRepository.GetAllAsync(
                     filter: filter,
-                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine,Package",
+                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine,Package,Package.Facility",
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
@@ -194,7 +194,7 @@ namespace Services.Implementations
                 var orderRepository = _unitOfWork.GetRepository<Order>();
                 var order = await orderRepository.GetAsync(
                     o => o.OrderId == orderId,
-                    includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine,Package"
+                    includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine,Package,Package.Facility"
                 );
                 if (order == null)
                 {
@@ -267,7 +267,7 @@ namespace Services.Implementations
 
                 var result = await orderRepository.GetAllAsync(
                     filter: filter,
-                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine,Package",
+                    include: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease,Member,OrderDetails.FacilityVaccine.Vaccine,Package,Package.Facility",
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
