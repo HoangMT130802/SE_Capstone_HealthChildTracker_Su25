@@ -186,11 +186,17 @@ namespace Services.Implementations
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
-                            // ✅ KHÔNG trừ vaccine ngay khi rebook - sẽ trừ khi tiêm thành công
-                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            // ✅ Trừ vaccine ngay khi rebook thành công
+                            var oldQuantity = relevantOrderDetail.RemainingQuantity;
+                            relevantOrderDetail.RemainingQuantity -= 1;
+                            relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
+                            remainingVaccines = relevantOrderDetail.RemainingQuantity; // Số lượng sau khi trừ
                             
-                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, có {RemainingQuantity} vaccine khả dụng - sẽ trừ khi tiêm thành công", 
-                                request.OrderId.Value, remainingVaccines);
+                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                            orderDetailRepo.Update(relevantOrderDetail);
+                            
+                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, đã trừ 1 vaccine từ {OldQuantity} xuống {NewQuantity}", 
+                                request.OrderId.Value, oldQuantity, remainingVaccines);
                         }
                         else
                         {
@@ -216,11 +222,17 @@ namespace Services.Implementations
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
-                            // ✅ KHÔNG trừ vaccine ngay khi rebook - sẽ trừ khi tiêm thành công
-                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            // ✅ Trừ vaccine ngay khi rebook thành công
+                            var oldQuantity = relevantOrderDetail.RemainingQuantity;
+                            relevantOrderDetail.RemainingQuantity -= 1;
+                            relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
+                            remainingVaccines = relevantOrderDetail.RemainingQuantity; // Số lượng sau khi trừ
                             
-                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, có {RemainingQuantity} vaccine khả dụng - sẽ trừ khi tiêm thành công", 
-                                validation.ApplicableOrder.OrderId, remainingVaccines);
+                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                            orderDetailRepo.Update(relevantOrderDetail);
+                            
+                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, đã trừ 1 vaccine từ {OldQuantity} xuống {NewQuantity}", 
+                                validation.ApplicableOrder.OrderId, oldQuantity, remainingVaccines);
                         }
                     }
                 }

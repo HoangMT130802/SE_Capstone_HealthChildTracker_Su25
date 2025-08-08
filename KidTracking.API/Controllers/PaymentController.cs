@@ -97,9 +97,113 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Kiểm tra lại trạng thái thanh toán (dành cho trường hợp PENDING)
+        /// </summary>
+        [HttpGet("status/{orderId}")]
+        [Authorize]
+        public async Task<ActionResult> GetPaymentStatus(string orderId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(orderId))
+                {
+                    return BadRequest(new { success = false, message = "OrderId không được để trống" });
+                }
 
+                _logger.LogInformation("Kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
+                var result = await _paymentService.GetTransactionStatusAsync(orderId);
 
-    
+                return Ok(new
+                {
+                    success = true,
+                    data = result
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "Không tìm thấy payment cho OrderId: {OrderId}", orderId);
+                return NotFound(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
+            }
+        }
+
+        /// <summary>
+        /// Webhook endpoint cho PayOS - tự động xử lý khi thanh toán hoàn thành
+        /// </summary>
+        [HttpPost("webhook")]
+        public async Task<ActionResult> PaymentWebhook([FromBody] PaymentWebhookDTO webhookData)
+        {
+            try
+            {
+                if (webhookData == null)
+                {
+                    return BadRequest(new { success = false, message = "Webhook data không hợp lệ" });
+                }
+
+                _logger.LogInformation("Nhận webhook từ PayOS - OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
+                    webhookData.OrderId, webhookData.Status, webhookData.Amount);
+
+                // Xử lý webhook
+                var result = await _paymentService.ProcessPaymentWebhookAsync(
+                    webhookData.OrderId, 
+                    webhookData.Status, 
+                    webhookData.Amount);
+
+                if (result)
+                {
+                    _logger.LogInformation("Xử lý webhook thành công cho OrderId: {OrderId}", webhookData.OrderId);
+                    return Ok(new { success = true, message = "Webhook processed successfully" });
+                }
+                else
+                {
+                    _logger.LogWarning("Xử lý webhook thất bại cho OrderId: {OrderId}", webhookData.OrderId);
+                    return BadRequest(new { success = false, message = "Failed to process webhook" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý webhook cho OrderId: {OrderId}", webhookData?.OrderId);
+                return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+        }
+
+        /// <summary>
+        /// Success page endpoint - chỉ để hiển thị thông báo thành công
+        /// </summary>
+        [HttpGet("success")]
+        public ActionResult PaymentSuccess([FromQuery] string orderId, [FromQuery] string status)
+        {
+            _logger.LogInformation("User được redirect về success page - OrderId: {OrderId}, Status: {Status}", orderId, status);
+            
+            // Chỉ trả về success page, không xử lý logic thanh toán vì đã có webhook
+            return Ok(new { 
+                success = true, 
+                message = "Thanh toán thành công! Membership của bạn sẽ được kích hoạt trong giây lát.",
+                orderId = orderId,
+                status = status
+            });
+        }
+
+        /// <summary>
+        /// Cancel page endpoint - hiển thị khi user hủy thanh toán
+        /// </summary>
+        [HttpGet("cancel")]
+        public ActionResult PaymentCancel([FromQuery] string orderId)
+        {
+            _logger.LogInformation("User hủy thanh toán - OrderId: {OrderId}", orderId);
+            
+            return Ok(new { 
+                success = false, 
+                message = "Thanh toán đã bị hủy.",
+                orderId = orderId
+            });
+        }
+
     }
 
     /// <summary>

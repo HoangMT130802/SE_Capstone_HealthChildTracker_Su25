@@ -1,6 +1,7 @@
 using AutoMapper;
 using Contracts.DTOs.Transaction;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Net.payOS;
 using Net.payOS.Types;
@@ -18,6 +19,7 @@ namespace Services.Implementations
         private readonly ILogger<PaymentService> _logger;
         private readonly PayOS _payOS;
         private readonly IConfiguration _configuration;
+        private readonly IServiceProvider _serviceProvider;
 
         
         public PaymentService(
@@ -25,14 +27,15 @@ namespace Services.Implementations
             IMapper mapper,
             ILogger<PaymentService> logger,
             PayOS payOS,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IServiceProvider serviceProvider)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _logger = logger;
             _payOS = payOS;
             _configuration = configuration;
-
+            _serviceProvider = serviceProvider;
         }
 
         public async Task<PaymentDetailResponseDTO> CreatePaymentAsync(PaymentRequestDTO request)
@@ -74,7 +77,7 @@ namespace Services.Implementations
                 _logger.LogInformation("PayOS Data - OrderCode: {OrderCode}, Amount: {Amount}, Description: '{Description}' (Length: {Length}), TransactionType: '{TransactionType}'", 
                     orderCode, amount, shortDescription, shortDescription.Length, transactionType);
                 
-                // Tạo payment link với PayOS
+                // Tạo payment link với PayOS (bao gồm webhook URL)
                 var paymentData = new PaymentData(
                     long.Parse(orderCode.Split('_')[0]),
                     (int)amount,
@@ -82,7 +85,7 @@ namespace Services.Implementations
                     new List<ItemData>(),
                     $"{GetBaseUrl()}/payment/cancel",
                     $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
-                    null
+                    $"{GetBaseUrl()}/api/payment/webhook"
                 );
 
                 var createPayment = await _payOS.createPaymentLink(paymentData);
@@ -124,15 +127,15 @@ namespace Services.Implementations
                 _logger.LogInformation("Tạo payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
                     orderCode, createPayment.checkoutUrl);
 
-                // Tự động check status và kích hoạt membership sau khi tạo payment
-                var finalStatus = await AutoCheckAndActivatePayment(orderCode, userMembershipId, facilityMembershipSubscriptionId);
+                // Không chạy background check nữa - dựa vào API /status/{orderId} 
+                _logger.LogInformation("Payment tạo thành công. Frontend sẽ dùng API /status để check và kích hoạt membership cho OrderCode: {OrderCode}", orderCode);
 
                 return new PaymentDetailResponseDTO
                 {
                     PaymentUrl = createPayment.checkoutUrl,
                     OrderId = orderCode,
                     Amount = amount,
-                    Status = finalStatus,
+                    Status = "PENDING", // Luôn trả PENDING ngay lập tức
                     ReturnUrl = $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
                     CancelUrl = $"{GetBaseUrl()}/payment/cancel",
                     UserMembershipId = userMembershipId,
@@ -149,101 +152,93 @@ namespace Services.Implementations
             }
         }
 
-        // Tự động check PayOS và kích hoạt membership sau khi tạo payment
-        private async Task<string> AutoCheckAndActivatePayment(string orderCode, int? userMembershipId, int? facilityMembershipSubscriptionId)
+
+
+        
+
+
+
+        public async Task<PaymentStatusDTO> GetTransactionStatusAsync(string orderId)
         {
             try
             {
-                _logger.LogInformation("Bắt đầu auto-check payment status cho OrderCode: {OrderCode}", orderCode);
-                
-                // Đợi một chút để PayOS cập nhật trạng thái (nếu user thanh toán nhanh)
-                await Task.Delay(2000);
-                
-                // Retry logic: thử check PayOS nhiều lần trong 30 giây
-                for (int attempt = 1; attempt <= 15; attempt++)
+                _logger.LogInformation("Kiểm tra trạng thái transaction cho OrderId: {OrderId}", orderId);
+
+                var transactionRepo = _unitOfWork.GetRepository<Transaction>();
+                var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
+
+                if (transaction == null)
+                {
+                    throw new KeyNotFoundException($"Không tìm thấy giao dịch với mã {orderId}");
+                }
+
+                // Nếu vẫn PENDING, thử check PayOS một lần nữa
+                if (string.Equals(transaction.Status, "PENDING", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
-                        var paymentInfo = await _payOS.getPaymentLinkInformation(long.Parse(orderCode.Split('_')[0]));
-                        _logger.LogInformation("PayOS Status (attempt {Attempt}): {Status} cho OrderCode: {OrderCode}", 
-                            attempt, paymentInfo.status, orderCode);
-
+                        _logger.LogInformation("Transaction đang PENDING, check PayOS cho OrderId: {OrderId}", orderId);
+                        var paymentInfo = await _payOS.getPaymentLinkInformation(long.Parse(orderId.Split('_')[0]));
+                        
                         if (paymentInfo.status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
                         {
-                            // Cập nhật transaction thành PAID
-                            var transactionRepo = _unitOfWork.GetRepository<Transaction>();
-                            var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderCode);
+                            _logger.LogInformation("PayOS báo PAID, kích hoạt membership cho OrderId: {OrderId}", orderId);
                             
-                            if (transaction != null && !string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase))
+                            // Cập nhật transaction thành PAID
+                            transaction.Status = "PAID";
+                            transaction.Amount = paymentInfo.amount;
+                            transactionRepo.Update(transaction);
+
+                            // Kích hoạt membership/subscription
+                            if (transaction.UserMembershipId.HasValue)
                             {
-                                transaction.Status = "PAID";
-                                transaction.Amount = paymentInfo.amount;
-                                transactionRepo.Update(transaction);
-
-                                // Kích hoạt membership/subscription
-                                if (userMembershipId.HasValue)
-                                {
-                                    await ActivateUserMembership(userMembershipId.Value);
-                                    _logger.LogInformation("Đã kích hoạt UserMembership Id: {UserMembershipId} cho OrderCode: {OrderCode}", 
-                                        userMembershipId.Value, orderCode);
-                                }
-                                else if (facilityMembershipSubscriptionId.HasValue)
-                                {
-                                    await ActivateFacilitySubscription(facilityMembershipSubscriptionId.Value);
-                                    _logger.LogInformation("Đã kích hoạt FacilitySubscription Id: {SubscriptionId} cho OrderCode: {OrderCode}", 
-                                        facilityMembershipSubscriptionId.Value, orderCode);
-                                }
-
-                                await _unitOfWork.SaveChangesAsync();
-                                _logger.LogInformation("Auto-check thành công: Payment PAID và đã kích hoạt membership cho OrderCode: {OrderCode}", orderCode);
-                                return "PAID";
+                                await ActivateUserMembership(transaction.UserMembershipId.Value);
+                                _logger.LogInformation("Đã kích hoạt UserMembership Id: {UserMembershipId} cho OrderId: {OrderId}", 
+                                    transaction.UserMembershipId.Value, orderId);
                             }
+                            else if (transaction.FacilityMembershipSubscriptionId.HasValue)
+                            {
+                                await ActivateFacilitySubscription(transaction.FacilityMembershipSubscriptionId.Value);
+                                _logger.LogInformation("Đã kích hoạt FacilitySubscription Id: {SubscriptionId} cho OrderId: {OrderId}", 
+                                    transaction.FacilityMembershipSubscriptionId.Value, orderId);
+                            }
+
+                            await _unitOfWork.SaveChangesAsync();
+                            _logger.LogInformation("Hoàn thành kích hoạt membership cho OrderId: {OrderId}", orderId);
                         }
                         else if (paymentInfo.status.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase))
                         {
-                            // Cập nhật transaction thành CANCELLED
-                            var transactionRepo = _unitOfWork.GetRepository<Transaction>();
-                            var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderCode);
-                            
-                            if (transaction != null)
-                            {
-                                transaction.Status = "CANCELLED";
-                                transactionRepo.Update(transaction);
-                                await _unitOfWork.SaveChangesAsync();
-                                _logger.LogInformation("Auto-check: Payment CANCELLED cho OrderCode: {OrderCode}", orderCode);
-                                return "CANCELLED";
-                            }
-                        }
-                        
-                        // Nếu vẫn PENDING, đợi 2 giây rồi thử lại
-                        if (attempt < 15)
-                        {
-                            await Task.Delay(2000);
+                            _logger.LogInformation("PayOS báo CANCELLED cho OrderId: {OrderId}", orderId);
+                            transaction.Status = "CANCELLED";
+                            transactionRepo.Update(transaction);
+                            await _unitOfWork.SaveChangesAsync();
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception checkEx)
                     {
-                        _logger.LogWarning(ex, "Lỗi khi check PayOS attempt {Attempt} cho OrderCode: {OrderCode}", attempt, orderCode);
-                        if (attempt < 15)
-                        {
-                            await Task.Delay(2000);
-                        }
+                        _logger.LogWarning(checkEx, "Lỗi khi check PayOS cho OrderId: {OrderId}", orderId);
+                        // Tiếp tục trả về status hiện tại từ DB
                     }
                 }
 
-                _logger.LogInformation("Auto-check timeout: Payment vẫn PENDING sau 30 giây cho OrderCode: {OrderCode}", orderCode);
-                return "PENDING";
+                return new PaymentStatusDTO
+                {
+                    Success = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase),
+                    Status = transaction.Status,
+                    Message = GetPaymentStatusMessage(transaction.Status),
+                    Amount = transaction.Amount,
+                    PaidAt = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : null
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi trong quá trình auto-check payment cho OrderCode: {OrderCode}", orderCode);
-                return "PENDING";
+                _logger.LogError(ex, "Lỗi khi lấy trạng thái transaction cho OrderId: {OrderId}", orderId);
+                throw;
             }
         }
 
         public async Task<bool> ProcessPaymentWebhookAsync(string orderId, string status, decimal amount)
         {
-            // Vẫn giữ phương thức cho tương thích, nhưng luồng chính dùng CheckPaymentStatusAsync theo yêu cầu
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -259,37 +254,42 @@ namespace Services.Implementations
                     return false;
                 }
 
-                if (string.Equals(existingTransaction.Status, status, StringComparison.OrdinalIgnoreCase))
+                // Nếu đã PAID rồi thì không xử lý nữa
+                if (string.Equals(existingTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase))
                 {
+                    _logger.LogInformation("Transaction đã PAID trước đó cho OrderId: {OrderId}", orderId);
                     return true;
                 }
 
+                // Cập nhật status và amount
                 existingTransaction.Status = status;
                 existingTransaction.Amount = amount;
                 transactionRepo.Update(existingTransaction);
 
+                // Nếu webhook báo PAID, kích hoạt membership/subscription
                 if (status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (string.Equals(existingTransaction.TransactionType, "User", StringComparison.OrdinalIgnoreCase))
+                    _logger.LogInformation("Webhook báo PAID, kích hoạt membership cho OrderId: {OrderId}", orderId);
+
+                    // Kích hoạt membership/subscription đã tạo trước đó
+                    if (existingTransaction.UserMembershipId.HasValue)
                     {
-                        if (!existingTransaction.UserMembershipId.HasValue)
-                        {
-                            var userMembershipId = await CreateUserMembershipIfNotExists(existingTransaction.TransactionCode);
-                            existingTransaction.UserMembershipId = userMembershipId;
-                        }
+                        await ActivateUserMembership(existingTransaction.UserMembershipId.Value);
+                        _logger.LogInformation("Đã kích hoạt UserMembership Id: {UserMembershipId} cho OrderId: {OrderId}", 
+                            existingTransaction.UserMembershipId.Value, orderId);
                     }
-                    else if (string.Equals(existingTransaction.TransactionType, "Facility", StringComparison.OrdinalIgnoreCase))
+                    else if (existingTransaction.FacilityMembershipSubscriptionId.HasValue)
                     {
-                        if (!existingTransaction.FacilityMembershipSubscriptionId.HasValue)
-                        {
-                            var subscriptionId = await CreateFacilitySubscriptionIfNotExists(existingTransaction.TransactionCode);
-                            existingTransaction.FacilityMembershipSubscriptionId = subscriptionId;
-                        }
+                        await ActivateFacilitySubscription(existingTransaction.FacilityMembershipSubscriptionId.Value);
+                        _logger.LogInformation("Đã kích hoạt FacilitySubscription Id: {SubscriptionId} cho OrderId: {OrderId}", 
+                            existingTransaction.FacilityMembershipSubscriptionId.Value, orderId);
                     }
                 }
 
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
+                
+                _logger.LogInformation("Hoàn thành xử lý webhook cho OrderId: {OrderId}", orderId);
                 return true;
             }
             catch (Exception ex)
@@ -438,6 +438,8 @@ namespace Services.Implementations
             }
         }
 
+
+
         // Tạo UserMembership mới nếu chưa có (khi PAID) và trả về id
         private async Task<int> CreateUserMembershipIfNotExists(string orderCode)
         {
@@ -446,7 +448,7 @@ namespace Services.Implementations
             {
                 throw new InvalidOperationException("OrderCode không hợp lệ");
             }
-
+            
             var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
             var membershipRepo = _unitOfWork.GetRepository<Membership>();
 

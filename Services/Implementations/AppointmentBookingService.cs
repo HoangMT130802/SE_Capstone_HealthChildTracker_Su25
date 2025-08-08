@@ -771,8 +771,7 @@ namespace Services.Implementations
                         throw new InvalidOperationException($"Order {request.OrderId.Value} chưa được thanh toán");
                     }*/
                     
-                    // ✅ KHÔNG trừ RemainingQuantity ngay khi book - sẽ trừ khi tiêm thành công
-                    // Chỉ validate xem có đủ vaccine không
+                    // ✅ Trừ RemainingQuantity ngay khi đặt lịch thành công
                     var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
                     var orderDetails = await orderDetailRepo.FindAsync(od => od.OrderId == request.OrderId.Value);
                     
@@ -787,7 +786,7 @@ namespace Services.Implementations
                         selectedDiseaseIds.AddRange(request.DiseaseIds);
                     }
                     
-                    // Validate có đủ vaccine cho disease được chọn không
+                    // Validate có đủ vaccine và trừ RemainingQuantity cho disease được chọn
                     foreach (var orderDetail in orderDetails)
                     {
                         if (selectedDiseaseIds.Contains(orderDetail.DiseaseId))
@@ -796,13 +795,20 @@ namespace Services.Implementations
                             {
                                 throw new InvalidOperationException($"OrderDetail {orderDetail.OrderDetailId} cho DiseaseId {orderDetail.DiseaseId} đã hết vaccine (RemainingQuantity = 0)");
                             }
-                            _logger.LogInformation("OrderDetail {OrderDetailId} cho DiseaseId {DiseaseId} có {RemainingQuantity} vaccine khả dụng", 
-                                orderDetail.OrderDetailId, orderDetail.DiseaseId, orderDetail.RemainingQuantity);
+                            
+                            // ✅ Trừ RemainingQuantity ngay khi đặt lịch thành công
+                            var oldQuantity = orderDetail.RemainingQuantity;
+                            orderDetail.RemainingQuantity -= 1;
+                            orderDetail.UpdatedAt = DateTime.UtcNow;
+                            orderDetailRepo.Update(orderDetail);
+                            
+                            _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} cho DiseaseId {DiseaseId}. Từ {OldQuantity} xuống {NewQuantity}", 
+                                orderDetail.OrderDetailId, orderDetail.DiseaseId, oldQuantity, orderDetail.RemainingQuantity);
                         }
                     }
                     
                     appointment.OrderId = request.OrderId.Value;
-                    _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công - sẽ trừ RemainingQuantity khi tiêm thành công", request.OrderId.Value);
+                    _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công - đã trừ RemainingQuantity ngay khi đặt lịch", request.OrderId.Value);
                 }
                 // LUỒNG 2: Tạo Order mới nếu chọn gói vaccine
                 else if (request.PackageId.HasValue && request.PackageId.Value > 0)
@@ -889,6 +895,11 @@ namespace Services.Implementations
                     }
                     await _unitOfWork.SaveChangesAsync();
                 }
+
+                // ✅ LUỒNG 5: Tạo ChildVaccineProfile với status "Pending" cho tất cả vaccines được book
+                await CreateChildVaccineProfilesForAppointmentAsync(appointment, request, schedule.Date);
+
+                await _unitOfWork.SaveChangesAsync();
 
                 // Calculate estimated cost
                 var estimatedCost = await CalculateEstimatedCostAsync(request.FacilityId, request.OrderId, request.PackageId, request.FacilityVaccineIds);
@@ -1617,59 +1628,8 @@ namespace Services.Implementations
                         _logger.LogInformation("Đã cập nhật ChildVaccineProfile {ProfileId} status thành Completed", profile.VaccineProfileId);
                     }
                     
-                    // ✅ Trừ RemainingQuantity từ OrderDetail khi chuyển sang Paid (nếu có OrderId)
-                    if (appointment.OrderId.HasValue)
-                    {
-                        _logger.LogInformation("Trừ RemainingQuantity từ Order {OrderId} cho appointment {AppointmentId}", 
-                            appointment.OrderId.Value, appointmentId);
-                        
-                        var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                        var orderDetails = await orderDetailRepo.FindAsync(od => od.OrderId == appointment.OrderId.Value, "FacilityVaccine");
-                        
-                        // Lấy diseaseIds từ ChildVaccineProfile để biết vaccine nào được tiêm
-                        var childVaccineProfileRepo2 = _unitOfWork.GetRepository<ChildVaccineProfile>();
-                        var profilesForAppointment = await childVaccineProfileRepo2.FindAsync(
-                            p => p.AppointmentId == appointmentId);
-                        
-                        foreach (var profile in profilesForAppointment)
-                        {
-                            bool hasSubtractedForProfile = false; // Flag để tránh trừ nhiều lần cho mỗi profile
-                            
-                            foreach (var orderDetail in orderDetails)
-                            {
-                                // ✅ Kiểm tra null trước khi truy cập FacilityVaccine
-                                if (orderDetail.FacilityVaccine == null)
-                                {
-                                    _logger.LogWarning("OrderDetail {OrderDetailId} có FacilityVaccine null, bỏ qua", orderDetail.OrderDetailId);
-                                    continue;
-                                }
-                                
-                                // Chỉ trừ OrderDetail phù hợp với vaccine và disease đã tiêm
-                                if (orderDetail.FacilityVaccine.VaccineId == profile.VaccineId && 
-                                    orderDetail.DiseaseId == profile.DiseaseId && 
-                                    orderDetail.RemainingQuantity > 0 && 
-                                    !hasSubtractedForProfile) // Chỉ trừ 1 lần cho mỗi profile
-                                {
-                                    var oldRemainingQuantity = orderDetail.RemainingQuantity;
-                                    orderDetail.RemainingQuantity -= 1; // Trừ 1 vaccine
-                                    orderDetail.UpdatedAt = DateTime.UtcNow;
-                                    orderDetailRepo.Update(orderDetail);
-                                    
-                                    hasSubtractedForProfile = true; // Đánh dấu đã trừ cho profile này
-                                    
-                                    _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} cho VaccineId {VaccineId} DiseaseId {DiseaseId}. Từ {OldQuantity} xuống {NewQuantity}", 
-                                        orderDetail.OrderDetailId, profile.VaccineId, profile.DiseaseId, oldRemainingQuantity, orderDetail.RemainingQuantity);
-                                    break; // Chỉ trừ 1 lần cho mỗi vaccine
-                                }
-                            }
-                            
-                            if (!hasSubtractedForProfile)
-                            {
-                                _logger.LogWarning("Không tìm thấy OrderDetail phù hợp để trừ RemainingQuantity cho VaccineId {VaccineId} DiseaseId {DiseaseId}", 
-                                    profile.VaccineId, profile.DiseaseId);
-                            }
-                        }
-                    }
+                    // ✅ RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid
+                    _logger.LogInformation("RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid cho appointment {AppointmentId}", appointmentId);
                 }
                 
                 await _unitOfWork.SaveChangesAsync();
@@ -2322,6 +2282,202 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi validate rebooking request cho ChildVaccineProfile {ProfileId}", childVaccineProfileId);
+                throw;
+            }
+        }
+
+        #endregion
+
+        #region Helper Methods for ChildVaccineProfile
+
+        /// <summary>
+        /// Tạo ChildVaccineProfile với status "Pending" cho tất cả vaccines được book trong appointment
+        /// </summary>
+        private async Task CreateChildVaccineProfilesForAppointmentAsync(VaccinationAppointment appointment, AppointmentBookingRequestDTO request, DateOnly expectedDate)
+        {
+            try
+            {
+                _logger.LogInformation("Tạo ChildVaccineProfile cho appointment {AppointmentId}", appointment.AppointmentId);
+                
+                var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                var diseaseIds = new List<int>();
+                
+                // Lấy diseaseIds từ request
+                if (request.DiseaseId.HasValue)
+                {
+                    diseaseIds.Add(request.DiseaseId.Value);
+                }
+                if (request.DiseaseIds != null && request.DiseaseIds.Any())
+                {
+                    diseaseIds.AddRange(request.DiseaseIds);
+                }
+
+                // LUỒNG 1: Order đã có - Lấy vaccines từ OrderDetails
+                if (request.OrderId.HasValue && request.OrderId.Value > 0)
+                {
+                    _logger.LogInformation("Tạo ChildVaccineProfile từ Order {OrderId}", request.OrderId.Value);
+                    
+                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                    var orderDetails = await orderDetailRepo.FindAsync(od => od.OrderId == request.OrderId.Value, "FacilityVaccine,FacilityVaccine.Vaccine");
+                    
+                    foreach (var orderDetail in orderDetails)
+                    {
+                        if (orderDetail.FacilityVaccine?.Vaccine != null && diseaseIds.Contains(orderDetail.DiseaseId))
+                        {
+                            await CreateChildVaccineProfileAsync(
+                                childVaccineProfileRepo,
+                                appointment.ChildId,
+                                orderDetail.FacilityVaccine.VaccineId,
+                                orderDetail.DiseaseId,
+                                appointment.AppointmentId,
+                                expectedDate,
+                                orderDetail.FacilityVaccine.Vaccine.NumberOfDoses);
+                        }
+                    }
+                }
+                // LUỒNG 2: Package mới - Lấy vaccines từ PackageVaccines
+                else if (request.PackageId.HasValue && request.PackageId.Value > 0)
+                {
+                    _logger.LogInformation("Tạo ChildVaccineProfile từ Package {PackageId}", request.PackageId.Value);
+                    
+                    var packageVaccineRepo = _unitOfWork.GetRepository<PackageVaccine>();
+                    var packageVaccines = await packageVaccineRepo.FindAsync(pv => pv.PackageId == request.PackageId.Value, "FacilityVaccine,FacilityVaccine.Vaccine");
+                    
+                    foreach (var packageVaccine in packageVaccines)
+                    {
+                        if (packageVaccine.FacilityVaccine?.Vaccine != null && diseaseIds.Contains(packageVaccine.DiseaseId))
+                        {
+                            await CreateChildVaccineProfileAsync(
+                                childVaccineProfileRepo,
+                                appointment.ChildId,
+                                packageVaccine.FacilityVaccine.VaccineId,
+                                packageVaccine.DiseaseId,
+                                appointment.AppointmentId,
+                                expectedDate,
+                                packageVaccine.FacilityVaccine.Vaccine.NumberOfDoses);
+                        }
+                    }
+                }
+                // LUỒNG 3: Vaccine lẻ - Lấy từ FacilityVaccineIds
+                else if (request.FacilityVaccineIds != null && request.FacilityVaccineIds.Any())
+                {
+                    _logger.LogInformation("Tạo ChildVaccineProfile từ {Count} vaccine lẻ", request.FacilityVaccineIds.Count);
+                    
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    
+                    foreach (var facilityVaccineId in request.FacilityVaccineIds)
+                    {
+                        var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                            fv => fv.FacilityVaccineId == facilityVaccineId,
+                            includeProperties: "Vaccine,Vaccine.VaccineDiseases");
+                        
+                        if (facilityVaccine?.Vaccine != null)
+                        {
+                            // Tìm disease phù hợp với vaccine này
+                            var matchingDiseaseId = facilityVaccine.Vaccine.VaccineDiseases
+                                .Where(vd => diseaseIds.Contains(vd.DiseaseId))
+                                .Select(vd => vd.DiseaseId)
+                                .FirstOrDefault();
+                            
+                            if (matchingDiseaseId > 0)
+                            {
+                                await CreateChildVaccineProfileAsync(
+                                    childVaccineProfileRepo,
+                                    appointment.ChildId,
+                                    facilityVaccine.VaccineId,
+                                    matchingDiseaseId,
+                                    appointment.AppointmentId,
+                                    expectedDate,
+                                    facilityVaccine.Vaccine.NumberOfDoses);
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogInformation("Hoàn thành tạo ChildVaccineProfile cho appointment {AppointmentId}", appointment.AppointmentId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tạo ChildVaccineProfile cho appointment {AppointmentId}", appointment.AppointmentId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Tạo một ChildVaccineProfile với logic kiểm tra trùng lặp
+        /// </summary>
+        private async Task CreateChildVaccineProfileAsync(
+            IGenericRepository<ChildVaccineProfile> childVaccineProfileRepo,
+            int childId,
+            int vaccineId,
+            int diseaseId,
+            int appointmentId,
+            DateOnly expectedDate,
+            int totalDoses)
+        {
+            try
+            {
+                // Kiểm tra xem đã có profile cho vaccine này chưa (theo ChildId, VaccineId, DiseaseId)
+                var existingProfile = await childVaccineProfileRepo.GetAsync(
+                    p => p.ChildId == childId && 
+                         p.VaccineId == vaccineId && 
+                         p.DiseaseId == diseaseId &&
+                         p.AppointmentId == appointmentId);
+
+                if (existingProfile != null)
+                {
+                    _logger.LogInformation("ChildVaccineProfile đã tồn tại cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, bỏ qua", 
+                        childId, vaccineId, diseaseId);
+                    return;
+                }
+
+                // Tìm dose number tiếp theo cho vaccine này
+                var existingProfiles = await childVaccineProfileRepo.FindAsync(
+                    p => p.ChildId == childId && 
+                         p.VaccineId == vaccineId && 
+                         p.DiseaseId == diseaseId);
+
+                var nextDoseNum = 1;
+                if (existingProfiles.Any())
+                {
+                    var maxDose = existingProfiles.Max(p => p.DoseNum);
+                    nextDoseNum = maxDose + 1;
+                }
+
+                // Kiểm tra không vượt quá số liều tối đa
+                if (nextDoseNum > totalDoses)
+                {
+                    _logger.LogWarning("Dose {DoseNum} vượt quá số liều tối đa {TotalDoses} cho vaccine {VaccineId}", 
+                        nextDoseNum, totalDoses, vaccineId);
+                    return;
+                }
+
+                // Tạo ChildVaccineProfile mới
+                var newProfile = new ChildVaccineProfile
+                {
+                    ChildId = childId,
+                    VaccineId = vaccineId,
+                    DiseaseId = diseaseId,
+                    AppointmentId = appointmentId,
+                    DoseNum = nextDoseNum,
+                    ExpectedDate = expectedDate,
+                    Status = "Pending", // ✅ Đặt status thành "Pending" khi book appointment
+                    IsRequired = true,
+                    Priority = "High",
+                    Note = $"Được tạo từ appointment booking",
+                    CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+
+                await childVaccineProfileRepo.AddAsync(newProfile);
+                
+                _logger.LogInformation("Đã tạo ChildVaccineProfile mới cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum} với status 'Pending'", 
+                    childId, vaccineId, diseaseId, nextDoseNum);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tạo ChildVaccineProfile cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}", 
+                    childId, vaccineId, diseaseId);
                 throw;
             }
         }
