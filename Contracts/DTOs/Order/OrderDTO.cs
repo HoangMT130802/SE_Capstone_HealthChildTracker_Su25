@@ -12,6 +12,7 @@ namespace Contracts.DTOs.Order
         public int OrderId { get; set; }
         public int MemberId { get; set; }
         public int PackageId { get; set; }
+        public string PackageName { get; set; }
         public DateTime OrderDate { get; set; }
         public decimal TotalAmount { get; set; }
         public string Status { get; set; }
