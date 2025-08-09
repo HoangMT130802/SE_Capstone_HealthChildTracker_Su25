@@ -771,44 +771,8 @@ namespace Services.Implementations
                         throw new InvalidOperationException($"Order {request.OrderId.Value} chưa được thanh toán");
                     }*/
                     
-                    // ✅ Trừ RemainingQuantity ngay khi đặt lịch thành công
-                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                    var orderDetails = await orderDetailRepo.FindAsync(od => od.OrderId == request.OrderId.Value);
-                    
-                    // Lấy diseaseIds từ request để xác định vaccine nào được chọn
-                    var selectedDiseaseIds = new List<int>();
-                    if (request.DiseaseId.HasValue)
-                    {
-                        selectedDiseaseIds.Add(request.DiseaseId.Value);
-                    }
-                    if (request.DiseaseIds != null && request.DiseaseIds.Any())
-                    {
-                        selectedDiseaseIds.AddRange(request.DiseaseIds);
-                    }
-                    
-                    // Validate có đủ vaccine và trừ RemainingQuantity cho disease được chọn
-                    foreach (var orderDetail in orderDetails)
-                    {
-                        if (selectedDiseaseIds.Contains(orderDetail.DiseaseId))
-                        {
-                            if (orderDetail.RemainingQuantity <= 0)
-                            {
-                                throw new InvalidOperationException($"OrderDetail {orderDetail.OrderDetailId} cho DiseaseId {orderDetail.DiseaseId} đã hết vaccine (RemainingQuantity = 0)");
-                            }
-                            
-                            // ✅ Trừ RemainingQuantity ngay khi đặt lịch thành công
-                            var oldQuantity = orderDetail.RemainingQuantity;
-                            orderDetail.RemainingQuantity -= 1;
-                            orderDetail.UpdatedAt = DateTime.UtcNow;
-                            orderDetailRepo.Update(orderDetail);
-                            
-                            _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} cho DiseaseId {DiseaseId}. Từ {OldQuantity} xuống {NewQuantity}", 
-                                orderDetail.OrderDetailId, orderDetail.DiseaseId, oldQuantity, orderDetail.RemainingQuantity);
-                        }
-                    }
-                    
                     appointment.OrderId = request.OrderId.Value;
-                    _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công - đã trừ RemainingQuantity ngay khi đặt lịch", request.OrderId.Value);
+                    _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công", request.OrderId.Value);
                 }
                 // LUỒNG 2: Tạo Order mới nếu chọn gói vaccine
                 else if (request.PackageId.HasValue && request.PackageId.Value > 0)

@@ -486,8 +486,38 @@ namespace Services.Implementations
                 var appointmentRepository = _unitOfWork.GetRepository<VaccinationAppointment>();
                 appointmentRepository.Update(appointment);
 
-                // ✅ RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi complete vaccination
-                _logger.LogInformation("RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi complete vaccination cho appointment {AppointmentId}", appointment.AppointmentId);
+                // ✅ Trừ RemainingQuantity khi bác sĩ complete vaccination
+                if (appointment.OrderId.HasValue)
+                {
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    var order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, "OrderDetails");
+                    
+                    if (order != null)
+                    {
+                        var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                        var relevantOrderDetail = order.OrderDetails
+                            .FirstOrDefault(od => od.FacilityVaccineId == completeDto.FacilityVaccineId);
+                        
+                        if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
+                        {
+                            var oldQuantity = relevantOrderDetail.RemainingQuantity;
+                            relevantOrderDetail.RemainingQuantity -= 1;
+                            relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
+                            orderDetailRepo.Update(relevantOrderDetail);
+                            
+                            _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} khi complete vaccination. Từ {OldQuantity} xuống {NewQuantity}", 
+                                relevantOrderDetail.OrderDetailId, oldQuantity, relevantOrderDetail.RemainingQuantity);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Không tìm thấy OrderDetail phù hợp hoặc đã hết vaccine cho appointment {AppointmentId}", appointment.AppointmentId);
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Appointment {AppointmentId} không có OrderId, bỏ qua việc trừ RemainingQuantity", appointment.AppointmentId);
+                }
 
                 await _unitOfWork.SaveChangesAsync();
 

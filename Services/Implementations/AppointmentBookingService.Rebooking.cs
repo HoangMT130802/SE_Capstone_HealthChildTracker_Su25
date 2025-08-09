@@ -186,17 +186,9 @@ namespace Services.Implementations
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
-                            // ✅ Trừ vaccine ngay khi rebook thành công
-                            var oldQuantity = relevantOrderDetail.RemainingQuantity;
-                            relevantOrderDetail.RemainingQuantity -= 1;
-                            relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
-                            remainingVaccines = relevantOrderDetail.RemainingQuantity; // Số lượng sau khi trừ
-                            
-                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                            orderDetailRepo.Update(relevantOrderDetail);
-                            
-                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, đã trừ 1 vaccine từ {OldQuantity} xuống {NewQuantity}", 
-                                request.OrderId.Value, oldQuantity, remainingVaccines);
+                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, RemainingQuantity: {RemainingQuantity}", 
+                                request.OrderId.Value, remainingVaccines);
                         }
                         else
                         {
@@ -222,17 +214,9 @@ namespace Services.Implementations
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
-                            // ✅ Trừ vaccine ngay khi rebook thành công
-                            var oldQuantity = relevantOrderDetail.RemainingQuantity;
-                            relevantOrderDetail.RemainingQuantity -= 1;
-                            relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
-                            remainingVaccines = relevantOrderDetail.RemainingQuantity; // Số lượng sau khi trừ
-                            
-                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                            orderDetailRepo.Update(relevantOrderDetail);
-                            
-                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, đã trừ 1 vaccine từ {OldQuantity} xuống {NewQuantity}", 
-                                validation.ApplicableOrder.OrderId, oldQuantity, remainingVaccines);
+                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, RemainingQuantity: {RemainingQuantity}", 
+                                validation.ApplicableOrder.OrderId, remainingVaccines);
                         }
                     }
                 }
