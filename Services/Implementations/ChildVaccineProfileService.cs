@@ -276,7 +276,9 @@ namespace Services.Implementations
 
                 // 1. Validate appointment có status "Paid" và lấy ChildId từ appointment
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                var appointment = await appointmentRepo.GetAsync(a => a.AppointmentId == completeDto.AppointmentId, "Child");
+                var appointment = await appointmentRepo.GetAsync(
+                    a => a.AppointmentId == completeDto.AppointmentId,
+                    "Child,Order,Order.OrderDetails");
                 if (appointment == null || appointment.Status != "Paid")
                 {
                     throw new InvalidOperationException($"Appointment {completeDto.AppointmentId} not found or not in Paid status");
@@ -343,47 +345,65 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Invalid dose number {completeDto.DoseNumber}. Vaccine {vaccine.Name} has {vaccine.NumberOfDoses} doses (range: 1-{vaccine.NumberOfDoses})");
                 }
 
-                // ✅ Validate và lấy DiseaseId với proper error handling
-                _logger.LogInformation("Checking VaccineDiseases for Vaccine {VaccineId} (Name: {VaccineName})", vaccine.VaccineId, vaccine.Name);
-                
-                if (vaccine.VaccineDiseases == null || !vaccine.VaccineDiseases.Any())
+                // ✅ Xác định đúng DiseaseId theo bệnh người dùng đã chọn khi booking
+                var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                int? determinedDiseaseId = null;
+
+                // 1) Ưu tiên lấy từ ChildVaccineProfile được tạo khi booking (đúng appointment, vaccine, dose)
+                var bookedProfile = await profileRepository.GetAsync(p =>
+                    p.AppointmentId == completeDto.AppointmentId &&
+                    p.VaccineId == facilityVaccine.VaccineId &&
+                    p.DoseNum == completeDto.DoseNumber);
+                if (bookedProfile != null)
                 {
-                    _logger.LogError("Vaccine {VaccineId} (Name: {VaccineName}) has no VaccineDiseases. VaccineDiseases is null: {IsNull}, Count: {Count}", 
-                        vaccine.VaccineId, vaccine.Name, vaccine.VaccineDiseases == null, vaccine.VaccineDiseases?.Count ?? 0);
-                    throw new InvalidOperationException($"Vaccine {vaccine.Name} (ID: {vaccine.VaccineId}) has no associated diseases. Cannot complete vaccination.");
+                    determinedDiseaseId = bookedProfile.DiseaseId;
+                    _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked ChildVaccineProfile {ProfileId}", determinedDiseaseId, bookedProfile.VaccineProfileId);
                 }
 
-                var firstVaccineDisease = vaccine.VaccineDiseases.FirstOrDefault();
-                if (firstVaccineDisease?.DiseaseId == null)
+                // 2) Nếu không có profile ở bước (1), thử lấy từ OrderDetails theo FacilityVaccineId
+                if (determinedDiseaseId == null && appointment.OrderId.HasValue)
                 {
-                    _logger.LogError("Vaccine {VaccineId} has invalid disease association. FirstVaccineDisease is null: {IsNull}", 
-                        vaccine.VaccineId, firstVaccineDisease == null);
-                    throw new InvalidOperationException($"Vaccine {vaccine.Name} has invalid disease association");
+                    var order = appointment.Order;
+                    var detailFromOrder = order?.OrderDetails?.FirstOrDefault(od => od.FacilityVaccineId == completeDto.FacilityVaccineId);
+                    if (detailFromOrder != null)
+                    {
+                        determinedDiseaseId = detailFromOrder.DiseaseId;
+                        _logger.LogInformation("Determined DiseaseId {DiseaseId} from OrderDetail {OrderDetailId}", determinedDiseaseId, detailFromOrder.OrderDetailId);
+                    }
                 }
 
-                var diseaseId = firstVaccineDisease.DiseaseId;
-                _logger.LogInformation("Using DiseaseId {DiseaseId} from Vaccine {VaccineId}", diseaseId, vaccine.VaccineId);
+                // 3) Cuối cùng, fallback theo VaccineDiseases (không khuyến nghị)
+                if (determinedDiseaseId == null)
+                {
+                    _logger.LogWarning("Fallback to VaccineDiseases to determine DiseaseId for Vaccine {VaccineId}", vaccine.VaccineId);
+                    _logger.LogInformation("Checking VaccineDiseases for Vaccine {VaccineId} (Name: {VaccineName})", vaccine.VaccineId, vaccine.Name);
+                    if (vaccine.VaccineDiseases == null || !vaccine.VaccineDiseases.Any())
+                    {
+                        _logger.LogError("Vaccine {VaccineId} (Name: {VaccineName}) has no VaccineDiseases. VaccineDiseases is null: {IsNull}, Count: {Count}", 
+                            vaccine.VaccineId, vaccine.Name, vaccine.VaccineDiseases == null, vaccine.VaccineDiseases?.Count ?? 0);
+                        throw new InvalidOperationException($"Vaccine {vaccine.Name} (ID: {vaccine.VaccineId}) has no associated diseases. Cannot complete vaccination.");
+                    }
+                    determinedDiseaseId = vaccine.VaccineDiseases.First().DiseaseId;
+                }
 
                 // ✅ Double-check Disease exists in database
                 var diseaseRepository = _unitOfWork.GetRepository<Disease>();
-                var disease = await diseaseRepository.GetAsync(d => d.DiseaseId == diseaseId);
+                var disease = await diseaseRepository.GetAsync(d => d.DiseaseId == determinedDiseaseId.Value);
                 if (disease == null)
                 {
-                    _logger.LogError("Disease with ID {DiseaseId} not found in database", diseaseId);
-                    throw new InvalidOperationException($"Disease with ID {diseaseId} not found in database. Data integrity issue.");
+                    _logger.LogError("Disease with ID {DiseaseId} not found in database", determinedDiseaseId);
+                    throw new InvalidOperationException($"Disease with ID {determinedDiseaseId} not found in database. Data integrity issue.");
                 }
-                
-                _logger.LogInformation("Successfully validated Disease {DiseaseId} (Name: {DiseaseName})", disease.DiseaseId, disease.Name);
+                _logger.LogInformation("Using DiseaseId {DiseaseId} (Name: {DiseaseName}) for completion", disease.DiseaseId, disease.Name);
 
                 // ✅ ActualDate tự động = ngày hôm nay
                 var actualDate = DateOnly.FromDateTime(DateTime.Today);
-
-                var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
 
                 // 3. Tìm hoặc tạo bản ghi cho mũi hiện tại
                 var currentProfile = await profileRepository.GetAsync(p =>
                     p.ChildId == childId &&
                     p.VaccineId == facilityVaccine.VaccineId &&
+                    p.DiseaseId == determinedDiseaseId.Value &&
                     p.DoseNum == completeDto.DoseNumber);
 
                 if (currentProfile == null)
@@ -393,7 +413,7 @@ namespace Services.Implementations
                     {
                         ChildId = childId,
                         VaccineId = facilityVaccine.VaccineId,
-                        DiseaseId = diseaseId,
+                        DiseaseId = determinedDiseaseId.Value,
                         AppointmentId = completeDto.AppointmentId,
                         DoseNum = completeDto.DoseNumber,
                         ExpectedDate = actualDate, // Set same as actual initially
@@ -437,6 +457,7 @@ namespace Services.Implementations
                     var existingNextProfile = await profileRepository.GetAsync(p =>
                         p.ChildId == childId &&
                         p.VaccineId == facilityVaccine.VaccineId &&
+                        p.DiseaseId == determinedDiseaseId.Value &&
                         p.DoseNum == nextDoseNumber);
 
                     if (existingNextProfile == null)
@@ -448,7 +469,7 @@ namespace Services.Implementations
                         {
                             ChildId = childId,
                             VaccineId = facilityVaccine.VaccineId,
-                            DiseaseId = diseaseId,
+                            DiseaseId = determinedDiseaseId.Value,
                             AppointmentId = null, // ✅ NextDose chưa có appointment
                             DoseNum = nextDoseNumber,
                             ExpectedDate = nextExpectedDate.Value,
@@ -496,7 +517,7 @@ namespace Services.Implementations
                     {
                         var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
                         var relevantOrderDetail = order.OrderDetails
-                            .FirstOrDefault(od => od.FacilityVaccineId == completeDto.FacilityVaccineId);
+                            .FirstOrDefault(od => od.FacilityVaccineId == completeDto.FacilityVaccineId && od.DiseaseId == determinedDiseaseId.Value);
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
                         {
@@ -525,6 +546,7 @@ namespace Services.Implementations
                 var completedProfiles = await profileRepository.FindAsync(p =>
                     p.ChildId == childId &&
                     p.VaccineId == facilityVaccine.VaccineId &&
+                    p.DiseaseId == determinedDiseaseId.Value &&
                     p.Status == "Completed");
 
                 var completedDoses = completedProfiles.Count();

@@ -499,7 +499,9 @@ namespace Services.Implementations
                 if (hasOrderId)
                 {
                     var orderRepo = _unitOfWork.GetRepository<Order>();
-                    var order = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value, "Member");
+                    var order = await orderRepo.GetAsync(
+                        o => o.OrderId == request.OrderId.Value, 
+                        "Member,OrderDetails,OrderDetails.FacilityVaccine");
                     
                     if (order == null)
                     {
@@ -538,6 +540,57 @@ namespace Services.Implementations
                                 Field = "OrderId",
                                 Severity = ValidationSeverity.Error
                             });
+                        }
+
+                        // ✅ Xác thực OrderDetails phù hợp với các bệnh đã chọn và facility đang đặt
+                        if (validation.CanBook)
+                        {
+                            var facilityId = request.FacilityId;
+                            var invalidDiseases = new List<int>();
+                            var noRemainingDiseases = new List<int>();
+
+                            foreach (var dId in diseaseIds.Distinct())
+                            {
+                                var matchedDetail = order.OrderDetails?.FirstOrDefault(od =>
+                                    od.DiseaseId == dId &&
+                                    od.FacilityVaccine != null &&
+                                    od.FacilityVaccine.FacilityId == facilityId);
+
+                                if (matchedDetail == null)
+                                {
+                                    invalidDiseases.Add(dId);
+                                    continue;
+                                }
+
+                                if (matchedDetail.RemainingQuantity <= 0)
+                                {
+                                    noRemainingDiseases.Add(dId);
+                                }
+                            }
+
+                            if (invalidDiseases.Any())
+                            {
+                                validation.CanBook = false;
+                                validation.Errors.Add(new ValidationErrorDTO
+                                {
+                                    Code = "ORDER_DETAILS_NOT_MATCH_FACILITY_OR_DISEASE",
+                                    Message = $"Order không có vaccine phù hợp cho các DiseaseId: {string.Join(", ", invalidDiseases)} tại cơ sở này",
+                                    Field = "OrderId",
+                                    Severity = ValidationSeverity.Error
+                                });
+                            }
+
+                            if (noRemainingDiseases.Any())
+                            {
+                                validation.CanBook = false;
+                                validation.Errors.Add(new ValidationErrorDTO
+                                {
+                                    Code = "ORDER_DETAILS_NO_REMAINING",
+                                    Message = $"Order đã hết số mũi còn lại cho các DiseaseId: {string.Join(", ", noRemainingDiseases)}",
+                                    Field = "OrderId",
+                                    Severity = ValidationSeverity.Error
+                                });
+                            }
                         }
                     }
                 }
