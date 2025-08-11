@@ -11,6 +11,7 @@ namespace Contracts.DTOs.GrowthStandard
         public int Id { get; set; }
         public string Gender { get; set; }
         public int AgeInMonths { get; set; }
+        public int AgeInDays => AgeInMonths * 30; // Tính toán AgeInDays từ AgeInMonths (1 tháng = 30 ngày)
         public string Measurement { get; set; }
         public decimal Sd3neg { get; set; }
         public decimal Sd2neg { get; set; }
