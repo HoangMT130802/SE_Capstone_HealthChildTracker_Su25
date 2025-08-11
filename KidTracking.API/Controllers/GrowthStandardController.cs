@@ -26,7 +26,7 @@ namespace KidTracking.API.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IEnumerable<GrowthStandardDTO>>> GetHeightStandards(
             [FromQuery] string gender,
-            [FromQuery] int? ageInMonths)
+            [FromQuery] int? ageInDays)
         {
             try
             {
@@ -35,7 +35,7 @@ namespace KidTracking.API.Controllers
                     return BadRequest("Giới tính không được để trống");
                 }
 
-                var standards = await _growthStandardService.GetHeightStandardsAsync(gender, ageInMonths);
+                var standards = await _growthStandardService.GetHeightStandardsAsync(gender, ageInDays);
                 return Ok(standards);
             }
             catch (Exception ex)
@@ -52,7 +52,7 @@ namespace KidTracking.API.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IEnumerable<GrowthStandardDTO>>> GetWeightStandards(
             [FromQuery] string gender,
-            [FromQuery] int? ageInMonths)
+            [FromQuery] int? ageInDays)
         {
             try
             {
@@ -61,7 +61,7 @@ namespace KidTracking.API.Controllers
                     return BadRequest("Giới tính không được để trống");
                 }
 
-                var standards = await _growthStandardService.GetWeightStandardsAsync(gender, ageInMonths);
+                var standards = await _growthStandardService.GetWeightStandardsAsync(gender, ageInDays);
                 return Ok(standards);
             }
             catch (Exception ex)
@@ -77,7 +77,7 @@ namespace KidTracking.API.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IEnumerable<GrowthStandardDTO>>> GetBMIStandards(
             [FromQuery] string gender,
-            [FromQuery] int? ageInMonths)
+            [FromQuery] int? ageInDays)
         {
             try
             {
@@ -86,7 +86,7 @@ namespace KidTracking.API.Controllers
                     return BadRequest("Giới tính không được để trống");
                 }
 
-                var standards = await _growthStandardService.GetBMIStandardsAsync(gender, ageInMonths);
+                var standards = await _growthStandardService.GetBMIStandardsAsync(gender, ageInDays);
                 return Ok(standards);
             }
             catch (Exception ex)
@@ -103,7 +103,7 @@ namespace KidTracking.API.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IEnumerable<GrowthStandardDTO>>> GetHeadCircumferenceStandards(
             [FromQuery] string gender,
-            [FromQuery] int? ageInMonths)
+            [FromQuery] int? ageInDays)
         {
             try
             {
@@ -112,7 +112,7 @@ namespace KidTracking.API.Controllers
                     return BadRequest("Giới tính không được để trống");
                 }
 
-                var standards = await _growthStandardService.GetHeadCircumferenceStandardsAsync(gender, ageInMonths);
+                var standards = await _growthStandardService.GetHeadCircumferenceStandardsAsync(gender, ageInDays);
                 return Ok(standards);
             }
             catch (Exception ex)

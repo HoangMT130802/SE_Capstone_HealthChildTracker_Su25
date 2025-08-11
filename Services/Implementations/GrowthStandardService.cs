@@ -25,10 +25,13 @@ namespace Services.Implementations
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public async Task<IEnumerable<GrowthStandardDTO>> GetHeightStandardsAsync(string gender, int? ageInMonths = null)
+        public async Task<IEnumerable<GrowthStandardDTO>> GetHeightStandardsAsync(string gender, int? ageInDays = null)
         {
             try
             {
+                // Chuyển đổi ageInDays sang ageInMonths (1 tháng = 30 ngày)
+                int? ageInMonths = ageInDays.HasValue ? (int)Math.Round(ageInDays.Value / 30.0) : null;
+                
                 var repository = _unitOfWork.GetRepository<GrowthStandard>();
                 var standards = await repository.FindAsync(
                     x => x.Measurement == "Height" &&
@@ -48,10 +51,13 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<IEnumerable<GrowthStandardDTO>> GetWeightStandardsAsync(string gender, int? ageInMonths = null)
+        public async Task<IEnumerable<GrowthStandardDTO>> GetWeightStandardsAsync(string gender, int? ageInDays = null)
         {
             try
             {
+                // Chuyển đổi ageInDays sang ageInMonths (1 tháng = 30 ngày)
+                int? ageInMonths = ageInDays.HasValue ? (int)Math.Round(ageInDays.Value / 30.0) : null;
+                
                 var repository = _unitOfWork.GetRepository<GrowthStandard>();
                 var standards = await repository.FindAsync(
                     x => x.Measurement == "Weight" &&
@@ -70,10 +76,13 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<IEnumerable<GrowthStandardDTO>> GetBMIStandardsAsync(string gender, int? ageInMonths = null)
+        public async Task<IEnumerable<GrowthStandardDTO>> GetBMIStandardsAsync(string gender, int? ageInDays = null)
         {
             try
             {
+                // Chuyển đổi ageInDays sang ageInMonths (1 tháng = 30 ngày)
+                int? ageInMonths = ageInDays.HasValue ? (int)Math.Round(ageInDays.Value / 30.0) : null;
+                
                 var repository = _unitOfWork.GetRepository<GrowthStandard>();
                 var standards = await repository.FindAsync(
                     x => x.Measurement == "BMI" &&
@@ -92,10 +101,13 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<IEnumerable<GrowthStandardDTO>> GetHeadCircumferenceStandardsAsync(string gender, int? ageInMonths = null)
+        public async Task<IEnumerable<GrowthStandardDTO>> GetHeadCircumferenceStandardsAsync(string gender, int? ageInDays = null)
         {
             try
             {
+                // Chuyển đổi ageInDays sang ageInMonths (1 tháng = 30 ngày)
+                int? ageInMonths = ageInDays.HasValue ? (int)Math.Round(ageInDays.Value / 30.0) : null;
+                
                 var repository = _unitOfWork.GetRepository<GrowthStandard>();
                 var standards = await repository.FindAsync(
                     x => x.Measurement == "HeadCircumference" &&

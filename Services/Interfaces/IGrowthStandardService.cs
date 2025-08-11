@@ -9,9 +9,9 @@ namespace Services.Interfaces
 {
     public interface IGrowthStandardService
     {
-        Task<IEnumerable<GrowthStandardDTO>> GetHeightStandardsAsync(string gender, int? ageInMonths = null);
-        Task<IEnumerable<GrowthStandardDTO>> GetWeightStandardsAsync(string gender, int? ageInMonths = null);
-        Task<IEnumerable<GrowthStandardDTO>> GetBMIStandardsAsync(string gender, int? ageInMonths = null);
-        Task<IEnumerable<GrowthStandardDTO>> GetHeadCircumferenceStandardsAsync(string gender, int? ageInMonths = null);
+        Task<IEnumerable<GrowthStandardDTO>> GetHeightStandardsAsync(string gender, int? ageInDays = null);
+        Task<IEnumerable<GrowthStandardDTO>> GetWeightStandardsAsync(string gender, int? ageInDays = null);
+        Task<IEnumerable<GrowthStandardDTO>> GetBMIStandardsAsync(string gender, int? ageInDays = null);
+        Task<IEnumerable<GrowthStandardDTO>> GetHeadCircumferenceStandardsAsync(string gender, int? ageInDays = null);
     }
 }
