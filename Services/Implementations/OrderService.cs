@@ -150,19 +150,20 @@ namespace Services.Implementations
         }
 
 
-        public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, int? pageIndex = null, int? pageSize = null)
+        public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, DateTime? orderDate = null, int? pageIndex = null, int? pageSize = null)
         {
             try
             {
                 var orderRepository = _unitOfWork.GetRepository<Order>();
                 Expression<Func<Order, bool>>? filter = null;
 
-                // Xây dựng filter kết hợp status và facilityId
-                if (!string.IsNullOrEmpty(status) || facilityId.HasValue)
+                // Xây dựng filter kết hợp status, facilityId và orderDate
+                if (!string.IsNullOrEmpty(status) || facilityId.HasValue || orderDate.HasValue)
                 {
                     filter = o =>
                         (string.IsNullOrEmpty(status) || o.Status == status) &&
-                        (!facilityId.HasValue || o.OrderDetails.Any(od => od.FacilityVaccine.FacilityId == facilityId));
+                        (!facilityId.HasValue || o.OrderDetails.Any(od => od.FacilityVaccine.FacilityId == facilityId)) &&
+                        (!orderDate.HasValue || o.OrderDate.Month == orderDate.Value.Month && o.OrderDate.Year == orderDate.Value.Year); // Lọc theo tháng
                 }
 
                 var result = await orderRepository.GetAllAsync(
@@ -181,7 +182,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error retrieving orders with status {status} and facilityId {facilityId}");
+                _logger.LogError(ex, $"Error retrieving orders with status {status}, facilityId {facilityId}, orderDate {orderDate}");
                 throw;
             }
         }
