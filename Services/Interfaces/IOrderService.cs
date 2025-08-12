@@ -11,7 +11,7 @@ namespace Services.Interfaces
     public interface IOrderService
     {
         Task<OrderDTO> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto);
-        Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, int? pageIndex = null, int? pageSize = null);
+        Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, DateTime? orderDate = null, int? pageIndex = null, int? pageSize = null);
         Task<OrderDTO> GetOrderByIdAsync(int orderId);
         Task<OrderDTO> UpdateOrderAsync(int orderId, UpdateOrderDTO orderDto);
         Task DeleteOrderAsync(int orderId);
