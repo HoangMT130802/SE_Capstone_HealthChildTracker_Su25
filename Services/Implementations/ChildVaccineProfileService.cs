@@ -348,19 +348,35 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Invalid dose number {completeDto.DoseNumber}. Vaccine {vaccine.Name} has {vaccine.NumberOfDoses} doses (range: 1-{vaccine.NumberOfDoses})");
                 }
 
-                // ✅ Xác định đúng DiseaseId theo bệnh người dùng đã chọn khi booking
+                // ✅ Xác định đúng DiseaseId theo hồ sơ đã đặt và chuẩn hóa hồ sơ hiện tại cần cập nhật
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
                 int? determinedDiseaseId = null;
-
-                // 1) Ưu tiên lấy từ ChildVaccineProfile được tạo khi booking (đúng appointment, vaccine, dose)
-                var bookedProfile = await profileRepository.GetAsync(p =>
+                ChildVaccineProfile? profileByAppointment = await profileRepository.GetAsync(p =>
                     p.AppointmentId == completeDto.AppointmentId &&
-                    p.VaccineId == facilityVaccine.VaccineId &&
-                    p.DoseNum == completeDto.DoseNumber);
-                if (bookedProfile != null)
+                    p.VaccineId == facilityVaccine.VaccineId);
+
+                if (profileByAppointment != null)
                 {
-                    determinedDiseaseId = bookedProfile.DiseaseId;
-                    _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked ChildVaccineProfile {ProfileId}", determinedDiseaseId, bookedProfile.VaccineProfileId);
+                    // Bắt buộc DoseNumber phải khớp với hồ sơ đã đặt để tránh tạo trùng hồ sơ
+                    if (profileByAppointment.DoseNum != completeDto.DoseNumber)
+                    {
+                        throw new InvalidOperationException($"DoseNumber ({completeDto.DoseNumber}) không khớp với hồ sơ đã đặt (Dose {profileByAppointment.DoseNum}) cho appointment {completeDto.AppointmentId}");
+                    }
+                    determinedDiseaseId = profileByAppointment.DiseaseId;
+                    _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked profile by appointment {ProfileId}", determinedDiseaseId, profileByAppointment.VaccineProfileId);
+                }
+                else
+                {
+                    // Fallback: lấy theo đúng appointment + vaccine + dose (hành vi cũ)
+                    var bookedProfile = await profileRepository.GetAsync(p =>
+                        p.AppointmentId == completeDto.AppointmentId &&
+                        p.VaccineId == facilityVaccine.VaccineId &&
+                        p.DoseNum == completeDto.DoseNumber);
+                    if (bookedProfile != null)
+                    {
+                        determinedDiseaseId = bookedProfile.DiseaseId;
+                        _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked ChildVaccineProfile {ProfileId}", determinedDiseaseId, bookedProfile.VaccineProfileId);
+                    }
                 }
 
                 // 2) Nếu không có profile ở bước (1), thử lấy từ OrderDetails theo FacilityVaccineId
@@ -403,11 +419,20 @@ namespace Services.Implementations
                 var actualDate = DateOnly.FromDateTime(DateTime.Today);
 
                 // 3. Tìm hoặc tạo bản ghi cho mũi hiện tại
-                var currentProfile = await profileRepository.GetAsync(p =>
-                    p.ChildId == childId &&
-                    p.VaccineId == facilityVaccine.VaccineId &&
-                    p.DiseaseId == determinedDiseaseId.Value &&
-                    p.DoseNum == completeDto.DoseNumber);
+                ChildVaccineProfile? currentProfile = null;
+                // Ưu tiên cập nhật hồ sơ đã được tạo khi booking (theo AppointmentId)
+                if (profileByAppointment != null)
+                {
+                    currentProfile = profileByAppointment;
+                }
+                else
+                {
+                    currentProfile = await profileRepository.GetAsync(p =>
+                        p.ChildId == childId &&
+                        p.VaccineId == facilityVaccine.VaccineId &&
+                        p.DiseaseId == determinedDiseaseId.Value &&
+                        p.DoseNum == completeDto.DoseNumber);
+                }
 
                 if (currentProfile == null)
                 {
