@@ -5,6 +5,10 @@ using Services.Interfaces;
 using System.Security.Claims;
 using Repositories.Interfaces;
 using Repositories.Entities;
+using System.Security.Cryptography;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Caching.Memory;
+using System.Linq;
 
 namespace KidTracking.API.Controllers
 {
@@ -15,15 +19,21 @@ namespace KidTracking.API.Controllers
         private readonly IPaymentService _paymentService;
         private readonly ILogger<PaymentController> _logger;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IConfiguration _configuration;
+        private readonly IMemoryCache _memoryCache;
 
         public PaymentController(
             IPaymentService paymentService,
             ILogger<PaymentController> logger,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IConfiguration configuration,
+            IMemoryCache memoryCache)
         {
             _paymentService = paymentService ?? throw new ArgumentNullException(nameof(paymentService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         }
 
         /// <summary>
@@ -182,6 +192,33 @@ namespace KidTracking.API.Controllers
                 _logger.LogInformation("🔔 Nhận webhook từ PayOS - OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
                     webhookData.OrderId, webhookData.Status, webhookData.Amount);
 
+                // ✅ Verify signature (HMAC-SHA256) nếu có header
+                // Lưu ý: Với binding hiện tại không lấy được raw body. Tối thiểu kiểm tra shared secret header.
+                var sharedSecret = _configuration["Environment:PAYOS_CHECKSUM_KEY"];
+                var headerSig = Request.Headers["X-PayOS-Signature"].FirstOrDefault() ?? Request.Headers["x-payos-signature"].FirstOrDefault();
+                if (!string.IsNullOrEmpty(sharedSecret) && !string.IsNullOrEmpty(headerSig))
+                {
+                    // Vì không có raw body tại đây, dùng fallback: hash OrderId|Status|Amount
+                    var payload = $"{webhookData.OrderId}|{webhookData.Status}|{webhookData.Amount}";
+                    using var hmac = new HMACSHA256(System.Text.Encoding.UTF8.GetBytes(sharedSecret));
+                    var hash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(payload));
+                    var calcSig = Convert.ToHexString(hash).ToLowerInvariant();
+                    if (!TimeConstantEquals(calcSig, headerSig.ToLowerInvariant()))
+                    {
+                        _logger.LogWarning("❌ Webhook signature mismatch for OrderId: {OrderId}", webhookData.OrderId);
+                        return Unauthorized(new { success = false, message = "Invalid signature" });
+                    }
+                }
+
+                // ✅ Chống replay theo OrderId+Status trong 10 phút
+                var replayKey = $"webhook:{webhookData.OrderId}:{webhookData.Status}";
+                if (_memoryCache.TryGetValue(replayKey, out _))
+                {
+                    _logger.LogWarning("⚠️ Replay detected, ignoring webhook - {Key}", replayKey);
+                    return Ok(new { success = true, message = "Ignored duplicate" });
+                }
+                _memoryCache.Set(replayKey, true, TimeSpan.FromMinutes(10));
+
                 // Validate webhook data
                 if (string.IsNullOrEmpty(webhookData.Status))
                 {
@@ -225,6 +262,17 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError(ex, "❌ Lỗi khi xử lý webhook cho OrderId: {OrderId}", webhookData?.OrderId);
                 return StatusCode(500, new { success = false, message = "Internal server error" });
+            }
+            // Local helper for constant-time comparison
+            static bool TimeConstantEquals(string a, string b)
+            {
+                if (a == null || b == null || a.Length != b.Length) return false;
+                var result = 0;
+                for (int i = 0; i < a.Length; i++)
+                {
+                    result |= a[i] ^ b[i];
+                }
+                return result == 0;
             }
         }
 
@@ -271,6 +319,8 @@ namespace KidTracking.API.Controllers
         public required string Status { get; set; }
         public decimal Amount { get; set; }
     }
+
+    
 
 
 } 

@@ -269,8 +269,11 @@ namespace Services.Implementations
         /// </summary>
         public async Task<VaccinationCompletionResponseDTO> CompleteVaccinationAsync(CompleteVaccinationDTO completeDto, int currentUserId)
         {
+            // Bọc toàn bộ quá trình trong transaction để đảm bảo tính toàn vẹn dữ liệu
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
             try
             {
+                transaction = await _unitOfWork.BeginTransactionAsync();
                 _logger.LogInformation("Doctor completing vaccination for Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
                     completeDto.AppointmentId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
 
@@ -450,7 +453,7 @@ namespace Services.Implementations
                 ChildVaccineProfile? nextProfile = null;
                 DateOnly? nextExpectedDate = null;
 
-                // 6. Nếu còn mũi tiếp theo, tạo bản ghi cho mũi đó
+                // 6. Nếu còn mũi tiếp theo, tạo bản ghi cho mũi đó (tính/validate ExpectedDate theo VaccineTemplate)
                 if (nextDoseNumber <= totalDoses)
                 {
                     // Check xem đã có bản ghi cho mũi tiếp theo chưa
@@ -462,8 +465,37 @@ namespace Services.Implementations
 
                     if (existingNextProfile == null)
                     {
-                        // ✅ Sử dụng ExpectedDateForNextDose từ DTO thay vì tính toán tự động
-                        nextExpectedDate = completeDto.ExpectedDateForNextDose;
+                        // Tính/validate ExpectedDateForNextDose dựa trên VaccineTemplate (nếu có) và so khớp với client
+                        var templateRepo = _unitOfWork.GetRepository<VaccineTemplate>();
+                        var templates = await templateRepo.FindAsync(vt => vt.DiseaseId == determinedDiseaseId.Value && vt.DoseNum == nextDoseNumber);
+
+                        if (templates.Any())
+                        {
+                            // Tính ngày dự kiến tiếp theo dựa trên VaccineTemplate so với ngày sinh
+                            nextExpectedDate = ComputeNextExpectedDateFromTemplates(DateOnly.FromDateTime(child.BirthDate), templates);
+
+                            // Nếu client cung cấp ExpectedDateForNextDose, validate theo khoảng từ template
+                            if (completeDto.ExpectedDateForNextDose != default)
+                            {
+                                var (minDate, maxDate) = ComputeExpectedDateBounds(DateOnly.FromDateTime(child.BirthDate), templates);
+                                if (minDate.HasValue && completeDto.ExpectedDateForNextDose < minDate.Value)
+                                {
+                                    throw new InvalidOperationException($"ExpectedDateForNextDose ({completeDto.ExpectedDateForNextDose:dd/MM/yyyy}) sớm hơn phạm vi cho phép theo template ({minDate:dd/MM/yyyy})");
+                                }
+                                if (maxDate.HasValue && completeDto.ExpectedDateForNextDose > maxDate.Value)
+                                {
+                                    throw new InvalidOperationException($"ExpectedDateForNextDose ({completeDto.ExpectedDateForNextDose:dd/MM/yyyy}) muộn hơn phạm vi cho phép theo template ({maxDate:dd/MM/yyyy})");
+                                }
+                                nextExpectedDate = completeDto.ExpectedDateForNextDose;
+                            }
+                        }
+                        else
+                        {
+                            // Không có template: ưu tiên client, fallback +30 ngày
+                            nextExpectedDate = completeDto.ExpectedDateForNextDose != default
+                                ? completeDto.ExpectedDateForNextDose
+                                : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+                        }
 
                         nextProfile = new ChildVaccineProfile
                         {
@@ -519,25 +551,44 @@ namespace Services.Implementations
                         var relevantOrderDetail = order.OrderDetails
                             .FirstOrDefault(od => od.FacilityVaccineId == completeDto.FacilityVaccineId && od.DiseaseId == determinedDiseaseId.Value);
                         
-                        if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
+                        if (relevantOrderDetail == null)
                         {
-                            var oldQuantity = relevantOrderDetail.RemainingQuantity;
-                            relevantOrderDetail.RemainingQuantity -= 1;
-                            relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
-                            orderDetailRepo.Update(relevantOrderDetail);
-                            
-                            _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} khi complete vaccination. Từ {OldQuantity} xuống {NewQuantity}", 
-                                relevantOrderDetail.OrderDetailId, oldQuantity, relevantOrderDetail.RemainingQuantity);
+                            _logger.LogWarning("Không tìm thấy OrderDetail phù hợp cho appointment {AppointmentId}. Không thể hoàn tất vì gói không khớp bệnh/vaccine.", appointment.AppointmentId);
+                            throw new InvalidOperationException("Gói không có dòng phù hợp hoặc đã hết số lượng cho bệnh/vaccine này.");
                         }
-                        else
+
+                        if (relevantOrderDetail.RemainingQuantity <= 0)
                         {
-                            _logger.LogWarning("Không tìm thấy OrderDetail phù hợp hoặc đã hết vaccine cho appointment {AppointmentId}", appointment.AppointmentId);
+                            _logger.LogWarning("OrderDetail {OrderDetailId} đã hết RemainingQuantity. Không thể hoàn tất.", relevantOrderDetail.OrderDetailId);
+                            throw new InvalidOperationException("Gói đã hết số lượng cho bệnh/vaccine này.");
                         }
+
+                        var oldQuantity = relevantOrderDetail.RemainingQuantity;
+                        relevantOrderDetail.RemainingQuantity -= 1;
+                        relevantOrderDetail.UpdatedAt = DateTime.UtcNow;
+                        orderDetailRepo.Update(relevantOrderDetail);
+                        
+                        _logger.LogInformation("Đã trừ 1 vaccine từ OrderDetail {OrderDetailId} khi complete vaccination. Từ {OldQuantity} xuống {NewQuantity}", 
+                            relevantOrderDetail.OrderDetailId, oldQuantity, relevantOrderDetail.RemainingQuantity);
                     }
                 }
                 else
                 {
-                    _logger.LogInformation("Appointment {AppointmentId} không có OrderId, bỏ qua việc trừ RemainingQuantity", appointment.AppointmentId);
+                    _logger.LogInformation("Appointment {AppointmentId} không có OrderId, tiến hành trừ kho FacilityVaccine.AvailableQuantity", appointment.AppointmentId);
+                    // Giảm tồn kho thực tế của cơ sở khi không dùng gói
+                    var facilityVaccineRepoForReduce = _unitOfWork.GetRepository<FacilityVaccine>();
+                    var facilityVaccineForReduce = await facilityVaccineRepoForReduce.GetAsync(fv => fv.FacilityVaccineId == completeDto.FacilityVaccineId);
+                    if (facilityVaccineForReduce == null)
+                    {
+                        throw new KeyNotFoundException($"FacilityVaccine {completeDto.FacilityVaccineId} not found for stock deduction");
+                    }
+                    if (facilityVaccineForReduce.AvailableQuantity <= 0)
+                    {
+                        throw new InvalidOperationException("Kho cơ sở không đủ số lượng để hoàn tất tiêm");
+                    }
+                    facilityVaccineForReduce.AvailableQuantity -= 1;
+                    facilityVaccineForReduce.UpdatedAt = DateTime.UtcNow;
+                    facilityVaccineRepoForReduce.Update(facilityVaccineForReduce);
                 }
 
                 await _unitOfWork.SaveChangesAsync();
@@ -570,7 +621,7 @@ namespace Services.Implementations
                 _logger.LogInformation("Successfully completed vaccination for Child {ChildId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
                     childId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
 
-                return new VaccinationCompletionResponseDTO
+                var result = new VaccinationCompletionResponseDTO
                 {
                     CompletedDose = _mapper.Map<ChildVaccineProfileDTO>(completedProfile),
                     NextDose = nextProfileWithData != null ? _mapper.Map<ChildVaccineProfileDTO>(nextProfileWithData) : null,
@@ -583,13 +634,74 @@ namespace Services.Implementations
                         $"Hoàn thành toàn bộ liệu trình vaccine {vaccine.Name}" :
                         $"Hoàn thành mũi {completeDto.DoseNumber}/{totalDoses}. Mũi tiếp theo dự kiến: {nextExpectedDate?.ToString("dd/MM/yyyy")}"
                 };
+                // Commit transaction cuối cùng
+                await transaction.CommitAsync();
+                return result;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error completing vaccination for Appointment {AppointmentId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
                     completeDto.AppointmentId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
+                try { if (transaction != null) await transaction.RollbackAsync(); } catch { /* ignore */ }
                 throw;
             }
+        }
+
+        private static (DateOnly? minDate, DateOnly? maxDate) ComputeExpectedDateBounds(DateOnly birthDate, IEnumerable<VaccineTemplate> templates)
+        {
+            DateOnly? min = null;
+            DateOnly? max = null;
+            foreach (var t in templates)
+            {
+                if (!string.IsNullOrWhiteSpace(t.PeriodFrom))
+                {
+                    var fromOffset = ParsePeriodToDays(t.PeriodFrom);
+                    var candidate = DateOnly.FromDateTime(birthDate.ToDateTime(TimeOnly.MinValue).AddDays(fromOffset));
+                    min = !min.HasValue || candidate < min.Value ? candidate : min;
+                }
+                if (!string.IsNullOrWhiteSpace(t.PeriodTo))
+                {
+                    var toOffset = ParsePeriodToDays(t.PeriodTo);
+                    var candidate = DateOnly.FromDateTime(birthDate.ToDateTime(TimeOnly.MinValue).AddDays(toOffset));
+                    max = !max.HasValue || candidate > max.Value ? candidate : max;
+                }
+            }
+            return (min, max);
+        }
+
+        private static DateOnly ComputeNextExpectedDateFromTemplates(DateOnly birthDate, IEnumerable<VaccineTemplate> templates)
+        {
+            var (minDate, maxDate) = ComputeExpectedDateBounds(birthDate, templates);
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            if (minDate.HasValue && today < minDate.Value)
+            {
+                return minDate.Value;
+            }
+            if (maxDate.HasValue && today > maxDate.Value)
+            {
+                // Nếu đã trễ khung khuyến nghị, đặt ở biên trên để nhắc sớm
+                return maxDate.Value;
+            }
+            // Nếu trong khoảng, dùng hôm nay
+            return today;
+        }
+
+        private static int ParsePeriodToDays(string period)
+        {
+            // Hỗ trợ các hậu tố: d (ngày), w (tuần = 7 ngày), m (tháng ~ 30 ngày), y (năm ~ 365 ngày)
+            period = period.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(period)) return 0;
+            int factor = 1;
+            if (period.EndsWith("d")) factor = 1;
+            else if (period.EndsWith("w")) factor = 7;
+            else if (period.EndsWith("m")) factor = 30;
+            else if (period.EndsWith("y")) factor = 365;
+            var numberPart = new string(period.TakeWhile(char.IsDigit).ToArray());
+            if (int.TryParse(numberPart, out var n))
+            {
+                return n * factor;
+            }
+            return 0;
         }
         public async Task<IEnumerable<VaccineRecordDTO>> GetVaccineRecordAsync(int childId, int? diseaseId = null)
         {

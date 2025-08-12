@@ -172,6 +172,7 @@ namespace KidTracking.API
             });
 
             builder.Services.AddHttpContextAccessor();
+            builder.Services.AddMemoryCache();
             // singleton của payos
             builder.Services.AddSingleton(new PayOS(
                 clientId: builder.Configuration["Environment:PAYOS_CLIENT_ID"],

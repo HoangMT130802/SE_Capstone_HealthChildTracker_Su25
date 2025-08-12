@@ -108,6 +108,84 @@ namespace Services.Implementations
                     throw new InvalidOperationException(validation.ReasonCannotRebook);
                 }
 
+                // ===============
+                // Re-validate bổ sung: chặn double-book & overbook order tại thời điểm rebook
+                // ===============
+                try
+                {
+                    var profileRepoCheck = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                    var profileForCheck = await profileRepoCheck.GetAsync(p => p.VaccineProfileId == request.ChildVaccineProfileId,
+                        includeProperties: "Child,Vaccine,Disease");
+                    if (profileForCheck == null)
+                    {
+                        throw new ArgumentException("Không tìm thấy vaccine profile để rebook");
+                    }
+
+                    // Chặn nếu đã có appointment active khác cho cùng child+disease+dose (ngoài profile này)
+                    var profileDiseaseId = profileForCheck.DiseaseId;
+                    var appointmentRepoCheck = _unitOfWork.GetRepository<VaccinationAppointment>();
+                    var childIdCheck = profileForCheck.ChildId;
+                    var existingProfiles = await profileRepoCheck.FindAsync(p => p.ChildId == childIdCheck && p.DiseaseId == profileDiseaseId && p.AppointmentId != null);
+                    if (existingProfiles.Any(p => p.VaccineProfileId != request.ChildVaccineProfileId))
+                    {
+                        // Load appointments active
+                        var relatedAppointmentIds = existingProfiles.Where(p => p.AppointmentId.HasValue).Select(p => p.AppointmentId!.Value).Distinct().ToList();
+                        var relatedAppointments = relatedAppointmentIds.Any()
+                            ? await appointmentRepoCheck.FindAsync(a => relatedAppointmentIds.Contains(a.AppointmentId), includeProperties: "Schedule,Schedule.Slot")
+                            : new List<VaccinationAppointment>();
+
+                        var now = DateTime.Now;
+                        var hasActive = relatedAppointments.Any(a =>
+                        {
+                            if (!(a.Status == "Pending" || a.Status == "Approval")) return false;
+                            var start = a.Schedule?.Slot?.StartTime;
+                            if (start.HasValue) return a.Schedule!.Date.ToDateTime(start.Value) > now;
+                            return a.Schedule != null && a.Schedule.Date >= DateOnly.FromDateTime(DateTime.Today);
+                        });
+
+                        if (hasActive)
+                        {
+                            throw new InvalidOperationException("Đã có lịch đang hoạt động cho bệnh này. Không thể đặt lại.");
+                        }
+                    }
+
+                    // Nếu dùng Order: kiểm tra overbook theo reserved logic tương tự validate booking
+                    if (request.OrderId.HasValue)
+                    {
+                        var orderRepo = _unitOfWork.GetRepository<Order>();
+                        var order = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value, includeProperties: "OrderDetails");
+                        if (order != null)
+                        {
+                            var totalRemaining = order.OrderDetails?.Where(od => od.DiseaseId == profileDiseaseId).Sum(od => od.RemainingQuantity) ?? 0;
+
+                            var pendingProfilesForChild = await profileRepoCheck.FindAsync(p => p.ChildId == childIdCheck && p.DiseaseId == profileDiseaseId && (p.Status == "Pending" || p.Status == "Scheduled") && p.AppointmentId != null);
+                            var relatedIds = pendingProfilesForChild.Where(p => p.AppointmentId.HasValue).Select(p => p.AppointmentId!.Value).Distinct().ToList();
+                            var related = relatedIds.Any()
+                                ? await appointmentRepoCheck.FindAsync(a => relatedIds.Contains(a.AppointmentId) && a.OrderId == request.OrderId.Value, includeProperties: "Schedule,Schedule.Slot")
+                                : new List<VaccinationAppointment>();
+
+                            var now2 = DateTime.Now;
+                            var reservedCount = related.Count(a =>
+                            {
+                                if (!(a.Status == "Pending" || a.Status == "Approval")) return false;
+                                var start = a.Schedule?.Slot?.StartTime;
+                                if (start.HasValue) return a.Schedule!.Date.ToDateTime(start.Value) > now2;
+                                return a.Schedule != null && a.Schedule.Date >= DateOnly.FromDateTime(DateTime.Today);
+                            });
+
+                            if (reservedCount >= totalRemaining)
+                            {
+                                throw new InvalidOperationException("Gói đã hết số lượng khả dụng cho bệnh này do đã được giữ bởi các lịch đang chờ.");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi re-validate chặn double-book/overbook trước khi rebook");
+                    throw;
+                }
+
                 // 2. Lấy thông tin ChildVaccineProfile và Schedule
                 var profileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
                 var profile = await profileRepo.GetAsync(
