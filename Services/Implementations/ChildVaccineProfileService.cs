@@ -490,37 +490,10 @@ namespace Services.Implementations
 
                     if (existingNextProfile == null)
                     {
-                        // Tính/validate ExpectedDateForNextDose dựa trên VaccineTemplate (nếu có) và so khớp với client
-                        var templateRepo = _unitOfWork.GetRepository<VaccineTemplate>();
-                        var templates = await templateRepo.FindAsync(vt => vt.DiseaseId == determinedDiseaseId.Value && vt.DoseNum == nextDoseNumber);
-
-                        if (templates.Any())
-                        {
-                            // Tính ngày dự kiến tiếp theo dựa trên VaccineTemplate so với ngày sinh
-                            nextExpectedDate = ComputeNextExpectedDateFromTemplates(DateOnly.FromDateTime(child.BirthDate), templates);
-
-                            // Nếu client cung cấp ExpectedDateForNextDose, validate theo khoảng từ template
-                            if (completeDto.ExpectedDateForNextDose != default)
-                            {
-                                var (minDate, maxDate) = ComputeExpectedDateBounds(DateOnly.FromDateTime(child.BirthDate), templates);
-                                if (minDate.HasValue && completeDto.ExpectedDateForNextDose < minDate.Value)
-                                {
-                                    throw new InvalidOperationException($"ExpectedDateForNextDose ({completeDto.ExpectedDateForNextDose:dd/MM/yyyy}) sớm hơn phạm vi cho phép theo template ({minDate:dd/MM/yyyy})");
-                                }
-                                if (maxDate.HasValue && completeDto.ExpectedDateForNextDose > maxDate.Value)
-                                {
-                                    throw new InvalidOperationException($"ExpectedDateForNextDose ({completeDto.ExpectedDateForNextDose:dd/MM/yyyy}) muộn hơn phạm vi cho phép theo template ({maxDate:dd/MM/yyyy})");
-                                }
-                                nextExpectedDate = completeDto.ExpectedDateForNextDose;
-                            }
-                        }
-                        else
-                        {
-                            // Không có template: ưu tiên client, fallback +30 ngày
-                            nextExpectedDate = completeDto.ExpectedDateForNextDose != default
-                                ? completeDto.ExpectedDateForNextDose
-                                : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
-                        }
+                        // Tạm thời bỏ kiểm tra theo VaccineTemplate: ưu tiên ngày client gửi, nếu không có thì +30 ngày
+                        nextExpectedDate = completeDto.ExpectedDateForNextDose != default
+                            ? completeDto.ExpectedDateForNextDose
+                            : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
 
                         nextProfile = new ChildVaccineProfile
                         {
