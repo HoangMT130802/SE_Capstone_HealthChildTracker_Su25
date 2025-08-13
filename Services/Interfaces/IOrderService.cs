@@ -1,4 +1,5 @@
 ﻿using Contracts.DTOs.Dashboard;
+using Contracts.DTOs.Models;
 using Contracts.DTOs.Order;
 using Repositories.Models.QueryModels;
 using System;
@@ -11,7 +12,7 @@ namespace Services.Interfaces
 {
     public interface IOrderService
     {
-        Task<OrderDTO> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto);
+        Task<ResponseDataModel<OrderDTO>> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto);
         Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, DateTime? orderDate = null, int? pageIndex = null, int? pageSize = null);
         Task<OrderDTO> GetOrderByIdAsync(int orderId);
         Task<OrderDTO> UpdateOrderAsync(int orderId, UpdateOrderDTO orderDto);
