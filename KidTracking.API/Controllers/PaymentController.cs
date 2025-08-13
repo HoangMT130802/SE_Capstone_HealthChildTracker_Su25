@@ -113,12 +113,11 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Kiểm tra trạng thái thanh toán từ database (chỉ đọc, không gọi PayOS)
-        /// Webhook sẽ tự động cập nhật status khi payment thành công
+        /// Kiểm tra trạng thái thanh toán (poll PayOS) và đồng bộ DB
         /// </summary>
-        [HttpGet("status/{orderId}")]
+        [HttpGet("check-status/{orderId}")]
         [Authorize]
-        public async Task<ActionResult> GetPaymentStatus(string orderId)
+        public async Task<ActionResult> CheckPaymentStatus(string orderId)
         {
             try
             {
@@ -127,36 +126,26 @@ namespace KidTracking.API.Controllers
                     return BadRequest(new { success = false, message = "OrderId không được để trống" });
                 }
 
-                _logger.LogInformation("Kiểm tra trạng thái payment từ DB cho OrderId: {OrderId}", orderId);
-                
-                // Chỉ lấy status từ database, webhook sẽ tự động cập nhật
-                var transactionRepo = _unitOfWork.GetRepository<Transaction>();
-                var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderId);
-
-                if (transaction == null)
-                {
-                    return NotFound(new { success = false, message = $"Không tìm thấy giao dịch với mã {orderId}" });
-                }
-
-                var result = new PaymentStatusDTO
-                {
-                    Success = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase),
-                    Status = transaction.Status,
-                    Message = GetPaymentStatusMessage(transaction.Status),
-                    Amount = transaction.Amount,
-                    PaidAt = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : null
-                };
+                _logger.LogInformation("Kiểm tra trạng thái payment (PayOS) cho OrderId: {OrderId}", orderId);
+                var result = await _paymentService.CheckPaymentStatusAsync(orderId);
 
                 return Ok(new
                 {
                     success = true,
-                    data = result
+                    data = new
+                    {
+                        status = result.Status,
+                        message = result.Message,
+                        success = result.Success,
+                        amount = result.Amount,
+                        paidAt = result.PaidAt
+                    }
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái payment cho OrderId: {OrderId}", orderId);
-                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
+                return BadRequest(new { success = false, message = ex.Message });
             }
         }
 
@@ -172,141 +161,7 @@ namespace KidTracking.API.Controllers
             };
         }
 
-        /// <summary>
-        /// 🔔 Webhook endpoint cho PayOS - tự động xử lý khi thanh toán hoàn thành
-        /// Đây là endpoint chính để PayOS gọi khi có thay đổi status payment
-        /// </summary>
-        [HttpPost("webhook")]
-        [AllowAnonymous] // PayOS cần gọi được mà không cần auth
-        public async Task<ActionResult> PaymentWebhook([FromBody] PaymentWebhookDTO webhookData)
-        {
-            try
-            {
-                if (webhookData == null || string.IsNullOrEmpty(webhookData.OrderId))
-                {
-                    _logger.LogWarning("❌ Webhook data không hợp lệ: {WebhookData}", 
-                        webhookData != null ? $"OrderId: {webhookData.OrderId}" : "null");
-                    return BadRequest(new { success = false, message = "Webhook data không hợp lệ" });
-                }
-
-                _logger.LogInformation("🔔 Nhận webhook từ PayOS - OrderId: {OrderId}, Status: {Status}, Amount: {Amount}", 
-                    webhookData.OrderId, webhookData.Status, webhookData.Amount);
-
-                // ✅ Verify signature (HMAC-SHA256) nếu có header
-                // Lưu ý: Với binding hiện tại không lấy được raw body. Tối thiểu kiểm tra shared secret header.
-                var sharedSecret = _configuration["Environment:PAYOS_CHECKSUM_KEY"];
-                var headerSig = Request.Headers["X-PayOS-Signature"].FirstOrDefault() ?? Request.Headers["x-payos-signature"].FirstOrDefault();
-                if (!string.IsNullOrEmpty(sharedSecret) && !string.IsNullOrEmpty(headerSig))
-                {
-                    // Vì không có raw body tại đây, dùng fallback: hash OrderId|Status|Amount
-                    var payload = $"{webhookData.OrderId}|{webhookData.Status}|{webhookData.Amount}";
-                    using var hmac = new HMACSHA256(System.Text.Encoding.UTF8.GetBytes(sharedSecret));
-                    var hash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(payload));
-                    var calcSig = Convert.ToHexString(hash).ToLowerInvariant();
-                    if (!TimeConstantEquals(calcSig, headerSig.ToLowerInvariant()))
-                    {
-                        _logger.LogWarning("❌ Webhook signature mismatch for OrderId: {OrderId}", webhookData.OrderId);
-                        return Unauthorized(new { success = false, message = "Invalid signature" });
-                    }
-                }
-
-                // ✅ Chống replay theo OrderId+Status trong 10 phút
-                var replayKey = $"webhook:{webhookData.OrderId}:{webhookData.Status}";
-                if (_memoryCache.TryGetValue(replayKey, out _))
-                {
-                    _logger.LogWarning("⚠️ Replay detected, ignoring webhook - {Key}", replayKey);
-                    return Ok(new { success = true, message = "Ignored duplicate" });
-                }
-                _memoryCache.Set(replayKey, true, TimeSpan.FromMinutes(10));
-
-                // Validate webhook data
-                if (string.IsNullOrEmpty(webhookData.Status))
-                {
-                    _logger.LogWarning("❌ Webhook thiếu Status cho OrderId: {OrderId}", webhookData.OrderId);
-                    return BadRequest(new { success = false, message = "Status không được để trống" });
-                }
-
-                // Xử lý webhook
-                var result = await _paymentService.ProcessPaymentWebhookAsync(
-                    webhookData.OrderId, 
-                    webhookData.Status, 
-                    webhookData.Amount);
-
-                if (result)
-                {
-                    _logger.LogInformation("✅ Xử lý webhook thành công cho OrderId: {OrderId}, Status: {Status}", 
-                        webhookData.OrderId, webhookData.Status);
-                    return Ok(new { 
-                        success = true, 
-                        message = "Webhook processed successfully",
-                        orderId = webhookData.OrderId,
-                        status = webhookData.Status
-                    });
-                }
-                else
-                {
-                    _logger.LogWarning("❌ Xử lý webhook thất bại cho OrderId: {OrderId}", webhookData.OrderId);
-                    return BadRequest(new { 
-                        success = false, 
-                        message = "Failed to process webhook",
-                        orderId = webhookData.OrderId
-                    });
-                }
-            }
-            catch (KeyNotFoundException ex)
-            {
-                _logger.LogWarning(ex, "❌ Không tìm thấy transaction cho webhook OrderId: {OrderId}", webhookData?.OrderId);
-                return NotFound(new { success = false, message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Lỗi khi xử lý webhook cho OrderId: {OrderId}", webhookData?.OrderId);
-                return StatusCode(500, new { success = false, message = "Internal server error" });
-            }
-            // Local helper for constant-time comparison
-            static bool TimeConstantEquals(string a, string b)
-            {
-                if (a == null || b == null || a.Length != b.Length) return false;
-                var result = 0;
-                for (int i = 0; i < a.Length; i++)
-                {
-                    result |= a[i] ^ b[i];
-                }
-                return result == 0;
-            }
-        }
-
-        /// <summary>
-        /// Success page endpoint - chỉ để hiển thị thông báo thành công
-        /// </summary>
-        [HttpGet("success")]
-        public ActionResult PaymentSuccess([FromQuery] string orderId, [FromQuery] string status)
-        {
-            _logger.LogInformation("User được redirect về success page - OrderId: {OrderId}, Status: {Status}", orderId, status);
-            
-            // Chỉ trả về success page, không xử lý logic thanh toán vì đã có webhook
-            return Ok(new { 
-                success = true, 
-                message = "Thanh toán thành công! Membership của bạn sẽ được kích hoạt trong giây lát.",
-                orderId = orderId,
-                status = status
-            });
-        }
-
-        /// <summary>
-        /// Cancel page endpoint - hiển thị khi user hủy thanh toán
-        /// </summary>
-        [HttpGet("cancel")]
-        public ActionResult PaymentCancel([FromQuery] string orderId)
-        {
-            _logger.LogInformation("User hủy thanh toán - OrderId: {OrderId}", orderId);
-            
-            return Ok(new { 
-                success = false, 
-                message = "Thanh toán đã bị hủy.",
-                orderId = orderId
-            });
-        }
+        // Loại bỏ webhook/success/cancel theo yêu cầu đơn giản hóa
 
     }
 

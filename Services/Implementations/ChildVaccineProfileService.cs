@@ -348,19 +348,35 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Invalid dose number {completeDto.DoseNumber}. Vaccine {vaccine.Name} has {vaccine.NumberOfDoses} doses (range: 1-{vaccine.NumberOfDoses})");
                 }
 
-                // ✅ Xác định đúng DiseaseId theo bệnh người dùng đã chọn khi booking
+                // ✅ Xác định đúng DiseaseId theo hồ sơ đã đặt và chuẩn hóa hồ sơ hiện tại cần cập nhật
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
                 int? determinedDiseaseId = null;
-
-                // 1) Ưu tiên lấy từ ChildVaccineProfile được tạo khi booking (đúng appointment, vaccine, dose)
-                var bookedProfile = await profileRepository.GetAsync(p =>
+                ChildVaccineProfile? profileByAppointment = await profileRepository.GetAsync(p =>
                     p.AppointmentId == completeDto.AppointmentId &&
-                    p.VaccineId == facilityVaccine.VaccineId &&
-                    p.DoseNum == completeDto.DoseNumber);
-                if (bookedProfile != null)
+                    p.VaccineId == facilityVaccine.VaccineId);
+
+                if (profileByAppointment != null)
                 {
-                    determinedDiseaseId = bookedProfile.DiseaseId;
-                    _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked ChildVaccineProfile {ProfileId}", determinedDiseaseId, bookedProfile.VaccineProfileId);
+                    // Bắt buộc DoseNumber phải khớp với hồ sơ đã đặt để tránh tạo trùng hồ sơ
+                    if (profileByAppointment.DoseNum != completeDto.DoseNumber)
+                    {
+                        throw new InvalidOperationException($"DoseNumber ({completeDto.DoseNumber}) không khớp với hồ sơ đã đặt (Dose {profileByAppointment.DoseNum}) cho appointment {completeDto.AppointmentId}");
+                    }
+                    determinedDiseaseId = profileByAppointment.DiseaseId;
+                    _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked profile by appointment {ProfileId}", determinedDiseaseId, profileByAppointment.VaccineProfileId);
+                }
+                else
+                {
+                    // Fallback: lấy theo đúng appointment + vaccine + dose (hành vi cũ)
+                    var bookedProfile = await profileRepository.GetAsync(p =>
+                        p.AppointmentId == completeDto.AppointmentId &&
+                        p.VaccineId == facilityVaccine.VaccineId &&
+                        p.DoseNum == completeDto.DoseNumber);
+                    if (bookedProfile != null)
+                    {
+                        determinedDiseaseId = bookedProfile.DiseaseId;
+                        _logger.LogInformation("Determined DiseaseId {DiseaseId} from booked ChildVaccineProfile {ProfileId}", determinedDiseaseId, bookedProfile.VaccineProfileId);
+                    }
                 }
 
                 // 2) Nếu không có profile ở bước (1), thử lấy từ OrderDetails theo FacilityVaccineId
@@ -403,11 +419,20 @@ namespace Services.Implementations
                 var actualDate = DateOnly.FromDateTime(DateTime.Today);
 
                 // 3. Tìm hoặc tạo bản ghi cho mũi hiện tại
-                var currentProfile = await profileRepository.GetAsync(p =>
-                    p.ChildId == childId &&
-                    p.VaccineId == facilityVaccine.VaccineId &&
-                    p.DiseaseId == determinedDiseaseId.Value &&
-                    p.DoseNum == completeDto.DoseNumber);
+                ChildVaccineProfile? currentProfile = null;
+                // Ưu tiên cập nhật hồ sơ đã được tạo khi booking (theo AppointmentId)
+                if (profileByAppointment != null)
+                {
+                    currentProfile = profileByAppointment;
+                }
+                else
+                {
+                    currentProfile = await profileRepository.GetAsync(p =>
+                        p.ChildId == childId &&
+                        p.VaccineId == facilityVaccine.VaccineId &&
+                        p.DiseaseId == determinedDiseaseId.Value &&
+                        p.DoseNum == completeDto.DoseNumber);
+                }
 
                 if (currentProfile == null)
                 {
@@ -465,37 +490,10 @@ namespace Services.Implementations
 
                     if (existingNextProfile == null)
                     {
-                        // Tính/validate ExpectedDateForNextDose dựa trên VaccineTemplate (nếu có) và so khớp với client
-                        var templateRepo = _unitOfWork.GetRepository<VaccineTemplate>();
-                        var templates = await templateRepo.FindAsync(vt => vt.DiseaseId == determinedDiseaseId.Value && vt.DoseNum == nextDoseNumber);
-
-                        if (templates.Any())
-                        {
-                            // Tính ngày dự kiến tiếp theo dựa trên VaccineTemplate so với ngày sinh
-                            nextExpectedDate = ComputeNextExpectedDateFromTemplates(DateOnly.FromDateTime(child.BirthDate), templates);
-
-                            // Nếu client cung cấp ExpectedDateForNextDose, validate theo khoảng từ template
-                            if (completeDto.ExpectedDateForNextDose != default)
-                            {
-                                var (minDate, maxDate) = ComputeExpectedDateBounds(DateOnly.FromDateTime(child.BirthDate), templates);
-                                if (minDate.HasValue && completeDto.ExpectedDateForNextDose < minDate.Value)
-                                {
-                                    throw new InvalidOperationException($"ExpectedDateForNextDose ({completeDto.ExpectedDateForNextDose:dd/MM/yyyy}) sớm hơn phạm vi cho phép theo template ({minDate:dd/MM/yyyy})");
-                                }
-                                if (maxDate.HasValue && completeDto.ExpectedDateForNextDose > maxDate.Value)
-                                {
-                                    throw new InvalidOperationException($"ExpectedDateForNextDose ({completeDto.ExpectedDateForNextDose:dd/MM/yyyy}) muộn hơn phạm vi cho phép theo template ({maxDate:dd/MM/yyyy})");
-                                }
-                                nextExpectedDate = completeDto.ExpectedDateForNextDose;
-                            }
-                        }
-                        else
-                        {
-                            // Không có template: ưu tiên client, fallback +30 ngày
-                            nextExpectedDate = completeDto.ExpectedDateForNextDose != default
-                                ? completeDto.ExpectedDateForNextDose
-                                : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
-                        }
+                        // Tạm thời bỏ kiểm tra theo VaccineTemplate: ưu tiên ngày client gửi, nếu không có thì +30 ngày
+                        nextExpectedDate = completeDto.ExpectedDateForNextDose != default
+                            ? completeDto.ExpectedDateForNextDose
+                            : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
 
                         nextProfile = new ChildVaccineProfile
                         {
