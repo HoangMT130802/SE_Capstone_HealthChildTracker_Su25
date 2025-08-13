@@ -19,7 +19,7 @@ namespace Contracts.DTOs.ChildVaccineProfile
         /// </summary>
         
         /// <summary>
-        /// Ghi chú cho mũi vaccine hiện tại (tương ứng với field Note trong entity)
+        /// Ghi chú của buổi tiêm (sẽ lưu vào Appointment.Note, không lưu vào ChildVaccineProfile.Note)
         /// </summary>
         public string? Note { get; set; }
         

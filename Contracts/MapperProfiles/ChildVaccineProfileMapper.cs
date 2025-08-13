@@ -31,7 +31,11 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
                 .ForMember(dest => dest.IsRequired, opt => opt.MapFrom(src => src.IsRequired))
                 .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
-                .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note))
+                // Hiển thị note theo nguồn phù hợp: ưu tiên note của Appointment
+                .ForMember(dest => dest.Note, opt => opt.MapFrom(src =>
+                    src.Appointment != null && !string.IsNullOrWhiteSpace(src.Appointment.Note)
+                        ? src.Appointment.Note
+                        : src.Note))
                 // ✅ Convert long timestamp to DateTime with strong validation
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => ConvertUnixTimestampToDateTime(src.CreatedAt)))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => ConvertUnixTimestampToDateTime(src.UpdatedAt)));

@@ -449,7 +449,7 @@ namespace Services.Implementations
                         Status = "Completed",
                         IsRequired = true, // Default value
                         Priority = "High", // Default value  
-                        Note = completeDto.Note ?? "",
+                        Note = string.Empty,
                         CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                         UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     };
@@ -461,7 +461,6 @@ namespace Services.Implementations
                     // 4. Cập nhật bản ghi hiện tại thành "Completed"
                     currentProfile.ActualDate = actualDate;
                     currentProfile.Status = "Completed";
-                    currentProfile.Note = completeDto.Note ?? currentProfile.Note;
                     currentProfile.AppointmentId = completeDto.AppointmentId;
                     currentProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -531,8 +530,9 @@ namespace Services.Implementations
                         facilityVaccine.VaccineId, childId);
                 }
 
-                // 7. Cập nhật appointment status thành "Completed"
+                // 7. Cập nhật appointment: status và note
                 appointment.Status = "Completed";
+                appointment.Note = completeDto.Note ?? appointment.Note;
                 appointment.UpdatedAt = DateTime.UtcNow;
                 var appointmentRepository = _unitOfWork.GetRepository<VaccinationAppointment>();
                 appointmentRepository.Update(appointment);
