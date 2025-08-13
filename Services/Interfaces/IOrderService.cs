@@ -1,4 +1,5 @@
-﻿using Contracts.DTOs.Order;
+﻿using Contracts.DTOs.Dashboard;
+using Contracts.DTOs.Order;
 using Repositories.Models.QueryModels;
 using System;
 using System.Collections.Generic;
@@ -16,5 +17,7 @@ namespace Services.Interfaces
         Task<OrderDTO> UpdateOrderAsync(int orderId, UpdateOrderDTO orderDto);
         Task DeleteOrderAsync(int orderId);
         Task<QueryResultModel<IEnumerable<OrderDTO>>> GetMyOrdersAsync(string status = null, int accountId = 0, int? pageIndex = null, int? pageSize = null);
+        Task<int> GetCountByFacilityAsync(int facilityId);
+        Task<RevenueStatsDTO> GetRevenueStatsByFacilityAsync(int facilityId);
     }
 }

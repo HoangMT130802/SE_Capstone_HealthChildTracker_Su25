@@ -599,5 +599,19 @@ namespace Services.Implementations
             }
         
     }
+        public async Task<int> GetCountByFacilityAsync(int facilityId)
+        {
+            try
+            {
+                _logger.LogInformation($"Counting VaccinePackages for FacilityId: {facilityId}");
+                var repository = _unitOfWork.GetRepository<VaccinePackage>();
+                return await repository.CountAsync(vp => vp.FacilityId == facilityId && vp.Status == "true"); 
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error counting VaccinePackages for FacilityId {facilityId}");
+                throw;
+            }
+        }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Contracts.DTOs.Dashboard;
 using Contracts.DTOs.FacilityStaff;
 using Microsoft.Extensions.Logging;
 using Repositories.Entities;
@@ -99,6 +100,28 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi lấy danh sách nhân viên cơ sở");
+                throw;
+            }
+        }
+        public async Task<StaffCountsDTO> GetStaffCountsByFacilityAsync(int facilityId)
+        {
+            try
+            {
+                _logger.LogInformation($"Counting staff by position for FacilityId: {facilityId}");
+                var repository = _unitOfWork.GetRepository<FacilityStaff>();
+                var staffs = await repository.GetAllAsync(s => s.FacilityId == facilityId && s.Status == true);
+                var counts = new StaffCountsDTO
+                {
+                    TotalStaffs = staffs.Data.Count(s => s.Position == "Staff"),
+                    TotalManagers = staffs.Data.Count(s => s.Position == "Manager"),
+                    TotalDoctors = staffs.Data.Count(s => s.Position == "Doctor")
+                };
+
+                return counts;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error counting staff by position for FacilityId {facilityId}");
                 throw;
             }
         }

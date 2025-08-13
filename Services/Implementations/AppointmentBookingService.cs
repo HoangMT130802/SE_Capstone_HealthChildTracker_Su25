@@ -10,6 +10,7 @@ using Repositories.Interfaces;
 using Services.Interfaces;
 using Contracts.DTOs.Order;
 using Contracts.DTOs.FacilityVaccine;
+using Contracts.DTOs.Dashboard;
 
 namespace Services.Implementations
 {
@@ -20,8 +21,8 @@ namespace Services.Implementations
         private readonly ILogger<AppointmentBookingService> _logger;
 
         public AppointmentBookingService(
-            IUnitOfWork unitOfWork, 
-            IMapper mapper, 
+            IUnitOfWork unitOfWork,
+            IMapper mapper,
             ILogger<AppointmentBookingService> logger)
         {
             _unitOfWork = unitOfWork;
@@ -56,9 +57,9 @@ namespace Services.Implementations
                     // Đếm vaccine có thể điều trị bệnh này tại cơ sở
                     var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
                     var facilityVaccines = await facilityVaccineRepo.GetAllAsync("");
-                    
+
                     var vaccineCount = facilityVaccines
-                        .Where(fv => fv.FacilityId == facility.FacilityId && 
+                        .Where(fv => fv.FacilityId == facility.FacilityId &&
                                    fv.Vaccine.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId) &&
                                    fv.Status == "active" && fv.AvailableQuantity > 0)
                         .Count();
@@ -66,7 +67,7 @@ namespace Services.Implementations
                     if (vaccineCount > 0)
                     {
                         var prices = facilityVaccines
-                            .Where(fv => fv.FacilityId == facility.FacilityId && 
+                            .Where(fv => fv.FacilityId == facility.FacilityId &&
                                        fv.Vaccine.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId) &&
                                        fv.Status == "active")
                             .Select(fv => fv.Price);
@@ -74,7 +75,7 @@ namespace Services.Implementations
                         // Kiểm tra có gói vaccine không
                         var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
                         var packages = await packageRepo.GetAllAsync("");
-                        var hasPackages = packages.Any(p => p.FacilityId == facility.FacilityId && 
+                        var hasPackages = packages.Any(p => p.FacilityId == facility.FacilityId &&
                                                           p.Status == "active" &&
                                                           p.PackageVaccines.Any(pv => pv.DiseaseId == diseaseId));
 
@@ -93,10 +94,10 @@ namespace Services.Implementations
                 {
                     if (filters.MinPrice.HasValue)
                         facilitiesWithVaccines = facilitiesWithVaccines.Where(f => f.MaxPrice >= filters.MinPrice.Value).ToList();
-                    
+
                     if (filters.MaxPrice.HasValue)
                         facilitiesWithVaccines = facilitiesWithVaccines.Where(f => f.MinPrice <= filters.MaxPrice.Value).ToList();
-                    
+
                     if (filters.HasPackagesOnly == true)
                         facilitiesWithVaccines = facilitiesWithVaccines.Where(f => f.HasPackages).ToList();
                 }
@@ -149,9 +150,9 @@ namespace Services.Implementations
                 // Lấy facility vaccines cho bệnh này
                 var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
                 var facilityVaccines = await facilityVaccineRepo.GetAllAsync("");
-                
+
                 var relevantVaccines = facilityVaccines
-                    .Where(fv => fv.FacilityId == facilityId && 
+                    .Where(fv => fv.FacilityId == facilityId &&
                                fv.Vaccine.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId))
                     .ToList();
 
@@ -160,9 +161,9 @@ namespace Services.Implementations
                 // Lấy vaccine packages
                 var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
                 var packages = await packageRepo.GetAllAsync("");
-                
+
                 var relevantPackages = packages
-                    .Where(p => p.FacilityId == facilityId && 
+                    .Where(p => p.FacilityId == facilityId &&
                               p.PackageVaccines.Any(pv => pv.DiseaseId == diseaseId))
                     .ToList();
 
@@ -211,25 +212,25 @@ namespace Services.Implementations
                 // Lấy appointment schedules trong khoảng thời gian
                 var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var schedules = await scheduleRepo.GetAllAsync("Slot,Facility");
-                
+
                 _logger.LogInformation("Lấy được {Count} schedules từ database", schedules.Count());
-                
+
                 // Reset BookedCount về 0 cho tất cả schedules để tránh giá trị corrupt từ database
                 foreach (var schedule in schedules)
                 {
                     schedule.BookedCount = 0;
                 }
-                
+
                 // Tính BookedCount tự động từ appointments thực tế
                 var schedulesWithBookedCount = await CalculateBookedCountForSchedules(schedules.ToList());
-                
+
                 _logger.LogInformation("Tính BookedCount xong cho {Count} schedules", schedulesWithBookedCount.Count);
-                
-                _logger.LogInformation("Filtering schedules: facilityId={FacilityId}, fromDate={FromDate}, toDate={ToDate}", 
+
+                _logger.LogInformation("Filtering schedules: facilityId={FacilityId}, fromDate={FromDate}, toDate={ToDate}",
                     facilityId, fromDate, toDate);
-                
+
                 var availableSchedules = schedulesWithBookedCount
-                    .Where(s => s.FacilityId == facilityId && 
+                    .Where(s => s.FacilityId == facilityId &&
                               s.Date >= fromDate && s.Date <= toDate &&
                               s.Status == "Available" &&
                               s.Slot != null && // Đảm bảo Slot không null
@@ -238,14 +239,14 @@ namespace Services.Implementations
                     .OrderBy(s => s.Date)
                     .ThenBy(s => s.Slot.StartTime)
                     .ToList();
-                
+
                 _logger.LogInformation("Lọc được {Count} available schedules", availableSchedules.Count);
-                
+
                 // Log từng schedule để debug
                 foreach (var schedule in schedulesWithBookedCount.Where(s => s.FacilityId == facilityId))
                 {
-                    _logger.LogDebug("Schedule {ScheduleId}: Date={Date}, Status={Status}, BookedCount={BookedCount}, MaxCapacity={MaxCapacity}, Slot={SlotStatus}", 
-                        schedule.ScheduleId, schedule.Date, schedule.Status, schedule.BookedCount, 
+                    _logger.LogDebug("Schedule {ScheduleId}: Date={Date}, Status={Status}, BookedCount={BookedCount}, MaxCapacity={MaxCapacity}, Slot={SlotStatus}",
+                        schedule.ScheduleId, schedule.Date, schedule.Status, schedule.BookedCount,
                         schedule.Slot?.MaxCapacity ?? 0, schedule.Slot != null ? "OK" : "NULL");
                 }
 
@@ -254,7 +255,7 @@ namespace Services.Implementations
                 for (var date = fromDate; date <= toDate; date = date.AddDays(1))
                 {
                     var daySchedules = availableSchedules.Where(s => s.Date == date).ToList();
-                    
+
                     var availableSlots = new List<AvailableSlotDTO>();
                     foreach (var schedule in daySchedules)
                     {
@@ -374,7 +375,7 @@ namespace Services.Implementations
                     // ✅ Kiểm tra BookedCount có vượt quá MaxCapacity không
                     var currentBookedCount = schedule.BookedCount ?? 0;
                     var maxCapacity = schedule.Slot?.MaxCapacity ?? 0;
-                    
+
                     if (currentBookedCount >= maxCapacity)
                     {
                         validation.CanBook = false;
@@ -393,7 +394,7 @@ namespace Services.Implementations
                         {
                             var slotDateTime = schedule.Date.ToDateTime(schedule.Slot.StartTime.Value);
                             var now = DateTime.Now;
-                            
+
                             // Chỉ kiểm tra không được book trong quá khứ (khi slot đã bắt đầu)
                             if (slotDateTime < now)
                             {
@@ -414,9 +415,9 @@ namespace Services.Implementations
                 var hasOrderId = request.OrderId.HasValue && request.OrderId.Value > 0;
                 var hasPackageId = request.PackageId.HasValue && request.PackageId.Value > 0;
                 var hasFacilityVaccineIds = request.FacilityVaccineIds != null && request.FacilityVaccineIds.Any();
-                
+
                 var selectionCount = (hasOrderId ? 1 : 0) + (hasPackageId ? 1 : 0) + (hasFacilityVaccineIds ? 1 : 0);
-                
+
                 if (selectionCount == 0)
                 {
                     validation.CanBook = false;
@@ -445,13 +446,13 @@ namespace Services.Implementations
                 {
                     var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
                     var invalidVaccines = new List<string>();
-                    
+
                     foreach (var facilityVaccineId in request.FacilityVaccineIds)
                     {
                         var facilityVaccine = await facilityVaccineRepo.GetAsync(
                             fv => fv.FacilityVaccineId == facilityVaccineId,
                             includeProperties: "Vaccine,Vaccine.VaccineDiseases");
-                        
+
                         if (facilityVaccine == null)
                         {
                             validation.CanBook = false;
@@ -464,7 +465,7 @@ namespace Services.Implementations
                             });
                             break;
                         }
-                        
+
                         // Kiểm tra vaccine có điều trị được disease không (single disease)
                         var canTreatDisease = facilityVaccine.Vaccine?.VaccineDiseases?.Any(vd => vd.DiseaseId == diseaseId) ?? false;
                         if (!canTreatDisease)
@@ -472,7 +473,7 @@ namespace Services.Implementations
                             invalidVaccines.Add(facilityVaccine.Vaccine?.Name ?? $"Vaccine {facilityVaccineId}");
                         }
                     }
-                    
+
                     if (invalidVaccines.Any())
                     {
                         validation.CanBook = false;
@@ -491,9 +492,9 @@ namespace Services.Implementations
                 {
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     var order = await orderRepo.GetAsync(
-                        o => o.OrderId == request.OrderId.Value, 
+                        o => o.OrderId == request.OrderId.Value,
                         "Member,OrderDetails,OrderDetails.FacilityVaccine");
-                    
+
                     if (order == null)
                     {
                         validation.CanBook = false;
@@ -505,17 +506,17 @@ namespace Services.Implementations
                             Severity = ValidationSeverity.Error
                         });
                     }
-                   /* else if (order.Status != "Pending" || order.Status != "Paid")
-                    {
-                        validation.CanBook = false;
-                        validation.Errors.Add(new ValidationErrorDTO
-                        {
-                            Code = "ORDER_NOT_PAID",
-                            Message = "Order chưa được thanh toán",
-                            Field = "OrderId",
-                            Severity = ValidationSeverity.Error
-                        });
-                    }*/
+                    /* else if (order.Status != "Pending" || order.Status != "Paid")
+                     {
+                         validation.CanBook = false;
+                         validation.Errors.Add(new ValidationErrorDTO
+                         {
+                             Code = "ORDER_NOT_PAID",
+                             Message = "Order chưa được thanh toán",
+                             Field = "OrderId",
+                             Severity = ValidationSeverity.Error
+                         });
+                     }*/
                     else
                     {
                         // Kiểm tra Order có thuộc về Member của Child không
@@ -585,13 +586,13 @@ namespace Services.Implementations
                     if (existingPendingProfiles.Any())
                     {
                         validation.CanBook = false;
-                            validation.Errors.Add(new ValidationErrorDTO
-                            {
-                                Code = "ALREADY_BOOKED_SAME_DISEASE",
-                                Message = "Đã có lịch đang chờ/đã lên lịch cho bệnh đã chọn. Không thể đặt trùng.",
-                                Field = "DiseaseId",
-                                Severity = ValidationSeverity.Error
-                            });
+                        validation.Errors.Add(new ValidationErrorDTO
+                        {
+                            Code = "ALREADY_BOOKED_SAME_DISEASE",
+                            Message = "Đã có lịch đang chờ/đã lên lịch cho bệnh đã chọn. Không thể đặt trùng.",
+                            Field = "DiseaseId",
+                            Severity = ValidationSeverity.Error
+                        });
                     }
 
                     // 2) Anti-spam: nếu vừa tạo CVP Pending/Scheduled cho cùng bệnh trong 5 phút gần đây
@@ -620,7 +621,7 @@ namespace Services.Implementations
                     // 3) Giữ số lượng gói theo kiểm tra reserved (không trừ thật) khi dùng OrderId
                     if (validation.CanBook && hasOrderId)
                     {
-                            var orderRepoForReserve = _unitOfWork.GetRepository<Order>();
+                        var orderRepoForReserve = _unitOfWork.GetRepository<Order>();
                         var orderForReserve = await orderRepoForReserve.GetAsync(
                             o => o.OrderId == request.OrderId.Value,
                             includeProperties: "OrderDetails");
@@ -717,7 +718,7 @@ namespace Services.Implementations
                 // Get vaccination history
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointments = await appointmentRepo.GetAllAsync("");
-                
+
                 var childAppointments = appointments
                     .Where(a => a.ChildId == childId && a.Status == "Paid")
                     .ToList();
@@ -729,7 +730,7 @@ namespace Services.Implementations
                 {
                     var details = appointment.VaccinationAppointmentDetails
                         .Where(d => d.Vaccine.VaccineDiseases.Any(vd => vd.DiseaseId == diseaseId));
-                    
+
                     foreach (var detail in details)
                     {
                         relatedVaccines.Add($"{detail.Vaccine.Name} - {detail.DoseNumber}");
@@ -833,7 +834,7 @@ namespace Services.Implementations
 
                 // Calculate fees (skip for existing orders)
                 decimal serviceFee = 0;
-                decimal bookingFee = 0; 
+                decimal bookingFee = 0;
                 decimal tax = 0;
                 decimal totalCost = vaccineCost;
 
@@ -874,7 +875,7 @@ namespace Services.Implementations
             {
                 // Bắt đầu giao dịch để đảm bảo tính toàn vẹn dữ liệu xuyên suốt quá trình đặt lịch
                 transaction = await _unitOfWork.BeginTransactionAsync();
-                _logger.LogInformation("Đặt lịch cho trẻ {ChildId}, OrderId: {OrderId}, PackageId: {PackageId}, FacilityVaccineIds: {FacilityVaccineIds}", 
+                _logger.LogInformation("Đặt lịch cho trẻ {ChildId}, OrderId: {OrderId}, PackageId: {PackageId}, FacilityVaccineIds: {FacilityVaccineIds}",
                     request.ChildId, request.OrderId, request.PackageId, request.FacilityVaccineIds != null ? string.Join(",", request.FacilityVaccineIds) : "null");
 
                 // Validate first
@@ -925,7 +926,7 @@ namespace Services.Implementations
                 if (request.OrderId.HasValue && request.OrderId.Value > 0)
                 {
                     _logger.LogInformation("Xử lý đặt lịch với Order đã mua {OrderId}", request.OrderId.Value);
-                    
+
                     // Validate Order exists và đã paid
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     var existingOrder = await orderRepo.GetAsync(o => o.OrderId == request.OrderId.Value, "OrderDetails");
@@ -991,7 +992,7 @@ namespace Services.Implementations
                             throw new InvalidOperationException("Gói đã hết số lượng khả dụng cho bệnh đã chọn do đã được giữ bởi các lịch đang chờ.");
                         }
                     }
-                    
+
                     appointment.OrderId = request.OrderId.Value;
                     _logger.LogInformation("Sử dụng Order đã có {OrderId} thành công", request.OrderId.Value);
                 }
@@ -999,7 +1000,7 @@ namespace Services.Implementations
                 else if (request.PackageId.HasValue && request.PackageId.Value > 0)
                 {
                     _logger.LogInformation("Xử lý đặt lịch với gói vaccine mới {PackageId}", request.PackageId.Value);
-                    
+
                     var memberRepo = _unitOfWork.GetRepository<Member>();
                     var member = await memberRepo.GetAsync(m => m.MemberId == child.MemberId);
                     if (member == null)
@@ -1022,7 +1023,7 @@ namespace Services.Implementations
                     await orderRepo.AddAsync(order);
                     await _unitOfWork.SaveChangesAsync();
                     appointment.OrderId = order.OrderId;
-                    
+
                     _logger.LogInformation("Tạo Order mới thành công với ID {OrderId}", order.OrderId);
                 }
                 // LUỒNG 3: Vaccine lẻ
@@ -1036,7 +1037,7 @@ namespace Services.Implementations
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 await appointmentRepo.AddAsync(appointment);
                 await _unitOfWork.SaveChangesAsync();
-                
+
                 _logger.LogInformation("Tạo Appointment thành công với ID {AppointmentId}", appointment.AppointmentId);
 
                 // Get schedule for VaccinationDate
@@ -1051,10 +1052,10 @@ namespace Services.Implementations
                 if (request.FacilityVaccineIds != null && request.FacilityVaccineIds.Any())
                 {
                     _logger.LogInformation("Tạo VaccinationAppointmentDetails cho {Count} vaccine", request.FacilityVaccineIds.Count);
-                    
+
                     var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
                     var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
-                    
+
                     foreach (var facilityVaccineId in request.FacilityVaccineIds)
                     {
                         // Get the actual VaccineId from FacilityVaccine
@@ -1119,10 +1120,10 @@ namespace Services.Implementations
                     requestDiseaseIds.AddRange(request.DiseaseIds);
                 }
                 var disease = await diseaseRepo.GetByIdAsync(requestDiseaseIds.First()); // Lấy bệnh đầu tiên cho response
-                
+
                 var scheduleRepo2 = _unitOfWork.GetRepository<AppointmentSchedule>();
                 var scheduleWithDetails = await scheduleRepo2.GetAsync(s => s.ScheduleId == request.ScheduleId, "Slot,Facility");
-                
+
                 // Load package data if exists
                 VaccinePackage? package = null;
                 if (request.PackageId.HasValue && request.PackageId.Value > 0)
@@ -1173,7 +1174,7 @@ namespace Services.Implementations
                     CreatedAt = appointment.CreatedAt,
                     Note = appointment.Note,
                     EstimatedCost = estimatedCost.TotalCost,
-                    
+
                     // Map child data
                     Child = child != null ? new Contracts.DTOs.Child.ChildDTO
                     {
@@ -1183,7 +1184,7 @@ namespace Services.Implementations
                         Gender = child.Gender,
                         BloodType = child.BloodType
                     } : null,
-                    
+
                     // Map disease data
                     Disease = disease != null ? new Contracts.DTOs.Disease.DiseaseDTO
                     {
@@ -1191,10 +1192,10 @@ namespace Services.Implementations
                         Name = disease.Name,
                         Description = disease.Description
                     } : null,
-                    
+
                     // Map facility data
                     Facility = scheduleWithDetails?.Facility != null ? _mapper.Map<Contracts.DTOs.VaccinationFacility.VaccinationFacilityDTO>(scheduleWithDetails.Facility) : null,
-                    
+
                     // Map package data
                     Package = package != null ? new Contracts.DTOs.VaccinePackage.VaccinePackageDTO
                     {
@@ -1203,13 +1204,13 @@ namespace Services.Implementations
                         Description = package.Description,
                         Price = package.Price
                     } : null,
-                    
+
                     // ✅ Map order data
                     Order = orderForResponse != null ? _mapper.Map<Contracts.DTOs.Order.OrderDTO>(orderForResponse) : null,
-                    
+
                     // Map selected vaccines data
                     SelectedVaccines = selectedVaccines,
-                    
+
                     // Map schedule data
                     Schedule = scheduleWithDetails != null ? new Contracts.DTOs.Appointment.AppointmentScheduleDTO
                     {
@@ -1241,15 +1242,15 @@ namespace Services.Implementations
                     scheduleToUpdate.UpdatedAt = DateTime.UtcNow;
                     scheduleRepoForUpdate.Update(scheduleToUpdate);
                     await _unitOfWork.SaveChangesAsync();
-                    
-                    _logger.LogInformation("Đã tăng BookedCount cho Schedule {ScheduleId} từ {OldCount} lên {NewCount}", 
+
+                    _logger.LogInformation("Đã tăng BookedCount cho Schedule {ScheduleId} từ {OldCount} lên {NewCount}",
                         request.ScheduleId, oldBookedCount, scheduleToUpdate.BookedCount);
                 }
 
-                _logger.LogInformation("Đặt lịch thành công cho trẻ {ChildId}, AppointmentId: {AppointmentId}, Luồng: {Flow}", 
-                    request.ChildId, appointment.AppointmentId, 
+                _logger.LogInformation("Đặt lịch thành công cho trẻ {ChildId}, AppointmentId: {AppointmentId}, Luồng: {Flow}",
+                    request.ChildId, appointment.AppointmentId,
                     request.OrderId.HasValue ? $"Order existing {request.OrderId}" :
-                    request.PackageId.HasValue ? $"Package new {request.PackageId}" : 
+                    request.PackageId.HasValue ? $"Package new {request.PackageId}" :
                     "Individual vaccines");
 
                 // Commit transaction khi mọi thứ thành công
@@ -1258,7 +1259,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi đặt lịch cho trẻ {ChildId}, PackageId: {PackageId}, FacilityVaccineIds: {FacilityVaccineIds}", 
+                _logger.LogError(ex, "Lỗi khi đặt lịch cho trẻ {ChildId}, PackageId: {PackageId}, FacilityVaccineIds: {FacilityVaccineIds}",
                     request.ChildId, request.PackageId, request.FacilityVaccineIds != null ? string.Join(",", request.FacilityVaccineIds) : "null");
                 // Rollback nếu đang trong transaction
                 try { if (transaction != null) await transaction.RollbackAsync(); } catch { /* ignore */ }
@@ -1274,12 +1275,12 @@ namespace Services.Implementations
 
                 // Find best facility and schedule for the disease
                 var facilities = await SearchFacilitiesByDiseaseAsync(request.DiseaseId);
-                
+
                 if (!facilities.Facilities.Any())
                 {
-                    return new AppointmentQuickBookingResponseDTO 
-                    { 
-                        IsSuccess = false, 
+                    return new AppointmentQuickBookingResponseDTO
+                    {
+                        IsSuccess = false,
                         FailureReason = "Không tìm thấy cơ sở có vaccine phù hợp",
                         Suggestions = new List<AppointmentSuggestionDTO>()
                     };
@@ -1287,15 +1288,15 @@ namespace Services.Implementations
 
                 // Get the first available facility (sorted by best match)
                 var bestFacility = facilities.Facilities.First();
-                
+
                 // Get available schedules for this facility
                 var fromDate = request.PreferredDate ?? DateOnly.FromDateTime(DateTime.Now.AddDays(1));
                 var toDate = fromDate.AddDays(30);
-                
+
                 var availableSchedules = await GetAvailableSchedulesAsync(
-                    bestFacility.FacilityId, 
-                    fromDate, 
-                    toDate, 
+                    bestFacility.FacilityId,
+                    fromDate,
+                    toDate,
                     request.PreferredTimeSlots);
 
                 var firstAvailableSlot = availableSchedules.DailySchedules
@@ -1305,9 +1306,9 @@ namespace Services.Implementations
 
                 if (firstAvailableSlot == null)
                 {
-                    return new AppointmentQuickBookingResponseDTO 
-                    { 
-                        IsSuccess = false, 
+                    return new AppointmentQuickBookingResponseDTO
+                    {
+                        IsSuccess = false,
                         FailureReason = "Không có lịch trống phù hợp",
                         Suggestions = await GenerateAppointmentSuggestionsAsync(request)
                     };
@@ -1315,7 +1316,7 @@ namespace Services.Implementations
 
                 // Get vaccines for this facility and disease
                 var vaccines = await GetFacilityVaccinesByDiseaseAsync(bestFacility.FacilityId, request.DiseaseId);
-                
+
                 // Prefer packages if requested, otherwise use first individual vaccine
                 var packageId = (int?)null;
                 var facilityVaccineIds = (List<int>?)null;
@@ -1343,9 +1344,9 @@ namespace Services.Implementations
 
                 var bookingResult = await BookAppointmentAsync(bookingRequest);
 
-                return new AppointmentQuickBookingResponseDTO 
-                { 
-                    IsSuccess = true, 
+                return new AppointmentQuickBookingResponseDTO
+                {
+                    IsSuccess = true,
                     Appointment = bookingResult,
                     Suggestions = new List<AppointmentSuggestionDTO>()
                 };
@@ -1353,9 +1354,9 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi đặt lịch nhanh cho trẻ {ChildId}", request.ChildId);
-                return new AppointmentQuickBookingResponseDTO 
-                { 
-                    IsSuccess = false, 
+                return new AppointmentQuickBookingResponseDTO
+                {
+                    IsSuccess = false,
                     FailureReason = ex.Message,
                     Suggestions = new List<AppointmentSuggestionDTO>()
                 };
@@ -1370,7 +1371,7 @@ namespace Services.Implementations
 
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointment = await appointmentRepo.GetByIdAsync(appointmentId);
-                
+
                 if (appointment == null)
                 {
                     throw new ArgumentException($"Không tìm thấy lịch hẹn với ID {appointmentId}");
@@ -1385,13 +1386,13 @@ namespace Services.Implementations
                 if (appointmentDetails.Any())
                 {
                     appointmentDetailRepo.HardDeleteRange(appointmentDetails.ToList());
-                    _logger.LogInformation("Xóa {Count} VaccinationAppointmentDetails cho appointment {AppointmentId}", 
+                    _logger.LogInformation("Xóa {Count} VaccinationAppointmentDetails cho appointment {AppointmentId}",
                         appointmentDetails.Count, appointmentId);
                 }
 
                 // Xóa appointment
                 appointmentRepo.HardDelete(appointment);
-                
+
                 await _unitOfWork.SaveChangesAsync();
 
                 // ✅ Giảm BookedCount trong AppointmentSchedule
@@ -1404,8 +1405,8 @@ namespace Services.Implementations
                     scheduleToUpdate.UpdatedAt = DateTime.UtcNow;
                     scheduleRepo.Update(scheduleToUpdate);
                     await _unitOfWork.SaveChangesAsync();
-                    
-                    _logger.LogInformation("Đã giảm BookedCount cho Schedule {ScheduleId} từ {OldCount} xuống {NewCount}", 
+
+                    _logger.LogInformation("Đã giảm BookedCount cho Schedule {ScheduleId} từ {OldCount} xuống {NewCount}",
                         scheduleId, oldBookedCount, scheduleToUpdate.BookedCount);
                 }
 
@@ -1428,15 +1429,15 @@ namespace Services.Implementations
             try
             {
                 _logger.LogInformation("Lấy lịch sử đặt lịch cho member {MemberId}", memberId);
-                
+
                 // Get appointments của member qua Child
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var childRepo = _unitOfWork.GetRepository<Child>();
-                
+
                 // Lấy danh sách childIds của member
                 var memberChildren = await childRepo.FindAsync(c => c.MemberId == memberId);
                 var childIds = memberChildren.Select(c => c.ChildId).ToList();
-                
+
                 if (!childIds.Any())
                 {
                     return new AppointmentHistoryResponseDTO
@@ -1448,25 +1449,25 @@ namespace Services.Implementations
                         Appointments = new List<AppointmentHistoryDTO>()
                     };
                 }
-                
+
                 // Build query đơn giản
                 var query = appointmentRepo.GetAllQueryable("Schedule.Slot,Schedule.Facility,Child,Order.OrderDetails");
-                
+
                 // Filter theo childIds của member
                 query = query.Where(a => childIds.Contains(a.ChildId));
-                
+
                 // Filter theo childId nếu có
                 if (childId.HasValue)
                 {
                     query = query.Where(a => a.ChildId == childId.Value);
                 }
-                
+
                 // Sort theo ngày appointment (mới nhất trước)
                 query = query.OrderByDescending(a => a.Schedule.Date).ThenByDescending(a => a.Schedule.Slot.StartTime);
-                
+
                 // Lấy tất cả (không pagination)
                 var appointments = query.ToList();
-                
+
                 // Map to DTO
                 var appointmentDTOs = new List<AppointmentHistoryDTO>();
                 foreach (var appointment in appointments)
@@ -1474,10 +1475,10 @@ namespace Services.Implementations
                     var dto = await MapToAppointmentHistoryDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
-                
+
                 // Calculate statistics
                 var stats = CalculateAppointmentStatistics(appointments);
-                
+
                 return new AppointmentHistoryResponseDTO
                 {
                     TotalCount = appointments.Count,
@@ -1505,12 +1506,12 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Lấy tất cả lịch đặt cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                _logger.LogInformation("Lấy tất cả lịch đặt cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}",
                     facilityId, pageIndex, pageSize);
-                
+
                 // Get appointments của facility với phân trang
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                
+
                 // ✅ Sử dụng phân trang từ repository
                 var result = await appointmentRepo.GetAllAsync(
                     filter: a => a.Schedule.FacilityId == facilityId,
@@ -1519,23 +1520,23 @@ namespace Services.Implementations
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
-                
+
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
-                
+
                 // ✅ Calculate statistics từ tất cả appointments (không phân trang)
                 var allAppointments = await appointmentRepo.FindAsync(
                     a => a.Schedule.FacilityId == facilityId,
                     "Schedule.Slot,Schedule.Facility");
                 var stats = CalculateFacilityAppointmentStatistics(allAppointments);
-                
+
                 // ✅ Tính total pages
                 var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
-                
+
                 return new FacilityAppointmentResponseDTO
                 {
                     // Phân trang
@@ -1543,9 +1544,9 @@ namespace Services.Implementations
                     TotalPages = totalPages,
                     CurrentPage = pageIndex,
                     PageSize = pageSize,
-                    
+
                     Appointments = appointmentDTOs,
-                    
+
                     // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
@@ -1567,12 +1568,12 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Lấy lịch đặt theo ngày {Date} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                _logger.LogInformation("Lấy lịch đặt theo ngày {Date} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}",
                     date.Date, facilityId, pageIndex, pageSize);
-                
+
                 var dateOnly = DateOnly.FromDateTime(date.Date);
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                
+
                 // ✅ Sử dụng phân trang
                 var result = await appointmentRepo.GetAllAsync(
                     filter: a => a.Schedule.FacilityId == facilityId && a.Schedule.Date == dateOnly,
@@ -1581,23 +1582,23 @@ namespace Services.Implementations
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
-                
+
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
-                
+
                 // ✅ Calculate statistics từ tất cả appointments trong ngày
                 var allAppointments = await appointmentRepo.FindAsync(
                     a => a.Schedule.FacilityId == facilityId && a.Schedule.Date == dateOnly,
                     "Schedule.Slot,Schedule.Facility");
                 var stats = CalculateFacilityAppointmentStatistics(allAppointments);
-                
+
                 // ✅ Tính total pages
                 var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
-                
+
                 return new FacilityAppointmentResponseDTO
                 {
                     // Phân trang
@@ -1605,9 +1606,9 @@ namespace Services.Implementations
                     TotalPages = totalPages,
                     CurrentPage = pageIndex,
                     PageSize = pageSize,
-                    
+
                     Appointments = appointmentDTOs,
-                    
+
                     // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
@@ -1629,43 +1630,43 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Lấy lịch đặt theo tuần {Week} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                _logger.LogInformation("Lấy lịch đặt theo tuần {Week} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}",
                     startOfWeek.Date, facilityId, pageIndex, pageSize);
-                
+
                 var startDate = DateOnly.FromDateTime(startOfWeek.Date);
                 var endDate = startDate.AddDays(6);
-                
+
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                
+
                 // ✅ Sử dụng phân trang
                 var result = await appointmentRepo.GetAllAsync(
-                    filter: a => a.Schedule.FacilityId == facilityId && 
-                                a.Schedule.Date >= startDate && 
+                    filter: a => a.Schedule.FacilityId == facilityId &&
+                                a.Schedule.Date >= startDate &&
                                 a.Schedule.Date <= endDate,
                     orderBy: q => q.OrderBy(a => a.Schedule.Date).ThenBy(a => a.Schedule.Slot.StartTime),
                     include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
-                
+
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
-                
+
                 // ✅ Calculate statistics từ tất cả appointments trong tuần
                 var allAppointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId && 
-                         a.Schedule.Date >= startDate && 
+                    a => a.Schedule.FacilityId == facilityId &&
+                         a.Schedule.Date >= startDate &&
                          a.Schedule.Date <= endDate,
                     "Schedule.Slot,Schedule.Facility");
                 var stats = CalculateFacilityAppointmentStatistics(allAppointments);
-                
+
                 // ✅ Tính total pages
                 var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
-                
+
                 return new FacilityAppointmentResponseDTO
                 {
                     // Phân trang
@@ -1673,9 +1674,9 @@ namespace Services.Implementations
                     TotalPages = totalPages,
                     CurrentPage = pageIndex,
                     PageSize = pageSize,
-                    
+
                     Appointments = appointmentDTOs,
-                    
+
                     // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
@@ -1697,43 +1698,43 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Lấy lịch đặt theo tháng {Month} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}", 
+                _logger.LogInformation("Lấy lịch đặt theo tháng {Month} cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}",
                     month.ToString("yyyy-MM"), facilityId, pageIndex, pageSize);
-                
+
                 var startDate = DateOnly.FromDateTime(new DateTime(month.Year, month.Month, 1));
                 var endDate = startDate.AddMonths(1).AddDays(-1);
-                
+
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                
+
                 // ✅ Sử dụng phân trang
                 var result = await appointmentRepo.GetAllAsync(
-                    filter: a => a.Schedule.FacilityId == facilityId && 
-                                a.Schedule.Date >= startDate && 
+                    filter: a => a.Schedule.FacilityId == facilityId &&
+                                a.Schedule.Date >= startDate &&
                                 a.Schedule.Date <= endDate,
                     orderBy: q => q.OrderBy(a => a.Schedule.Date).ThenBy(a => a.Schedule.Slot.StartTime),
                     include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
                     pageIndex: pageIndex,
                     pageSize: pageSize
                 );
-                
+
                 var appointmentDTOs = new List<FacilityAppointmentDTO>();
                 foreach (var appointment in result.Data)
                 {
                     var dto = await MapToFacilityAppointmentDTO(appointment);
                     appointmentDTOs.Add(dto);
                 }
-                
+
                 // ✅ Calculate statistics từ tất cả appointments trong tháng
                 var allAppointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId && 
-                         a.Schedule.Date >= startDate && 
+                    a => a.Schedule.FacilityId == facilityId &&
+                         a.Schedule.Date >= startDate &&
                          a.Schedule.Date <= endDate,
                     "Schedule.Slot,Schedule.Facility");
                 var stats = CalculateFacilityAppointmentStatistics(allAppointments);
-                
+
                 // ✅ Tính total pages
                 var totalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
-                
+
                 return new FacilityAppointmentResponseDTO
                 {
                     // Phân trang
@@ -1741,9 +1742,9 @@ namespace Services.Implementations
                     TotalPages = totalPages,
                     CurrentPage = pageIndex,
                     PageSize = pageSize,
-                    
+
                     Appointments = appointmentDTOs,
-                    
+
                     // Thống kê
                     PendingCount = stats.PendingCount,
                     ConfirmedCount = stats.ConfirmedCount,
@@ -1766,38 +1767,38 @@ namespace Services.Implementations
             try
             {
                 _logger.LogInformation("Lấy chi tiết lịch đặt {AppointmentId} cho facility {FacilityId}", appointmentId, facilityId);
-                
+
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointments = await appointmentRepo.FindAsync(
                     a => a.AppointmentId == appointmentId,
                     "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails,Order.OrderDetails.FacilityVaccine,Order.OrderDetails.Disease,Order.OrderDetails.FacilityVaccine.Vaccine,Order.Member");
-                
+
                 var appointment = appointments.FirstOrDefault();
-                
+
                 if (appointment == null)
                 {
                     throw new ArgumentException($"Không tìm thấy lịch đặt {appointmentId}");
                 }
-                
+
                 // Check facility ownership sau khi load
                 if (appointment.Schedule?.FacilityId != facilityId)
                 {
                     throw new ArgumentException($"Lịch đặt {appointmentId} không thuộc về facility {facilityId}");
                 }
-                
+
                 // Manual load Schedule nếu vẫn null
                 if (appointment.Schedule == null)
                 {
                     _logger.LogWarning("Schedule null, trying manual load for appointment {AppointmentId}", appointmentId);
                     var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
                     appointment.Schedule = await scheduleRepo.GetAsync(s => s.ScheduleId == appointment.ScheduleId, "Slot,Facility");
-                    
+
                     if (appointment.Schedule == null)
                     {
                         throw new InvalidOperationException($"Không thể load Schedule cho appointment {appointmentId}");
                     }
                 }
-                
+
                 return await MapToFacilityAppointmentDTO(appointment);
             }
             catch (Exception ex)
@@ -1811,82 +1812,82 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Cập nhật trạng thái lịch đặt {AppointmentId} thành {Status} cho facility {FacilityId}", 
+                _logger.LogInformation("Cập nhật trạng thái lịch đặt {AppointmentId} thành {Status} cho facility {FacilityId}",
                     appointmentId, updateDto.Status, facilityId);
-                
+
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var appointments = await appointmentRepo.FindAsync(
                     a => a.AppointmentId == appointmentId,
                     "Schedule,Schedule.Slot,Schedule.Facility,Child,Child.Member,Child.Member.Account,Order,Order.OrderDetails,VaccinationAppointmentDetails,VaccinationAppointmentDetails.Vaccine");
-                
+
                 var appointment = appointments.FirstOrDefault();
-                
+
                 if (appointment == null)
                 {
                     throw new ArgumentException($"Không tìm thấy lịch đặt {appointmentId} cho facility {facilityId}");
                 }
-                
+
                 // Check facility ownership sau khi load
                 if (appointment.Schedule?.FacilityId != facilityId)
                 {
                     throw new ArgumentException($"Lịch đặt {appointmentId} không thuộc về facility {facilityId}");
                 }
-                
+
                 // Manual load Schedule nếu vẫn null
                 if (appointment.Schedule == null)
                 {
                     _logger.LogWarning("Schedule null, trying manual load for appointment {AppointmentId}", appointmentId);
                     var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
                     appointment.Schedule = await scheduleRepo.GetAsync(s => s.ScheduleId == appointment.ScheduleId);
-                    
+
                     if (appointment.Schedule == null)
                     {
                         throw new InvalidOperationException($"Không thể load Schedule cho appointment {appointmentId}");
                     }
                 }
-                
+
                 // Validate status transition
                 _logger.LogInformation("Status transition: {CurrentStatus} -> {NewStatus}", appointment.Status, updateDto.Status);
-                
+
                 if (!IsValidStatusTransition(appointment.Status, updateDto.Status))
                 {
                     throw new InvalidOperationException($"Không thể chuyển từ trạng thái {appointment.Status} sang {updateDto.Status}");
                 }
-                
+
                 // Update status
                 appointment.Status = updateDto.Status;
                 appointment.Note = updateDto.Note ?? appointment.Note;
                 appointment.UpdatedAt = DateTime.UtcNow;
-                
-                                 // ✅ Nếu chuyển sang Paid, cập nhật VaccinationAppointmentDetails VÀ Order status
+
+                // ✅ Nếu chuyển sang Paid, cập nhật VaccinationAppointmentDetails VÀ Order status
                 if (updateDto.Status == "Paid")
                 {
                     _logger.LogInformation("Đang cập nhật VaccinationAppointmentDetails và Order status cho appointment {AppointmentId}", appointmentId);
-                    
+
                     if (appointment.Schedule == null)
                     {
                         _logger.LogError("appointment.Schedule is null for appointment {AppointmentId}", appointmentId);
                         throw new InvalidOperationException("Không thể lấy thông tin lịch hẹn");
                     }
-                    
+
                     // ✅ Cập nhật VaccinationAppointmentDetails
                     var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
                     var details = await detailRepo.FindAsync(d => d.AppointmentId == appointmentId);
-                    
+
                     _logger.LogInformation("Tìm được {Count} VaccinationAppointmentDetails cho appointment {AppointmentId}", details.Count, appointmentId);
-                    
+
                     foreach (var detail in details)
                     {
                         detail.VaccinationDate = appointment.Schedule.Date;
                         _logger.LogInformation("Cập nhật VaccinationDate cho appointment {AppointmentId} thành {Date}", appointmentId, appointment.Schedule.Date);
                     }
-                    
+
                     // ✅ Cập nhật Order status nếu appointment có OrderId
                     if (appointment.OrderId.HasValue)
                     {
                         var orderRepo = _unitOfWork.GetRepository<Order>();
                         var order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, "OrderDetails");
-                        
+
                         if (order != null)
                         {
                             if (order.Status == "Pending")
@@ -1910,12 +1911,12 @@ namespace Services.Implementations
                     {
                         _logger.LogInformation("Appointment {AppointmentId} không có OrderId, chỉ cập nhật VaccinationAppointmentDetails", appointmentId);
                     }
-                    
+
                     // ✅ Cập nhật ChildVaccineProfile status thành "Completed" nếu có
                     var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
                     var childVaccineProfiles = await childVaccineProfileRepo.FindAsync(
                         p => p.AppointmentId == appointmentId && p.Status == "Pending");
-                    
+
                     foreach (var profile in childVaccineProfiles)
                     {
                         profile.Status = "Completed";
@@ -1924,19 +1925,19 @@ namespace Services.Implementations
                         childVaccineProfileRepo.Update(profile);
                         _logger.LogInformation("Đã cập nhật ChildVaccineProfile {ProfileId} status thành Completed", profile.VaccineProfileId);
                     }
-                    
+
                     // ✅ RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid
                     _logger.LogInformation("RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid cho appointment {AppointmentId}", appointmentId);
                 }
-                
+
                 await _unitOfWork.SaveChangesAsync();
-                
+
                 _logger.LogInformation("Cập nhật trạng thái lịch đặt {AppointmentId} thành công", appointmentId);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái lịch đặt {AppointmentId} cho facility {FacilityId}. Chi tiết: {Message}", 
+                _logger.LogError(ex, "Lỗi khi cập nhật trạng thái lịch đặt {AppointmentId} cho facility {FacilityId}. Chi tiết: {Message}",
                     appointmentId, facilityId, ex.Message);
                 _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
                 throw;
@@ -1969,13 +1970,13 @@ namespace Services.Implementations
         {
             var slotDateTime = appointment.Schedule.Date.ToDateTime(appointment.Schedule.Slot.StartTime ?? TimeOnly.MinValue);
             var now = DateTime.Now;
-            
+
             // Get vaccine names from appointment details
             var vaccineNames = new List<string>();
             var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
             var details = await detailRepo.FindAsync(d => d.AppointmentId == appointment.AppointmentId, "Vaccine");
             vaccineNames = details.Select(d => d.Vaccine.Name).ToList();
-            
+
             // Get package name if exists (from order)
             string? packageName = null;
             if (appointment.Order != null && appointment.Order.PackageId > 0)
@@ -1984,18 +1985,18 @@ namespace Services.Implementations
                 var package = await packageRepo.GetByIdAsync(appointment.Order.PackageId);
                 packageName = package?.Name;
             }
-            
+
             // Calculate estimated cost - sử dụng VaccineId từ details
-            var facilityVaccineIds = details.Any() ? 
-                details.Select(d => d.VaccineId).ToList() : 
+            var facilityVaccineIds = details.Any() ?
+                details.Select(d => d.VaccineId).ToList() :
                 null;
-            
+
             var estimatedCost = await CalculateEstimatedCostAsync(
-                appointment.Schedule.FacilityId, 
+                appointment.Schedule.FacilityId,
                 appointment.Order?.OrderId, // Sử dụng OrderId từ Order
                 appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null, // Sử dụng PackageId từ Order
                 facilityVaccineIds);
-            
+
             var dto = new AppointmentHistoryDTO
             {
                 AppointmentId = appointment.AppointmentId,
@@ -2006,30 +2007,30 @@ namespace Services.Implementations
                 Note = appointment.Note,
                 CreatedAt = appointment.CreatedAt,
                 UpdatedAt = appointment.UpdatedAt,
-                
+
                 // Appointment info
                 AppointmentDate = appointment.Schedule.Date,
                 AppointmentTime = appointment.Schedule.Slot?.SlotTime ?? "",
                 FacilityName = appointment.Schedule.Facility?.FacilityName ?? "",
                 FacilityAddress = appointment.Schedule.Facility?.Address ?? "",
-                
+
                 // Vaccine info
                 PackageName = packageName,
                 VaccineNames = vaccineNames,
-                
+
                 // Cost
                 EstimatedCost = estimatedCost.TotalCost,
-                
+
                 // Status flags
                 IsUpcoming = slotDateTime > now,
                 IsPast = slotDateTime < now,
                 CanCancel = appointment.Status == "Approval" && slotDateTime > now,
                 CanReschedule = appointment.Status == "Approval" && slotDateTime > now,
-                
+
                 // Time countdown
                 TimeUntilAppointment = CalculateTimeUntilAppointment(slotDateTime, now)
             };
-            
+
             return dto;
         }
 
@@ -2042,11 +2043,11 @@ namespace Services.Implementations
             var upcomingCount = 0;
             var completedCount = 0;
             var cancelledCount = 0;
-            
+
             foreach (var appointment in appointments)
             {
                 var slotDateTime = appointment.Schedule.Date.ToDateTime(appointment.Schedule.Slot?.StartTime ?? TimeOnly.MinValue);
-                
+
                 switch (appointment.Status)
                 {
                     case "Paid":
@@ -2061,7 +2062,7 @@ namespace Services.Implementations
                         break;
                 }
             }
-            
+
             return (upcomingCount, completedCount, cancelledCount);
         }
 
@@ -2074,9 +2075,9 @@ namespace Services.Implementations
             {
                 return "Đã qua";
             }
-            
+
             var timeSpan = slotDateTime - now;
-            
+
             if (timeSpan.TotalDays >= 1)
             {
                 return $"{(int)timeSpan.TotalDays} ngày nữa";
@@ -2100,10 +2101,10 @@ namespace Services.Implementations
             {
                 var scheduleIds = schedules.Select(s => s.ScheduleId).ToList();
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                
+
                 // Lấy tất cả appointments đã approval của các schedules
                 var allAppointments = await appointmentRepo.FindAsync(
-                    a => scheduleIds.Contains(a.ScheduleId) && 
+                    a => scheduleIds.Contains(a.ScheduleId) &&
                          a.Status == "Approval");
 
                 _logger.LogInformation("Tìm được {Count} appointments approval", allAppointments.Count);
@@ -2118,25 +2119,25 @@ namespace Services.Implementations
                 foreach (var schedule in schedules)
                 {
                     var bookedCount = allAppointments.Count(a => a.ScheduleId == schedule.ScheduleId);
-                    
+
                     // Safeguard: Đảm bảo BookedCount không vượt quá giới hạn hợp lý
                     if (bookedCount > 1000) // Giới hạn hợp lý
                     {
-                        _logger.LogWarning("Schedule {ScheduleId} có BookedCount = {BookedCount} quá lớn, reset về 0", 
+                        _logger.LogWarning("Schedule {ScheduleId} có BookedCount = {BookedCount} quá lớn, reset về 0",
                             schedule.ScheduleId, bookedCount);
                         bookedCount = 0;
                     }
-                    
+
                     schedule.BookedCount = bookedCount;
-                    
+
                     // Load Slot manually nếu null
                     if (schedule.Slot == null && slotDict.ContainsKey(schedule.SlotId))
                     {
                         schedule.Slot = slotDict[schedule.SlotId];
                         _logger.LogDebug("Loaded Slot manually for Schedule {ScheduleId}", schedule.ScheduleId);
                     }
-                    
-                    _logger.LogDebug("Schedule {ScheduleId}: BookedCount = {BookedCount}, Slot = {SlotLoaded}", 
+
+                    _logger.LogDebug("Schedule {ScheduleId}: BookedCount = {BookedCount}, Slot = {SlotLoaded}",
                         schedule.ScheduleId, bookedCount, schedule.Slot != null ? "OK" : "NULL");
                 }
 
@@ -2145,13 +2146,13 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi tính BookedCount cho schedules");
-                
+
                 // Fallback: Set tất cả BookedCount về 0 nếu có lỗi
                 foreach (var schedule in schedules)
                 {
                     schedule.BookedCount = 0;
                 }
-                
+
                 return schedules;
             }
         }
@@ -2166,17 +2167,17 @@ namespace Services.Implementations
 
                 // Find facilities with vaccines for this disease
                 var facilities = await SearchFacilitiesByDiseaseAsync(request.DiseaseId);
-                
+
                 foreach (var facility in facilities.Facilities.Take(maxSuggestions))
                 {
                     // Get next available slot for this facility
                     var fromDate = DateOnly.FromDateTime(DateTime.Now.AddDays(1));
                     var toDate = fromDate.AddDays(30);
-                    
+
                     var availableSchedules = await GetAvailableSchedulesAsync(
-                        facility.FacilityId, 
-                        fromDate, 
-                        toDate, 
+                        facility.FacilityId,
+                        fromDate,
+                        toDate,
                         request.PreferredTimeSlots);
 
                     var nextAvailableSlot = availableSchedules.DailySchedules
@@ -2190,7 +2191,7 @@ namespace Services.Implementations
                         var vaccines = await GetFacilityVaccinesByDiseaseAsync(facility.FacilityId, request.DiseaseId);
                         var packageId = vaccines.VaccinePackages.FirstOrDefault()?.PackageId;
                         var facilityVaccineIds = vaccines.IndividualVaccines.Take(1).Select(v => v.FacilityVaccineId).ToList();
-                        
+
                         var cost = await CalculateEstimatedCostAsync(facility.FacilityId, null, packageId, facilityVaccineIds.Any() ? facilityVaccineIds : null);
 
                         suggestions.Add(new AppointmentSuggestionDTO
@@ -2222,7 +2223,7 @@ namespace Services.Implementations
         {
             var slotDateTime = appointment.Schedule.Date.ToDateTime(appointment.Schedule.Slot?.StartTime ?? TimeOnly.MinValue);
             var now = DateTime.Now;
-            
+
             // Manual loading backup nếu Child chưa được load
             if (appointment.Child == null)
             {
@@ -2230,31 +2231,31 @@ namespace Services.Implementations
                 var childRepo = _unitOfWork.GetRepository<Child>();
                 appointment.Child = await childRepo.GetAsync(c => c.ChildId == appointment.ChildId, "Member,Member.Account");
             }
-            
+
             // Manual loading backup nếu Order chưa được load
             if (appointment.OrderId.HasValue && appointment.Order == null)
             {
-                _logger.LogWarning("Order null, trying manual load for appointment {AppointmentId}, OrderId {OrderId}", 
+                _logger.LogWarning("Order null, trying manual load for appointment {AppointmentId}, OrderId {OrderId}",
                     appointment.AppointmentId, appointment.OrderId);
                 var orderRepo = _unitOfWork.GetRepository<Order>();
-                appointment.Order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, 
+                appointment.Order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value,
                     "OrderDetails.FacilityVaccine.Vaccine,OrderDetails.Disease,Member,Package");
             }
-            
+
             // Get FacilityVaccines from Order.OrderDetails (for package/custom orders)
             var facilityVaccines = new List<FacilityVaccineDTO>();
             if (appointment.Order?.OrderDetails != null && appointment.Order.OrderDetails.Any())
             {
-                _logger.LogInformation("Found {OrderDetailsCount} OrderDetails for appointment {AppointmentId}", 
+                _logger.LogInformation("Found {OrderDetailsCount} OrderDetails for appointment {AppointmentId}",
                     appointment.Order.OrderDetails.Count, appointment.AppointmentId);
-                
+
                 foreach (var orderDetail in appointment.Order.OrderDetails)
                 {
                     if (orderDetail.FacilityVaccine != null)
                     {
                         var facilityVaccineDto = _mapper.Map<FacilityVaccineDTO>(orderDetail.FacilityVaccine);
                         facilityVaccines.Add(facilityVaccineDto);
-                        _logger.LogInformation("Added FacilityVaccine {FacilityVaccineId} from OrderDetail {OrderDetailId}", 
+                        _logger.LogInformation("Added FacilityVaccine {FacilityVaccineId} from OrderDetail {OrderDetailId}",
                             orderDetail.FacilityVaccine.FacilityVaccineId, orderDetail.OrderDetailId);
                     }
                     else
@@ -2266,12 +2267,12 @@ namespace Services.Implementations
             // Fallback: Get FacilityVaccines from VaccinationAppointmentDetails (for individual vaccines)
             else
             {
-                _logger.LogInformation("No Order or OrderDetails found, trying to get FacilityVaccines from VaccinationAppointmentDetails for appointment {AppointmentId}", 
+                _logger.LogInformation("No Order or OrderDetails found, trying to get FacilityVaccines from VaccinationAppointmentDetails for appointment {AppointmentId}",
                     appointment.AppointmentId);
-                
+
                 var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
                 var details = await detailRepo.FindAsync(d => d.AppointmentId == appointment.AppointmentId, "Vaccine");
-                
+
                 if (details.Any())
                 {
                     var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
@@ -2281,17 +2282,17 @@ namespace Services.Implementations
                         var facilityVaccine = await facilityVaccineRepo.GetAsync(
                             fv => fv.VaccineId == detail.VaccineId && fv.FacilityId == appointment.Schedule.FacilityId,
                             "Vaccine");
-                        
+
                         if (facilityVaccine != null)
                         {
                             var facilityVaccineDto = _mapper.Map<FacilityVaccineDTO>(facilityVaccine);
                             facilityVaccines.Add(facilityVaccineDto);
-                            _logger.LogInformation("Added FacilityVaccine {FacilityVaccineId} from VaccinationAppointmentDetail {DetailId}", 
+                            _logger.LogInformation("Added FacilityVaccine {FacilityVaccineId} from VaccinationAppointmentDetail {DetailId}",
                                 facilityVaccine.FacilityVaccineId, detail.DetailId);
                         }
                         else
                         {
-                            _logger.LogWarning("No FacilityVaccine found for VaccineId {VaccineId} and FacilityId {FacilityId}", 
+                            _logger.LogWarning("No FacilityVaccine found for VaccineId {VaccineId} and FacilityId {FacilityId}",
                                 detail.VaccineId, appointment.Schedule.FacilityId);
                         }
                     }
@@ -2301,15 +2302,15 @@ namespace Services.Implementations
                     _logger.LogWarning("No VaccinationAppointmentDetails found for appointment {AppointmentId}", appointment.AppointmentId);
                 }
             }
-            
+
             // Calculate estimated cost
             var facilityVaccineIds = facilityVaccines.Select(fv => fv.FacilityVaccineId).ToList();
             var estimatedCost = await CalculateEstimatedCostAsync(
-                appointment.Schedule.FacilityId, 
+                appointment.Schedule.FacilityId,
                 appointment.Order?.OrderId,
                 appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null,
                 facilityVaccineIds.Any() ? facilityVaccineIds : null);
-            
+
             var dto = new FacilityAppointmentDTO
             {
                 AppointmentId = appointment.AppointmentId,
@@ -2317,29 +2318,29 @@ namespace Services.Implementations
                 CreatedAt = appointment.CreatedAt,
                 UpdatedAt = appointment.UpdatedAt,
                 Note = appointment.Note,
-                
+
                 // Member info
                 MemberId = appointment.Child?.Member?.MemberId ?? 0,
                 MemberName = appointment.Child?.Member?.FullName ?? "",
                 MemberPhone = appointment.Child?.Member?.PhoneNumber ?? "",
                 MemberEmail = appointment.Child?.Member?.Account?.Email ?? "",
-                
+
                 // Child info
                 Child = _mapper.Map<ChildDTO>(appointment.Child),
-                
+
                 // Order and vaccines info
                 OrderId = appointment.OrderId,
                 Order = appointment.Order != null ? _mapper.Map<OrderDTO>(appointment.Order) : null,
                 FacilityVaccines = facilityVaccines,
-                
+
                 // Appointment info
                 AppointmentDate = appointment.Schedule.Date,
                 AppointmentTime = appointment.Schedule.Slot?.SlotTime ?? "",
                 SlotTime = appointment.Schedule.Slot?.SlotTime ?? "",
-                
+
                 // Cost
                 EstimatedCost = estimatedCost.TotalCost,
-                
+
                 // Status flags
                 IsUpcoming = slotDateTime > now,
                 IsPast = slotDateTime < now,
@@ -2347,17 +2348,17 @@ namespace Services.Implementations
                 CanReject = appointment.Status == "Pending" && slotDateTime > now,
                 CanComplete = appointment.Status == "Approval" && slotDateTime <= now
             };
-            
-            _logger.LogInformation("Mapped FacilityAppointmentDTO for appointment {AppointmentId} with {FacilityVaccinesCount} vaccines", 
+
+            _logger.LogInformation("Mapped FacilityAppointmentDTO for appointment {AppointmentId} with {FacilityVaccinesCount} vaccines",
                 appointment.AppointmentId, facilityVaccines.Count);
-            
+
             return dto;
         }
 
         /// <summary>
         /// Tính thống kê appointments cho facility
         /// </summary>
-        private (int PendingCount, int ConfirmedCount, int CompletedCount, int CancelledCount, int RefundingCount, int RefundedCount, int TodayCount) 
+        private (int PendingCount, int ConfirmedCount, int CompletedCount, int CancelledCount, int RefundingCount, int RefundedCount, int TodayCount)
             CalculateFacilityAppointmentStatistics(IEnumerable<VaccinationAppointment> appointments)
         {
             var now = DateTime.Now;
@@ -2369,11 +2370,11 @@ namespace Services.Implementations
             var refundingCount = 0;     // ✅ Đang chờ Manager duyệt hoàn tiền
             var refundedCount = 0;      // ✅ Đã được duyệt hoàn tiền
             var todayCount = 0;
-            
+
             foreach (var appointment in appointments)
             {
                 var slotDateTime = appointment.Schedule.Date.ToDateTime(appointment.Schedule.Slot?.StartTime ?? TimeOnly.MinValue);
-                
+
                 // Count by status
                 switch (appointment.Status)
                 {
@@ -2396,14 +2397,14 @@ namespace Services.Implementations
                         refundedCount++;
                         break;
                 }
-                
+
                 // Count today's appointments
                 if (appointment.Schedule.Date == today)
                 {
                     todayCount++;
                 }
             }
-            
+
             return (pendingCount, confirmedCount, completedCount, cancelledCount, refundingCount, refundedCount, todayCount);
         }
 
@@ -2431,7 +2432,7 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Manager duyệt hoàn tiền cho appointment {AppointmentId} tại facility {FacilityId}", 
+                _logger.LogInformation("Manager duyệt hoàn tiền cho appointment {AppointmentId} tại facility {FacilityId}",
                     appointmentId, facilityId);
 
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
@@ -2458,8 +2459,8 @@ namespace Services.Implementations
 
                 // Update to Accepted
                 appointment.Status = "Accepted";
-                appointment.Note = !string.IsNullOrEmpty(note) 
-                    ? $"{appointment.Note}\n[Manager Approved Refund]: {note}" 
+                appointment.Note = !string.IsNullOrEmpty(note)
+                    ? $"{appointment.Note}\n[Manager Approved Refund]: {note}"
                     : $"{appointment.Note}\n[Manager Approved Refund]";
                 appointment.UpdatedAt = DateTime.UtcNow;
 
@@ -2470,7 +2471,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi duyệt hoàn tiền cho appointment {AppointmentId} tại facility {FacilityId}", 
+                _logger.LogError(ex, "Lỗi khi duyệt hoàn tiền cho appointment {AppointmentId} tại facility {FacilityId}",
                     appointmentId, facilityId);
                 throw;
             }
@@ -2484,7 +2485,7 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Validating rebooking request for ChildVaccineProfile {ProfileId} by Account {AccountId}", 
+                _logger.LogInformation("Validating rebooking request for ChildVaccineProfile {ProfileId} by Account {AccountId}",
                     childVaccineProfileId, accountId);
 
                 // 1. Lấy thông tin ChildVaccineProfile
@@ -2595,7 +2596,7 @@ namespace Services.Implementations
             try
             {
                 _logger.LogInformation("Tạo ChildVaccineProfile cho appointment {AppointmentId}", appointment.AppointmentId);
-                
+
                 var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
                 if (!request.DiseaseId.HasValue)
                 {
@@ -2608,7 +2609,7 @@ namespace Services.Implementations
                 if (request.OrderId.HasValue && request.OrderId.Value > 0)
                 {
                     _logger.LogInformation("Tạo ChildVaccineProfile từ Order {OrderId}", request.OrderId.Value);
-                    
+
                     var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
                     var orderDetails = await orderDetailRepo.FindAsync(
                         od => od.OrderId == request.OrderId.Value,
@@ -2642,7 +2643,7 @@ namespace Services.Implementations
                 else if (request.PackageId.HasValue && request.PackageId.Value > 0)
                 {
                     _logger.LogInformation("Tạo ChildVaccineProfile từ Package {PackageId}", request.PackageId.Value);
-                    
+
                     var packageVaccineRepo = _unitOfWork.GetRepository<PackageVaccine>();
                     var packageVaccines = await packageVaccineRepo.FindAsync(
                         pv => pv.PackageId == request.PackageId.Value,
@@ -2678,15 +2679,15 @@ namespace Services.Implementations
                 else if (request.FacilityVaccineIds != null && request.FacilityVaccineIds.Any())
                 {
                     _logger.LogInformation("Tạo ChildVaccineProfile từ {Count} vaccine lẻ", request.FacilityVaccineIds.Count);
-                    
+
                     var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
-                    
+
                     foreach (var facilityVaccineId in request.FacilityVaccineIds)
                     {
                         var facilityVaccine = await facilityVaccineRepo.GetAsync(
                             fv => fv.FacilityVaccineId == facilityVaccineId,
                             includeProperties: "Vaccine,Vaccine.VaccineDiseases");
-                        
+
                         if (facilityVaccine?.Vaccine != null)
                         {
                             var canTreat = facilityVaccine.Vaccine.VaccineDiseases?.Any(vd => vd.DiseaseId == diseaseId) ?? false;
@@ -2731,22 +2732,22 @@ namespace Services.Implementations
             {
                 // Kiểm tra xem đã có profile cho vaccine này chưa (theo ChildId, VaccineId, DiseaseId)
                 var existingProfile = await childVaccineProfileRepo.GetAsync(
-                    p => p.ChildId == childId && 
-                         p.VaccineId == vaccineId && 
+                    p => p.ChildId == childId &&
+                         p.VaccineId == vaccineId &&
                          p.DiseaseId == diseaseId &&
                          p.AppointmentId == appointmentId);
 
                 if (existingProfile != null)
                 {
-                    _logger.LogInformation("ChildVaccineProfile đã tồn tại cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, bỏ qua", 
+                    _logger.LogInformation("ChildVaccineProfile đã tồn tại cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, bỏ qua",
                         childId, vaccineId, diseaseId);
                     return;
                 }
 
                 // Tìm dose number tiếp theo cho vaccine này
                 var existingProfiles = await childVaccineProfileRepo.FindAsync(
-                    p => p.ChildId == childId && 
-                         p.VaccineId == vaccineId && 
+                    p => p.ChildId == childId &&
+                         p.VaccineId == vaccineId &&
                          p.DiseaseId == diseaseId);
 
                 var nextDoseNum = 1;
@@ -2759,7 +2760,7 @@ namespace Services.Implementations
                 // Kiểm tra không vượt quá số liều tối đa
                 if (nextDoseNum > totalDoses)
                 {
-                    _logger.LogWarning("Dose {DoseNum} vượt quá số liều tối đa {TotalDoses} cho vaccine {VaccineId}", 
+                    _logger.LogWarning("Dose {DoseNum} vượt quá số liều tối đa {TotalDoses} cho vaccine {VaccineId}",
                         nextDoseNum, totalDoses, vaccineId);
                     return;
                 }
@@ -2782,18 +2783,70 @@ namespace Services.Implementations
                 };
 
                 await childVaccineProfileRepo.AddAsync(newProfile);
-                
-                _logger.LogInformation("Đã tạo ChildVaccineProfile mới cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum} với status 'Pending'", 
+
+                _logger.LogInformation("Đã tạo ChildVaccineProfile mới cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum} với status 'Pending'",
                     childId, vaccineId, diseaseId, nextDoseNum);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi tạo ChildVaccineProfile cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}", 
+                _logger.LogError(ex, "Lỗi khi tạo ChildVaccineProfile cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}",
                     childId, vaccineId, diseaseId);
                 throw;
             }
         }
 
         #endregion
+
+        public async Task<AppointmentStatsDTO> GetAppointmentStatsByFacilityAsync(int facilityId)
+        {
+            try
+            {
+                _logger.LogInformation($"Calculating appointment stats for FacilityId: {facilityId}");
+                var repository = _unitOfWork.GetRepository<VaccinationAppointment>();
+
+                var appointments = await repository.GetAllAsync(
+                    filter: a => a.Schedule.FacilityId == facilityId,
+                    include: "Schedule,Order" 
+                );
+
+                var data = appointments.Data;
+
+                var totalAppointments = data.Count();
+
+                var packageAppointments = data.Count(a => a.OrderId.HasValue && a.Order != null && a.Order.PackageId > 0);
+                var individualAppointments = data.Count(a => !a.OrderId.HasValue);
+
+                var pending = data.Count(a => a.Status == "Pending");
+                var completed = data.Count(a => a.Status == "Completed");
+                var approval = data.Count(a => a.Status == "Approval");
+                var cancelled = data.Count(a => a.Status == "Cancelled");
+                var paid = data.Count(a => a.Status == "Paid");
+
+                var uniqueChildrenVaccinated = data
+                    .Where(a => a.Status == "Completed")
+                    .Select(a => a.ChildId)
+                    .Distinct()
+                    .Count();
+
+                return new AppointmentStatsDTO
+                {
+                    TotalAppointments = totalAppointments,
+                    PackageAppointments = packageAppointments,
+                    IndividualAppointments = individualAppointments,
+                    Pending = pending,
+                    Completed = completed,
+                    Approval = approval,
+                    Cancelled = cancelled,
+                    Paid = paid,
+                    UniqueChildrenVaccinated = uniqueChildrenVaccinated
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error calculating appointment stats for FacilityId {facilityId}");
+                throw;
+            }
+        }
+
     }
-} 
+}

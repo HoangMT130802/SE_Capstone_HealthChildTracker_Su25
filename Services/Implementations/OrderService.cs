@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Contracts.DTOs.Dashboard;
 using Contracts.DTOs.Order;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -304,6 +305,43 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error deleting order with ID {orderId}");
+                throw;
+            }
+        }
+        public async Task<int> GetCountByFacilityAsync(int facilityId)
+        {
+            var repository = _unitOfWork.GetRepository<Order>();
+            return await repository.CountAsync(o => o.Package.FacilityId == facilityId); 
+        }
+
+        public async Task<RevenueStatsDTO> GetRevenueStatsByFacilityAsync(int facilityId)
+        {
+            try
+            {
+                _logger.LogInformation($"Calculating revenue stats for FacilityId: {facilityId}");
+                var repository = _unitOfWork.GetRepository<Order>();
+
+                // Lấy orders Paid
+                var paidOrders = await repository.GetAllAsync(
+                    filter: o => o.Package.FacilityId == facilityId && o.Status == "Paid",
+                    include: "Package"
+                );
+
+                // Lấy orders Pending
+                var pendingOrders = await repository.GetAllAsync(
+                    filter: o => o.Package.FacilityId == facilityId && o.Status == "Pending",
+                    include: "Package"
+                );
+
+                return new RevenueStatsDTO
+                {
+                    PaidRevenue = paidOrders.Data.Sum(o => o.TotalAmount),
+                    PendingOrdersCount = pendingOrders.Data.Count()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error calculating revenue stats for FacilityId {facilityId}");
                 throw;
             }
         }
