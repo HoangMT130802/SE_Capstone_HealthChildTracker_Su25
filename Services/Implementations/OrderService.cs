@@ -308,6 +308,12 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<decimal> GetTotalRevenueAsync()
+        {
+            var repository = _unitOfWork.GetRepository<Order>();
+            var orders = await repository.GetAllAsync(o => o.Status == "Paid");
+            return orders.Data.Sum(o => o.TotalAmount);
+        }
         public async Task<int> GetCountByFacilityAsync(int facilityId)
         {
             var repository = _unitOfWork.GetRepository<Order>();

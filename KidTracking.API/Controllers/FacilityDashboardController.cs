@@ -39,7 +39,6 @@ namespace KidTracking.API.Controllers
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
-        // Cập nhật FacilityDashboardController.cs
         [HttpGet]
         public async Task<ActionResult<FacilityDashboardDTO>> GetDashboardInfo(int facilityId)
         {
@@ -47,27 +46,20 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogInformation($"Retrieving dashboard info for FacilityId: {facilityId}");
 
-                // 1. Số lượng FacilityVaccine
                 var totalFacilityVaccines = await _facilityVaccineService.GetCountByFacilityAsync(facilityId);
 
-                // 2. Số Order (tổng số đơn hàng, bất kể status - nếu muốn riêng thì điều chỉnh)
                 var totalOrders = await _orderService.GetCountByFacilityAsync(facilityId);
 
-                // 3. Số PackageVaccine
                 var totalPackageVaccines = await _vaccinePackageService.GetCountByFacilityAsync(facilityId);
 
-                // 4. Rating trung bình
                 var averageRating = await _facilityRatingService.GetAverageRatingByFacilityAsync(facilityId);
 
-                // 5. Thống kê revenue: Paid riêng, Pending count riêng
                 var revenueStats = await _orderService.GetRevenueStatsByFacilityAsync(facilityId);
 
-                // 6. Thống kê staff
                 var staffCounts = await _facilityStaffService.GetStaffCountsByFacilityAsync(facilityId);
 
                 var appointmentStats = await _appointmentService.GetAppointmentStatsByFacilityAsync(facilityId);
 
-                // Tạo DTO response
                 var dashboardDto = new FacilityDashboardDTO
                 {
                     FacilityId = facilityId,

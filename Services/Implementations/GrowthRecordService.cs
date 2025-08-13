@@ -197,5 +197,10 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<int> GetTotalCountAsync()
+        {
+            var repository = _unitOfWork.GetRepository<GrowthRecord>();
+            return await repository.CountAsync(gr => true); 
+        }
     }
 }

@@ -12,5 +12,6 @@ namespace Services.Interfaces
         Task<VaccinationFacilityDTO?> UpdateFacilityAsync(UpdateVaccinationFacilityDTO updateDto, int managerAccountId);
         Task<bool> DeleteFacilityAsync(int facilityId, int managerAccountId);
         Task<bool> CheckManagerHasFacilityAsync(int managerAccountId);
+        Task<int> GetTotalCountAsync();
     }
 } 

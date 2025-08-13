@@ -177,5 +177,11 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<decimal> GetTotalRevenueFromMembershipsAsync()
+        {
+            var repository = _unitOfWork.GetRepository<Transaction>();
+            var transactions = await repository.GetAllAsync(t => t.UserMembershipId != null && t.Status == "PAID"); 
+            return transactions.Data.Sum(t => t.Amount); 
+        }
     }
 } 

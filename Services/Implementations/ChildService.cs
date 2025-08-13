@@ -564,5 +564,10 @@ namespace Services.Implementations
         }
 
         #endregion
+        public async Task<int> GetTotalCountAsync()
+        {
+            var repository = _unitOfWork.GetRepository<Child>();
+            return await repository.CountAsync(a => true); 
+        }
     }
 }

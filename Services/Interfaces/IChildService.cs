@@ -19,5 +19,6 @@ namespace Services.Interfaces
 
         // New combined method
         Task<ChildWithGrowthRecordResponseDTO> CreateChildWithGrowthRecordAsync(int accountId, CreateChildWithGrowthRecordDTO createDTO);
+        Task<int> GetTotalCountAsync();
     }
 }

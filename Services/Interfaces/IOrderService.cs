@@ -19,5 +19,6 @@ namespace Services.Interfaces
         Task<QueryResultModel<IEnumerable<OrderDTO>>> GetMyOrdersAsync(string status = null, int accountId = 0, int? pageIndex = null, int? pageSize = null);
         Task<int> GetCountByFacilityAsync(int facilityId);
         Task<RevenueStatsDTO> GetRevenueStatsByFacilityAsync(int facilityId);
+        Task<decimal> GetTotalRevenueAsync();
     }
 }
