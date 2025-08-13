@@ -16,6 +16,7 @@ namespace KidTracking.API.Controllers
         private readonly IVaccinePackageService _vaccinePackageService;
         private readonly IFacilityRatingService _facilityRatingService;
         private readonly IFacilityStaffService _facilityStaffService;
+        private readonly IAppointmentBookingService _appointmentService;
         private readonly IMapper _mapper;
         private readonly ILogger<FacilityDashboardController> _logger;
 
@@ -25,7 +26,8 @@ namespace KidTracking.API.Controllers
             IVaccinePackageService vaccinePackageService,
             IFacilityRatingService facilityRatingService,
             IFacilityStaffService facilityStaffService,
-            IMapper mapper,
+            IAppointmentBookingService appointmentService,
+        IMapper mapper,
             ILogger<FacilityDashboardController> logger)
         {
             _facilityVaccineService = facilityVaccineService ?? throw new ArgumentNullException(nameof(facilityVaccineService));
@@ -33,6 +35,7 @@ namespace KidTracking.API.Controllers
             _vaccinePackageService = vaccinePackageService ?? throw new ArgumentNullException(nameof(vaccinePackageService));
             _facilityRatingService = facilityRatingService ?? throw new ArgumentNullException(nameof(facilityRatingService));
             _facilityStaffService = facilityStaffService ?? throw new ArgumentNullException(nameof(facilityStaffService));
+            _appointmentService = appointmentService ?? throw new ArgumentNullException(nameof(appointmentService));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -62,6 +65,8 @@ namespace KidTracking.API.Controllers
                 // 6. Thống kê staff
                 var staffCounts = await _facilityStaffService.GetStaffCountsByFacilityAsync(facilityId);
 
+                var appointmentStats = await _appointmentService.GetAppointmentStatsByFacilityAsync(facilityId);
+
                 // Tạo DTO response
                 var dashboardDto = new FacilityDashboardDTO
                 {
@@ -71,7 +76,8 @@ namespace KidTracking.API.Controllers
                     TotalPackageVaccines = totalPackageVaccines,
                     AverageRating = averageRating,
                     RevenueStats = revenueStats, 
-                    StaffCounts = staffCounts
+                    StaffCounts = staffCounts,
+                    AppointmentStats = appointmentStats
                 };
 
                 return Ok(dashboardDto);

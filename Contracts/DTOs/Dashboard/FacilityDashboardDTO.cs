@@ -15,5 +15,6 @@ namespace Contracts.DTOs.Dashboard
         public double AverageRating { get; set; }
         public RevenueStatsDTO RevenueStats { get; set; }
         public StaffCountsDTO StaffCounts { get; set; }
+        public AppointmentStatsDTO AppointmentStats { get; set; }
     }
 }

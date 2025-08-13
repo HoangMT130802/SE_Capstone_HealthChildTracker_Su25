@@ -1,4 +1,5 @@
 using Contracts.DTOs.Appointment;
+using Contracts.DTOs.Dashboard;
 
 namespace Services.Interfaces
 {
@@ -41,5 +42,6 @@ namespace Services.Interfaces
         
         // Helper Methods
         Task<List<AppointmentSuggestionDTO>> GenerateAppointmentSuggestionsAsync(AppointmentQuickBookingDTO request, int maxSuggestions = 5);
+        Task<AppointmentStatsDTO> GetAppointmentStatsByFacilityAsync(int facilityId);
     }
 } 
