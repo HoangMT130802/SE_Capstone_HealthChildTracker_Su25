@@ -241,5 +241,10 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<int> GetCountByFacilityAsync(int facilityId)
+        {
+            var repository = _unitOfWork.GetRepository<FacilityVaccine>();
+            return await repository.CountAsync(fv => fv.FacilityId == facilityId);
+        }
     }
 }

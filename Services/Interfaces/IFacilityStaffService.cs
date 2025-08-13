@@ -1,4 +1,5 @@
-﻿using Contracts.DTOs.FacilityStaff;
+﻿using Contracts.DTOs.Dashboard;
+using Contracts.DTOs.FacilityStaff;
 using Repositories.Models.QueryModels;
 using System;
 using System.Collections.Generic;
@@ -12,5 +13,6 @@ namespace Services.Interfaces
     {
         Task<FacilityStaffDTO> GetFacilityStaffByIdAsync(int staffId);
         Task<QueryResultModel<IEnumerable<FacilityStaffDTO>>> GetAllFacilityStaffAsync(int? facilityId = null, string position = null, int? pageIndex = null, int? pageSize = null);
+        Task<StaffCountsDTO> GetStaffCountsByFacilityAsync(int facilityId);
     }
 }
