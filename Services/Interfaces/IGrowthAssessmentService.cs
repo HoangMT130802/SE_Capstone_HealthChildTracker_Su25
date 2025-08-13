@@ -11,6 +11,6 @@ namespace Services.Interfaces
     public interface IGrowthAssessmentService
     {
         Task<GrowthAssessmentDTO> AssessGrowthAsync(GrowthRecord record);
-        Task<GrowthPredictionDTO> PredictGrowthAsync(int childId, string period = "3months");
+        Task<GrowthPredictionDTO> PredictGrowthAsync(int childId, int days = 90);
     }
 }

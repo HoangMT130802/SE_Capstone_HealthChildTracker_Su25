@@ -29,7 +29,7 @@ namespace Services.Implementations
             _logger = logger;
         }
 
-        public async Task<GrowthPredictionDTO> PredictGrowthAsync(int childId, string period = "3months")
+        public async Task<GrowthPredictionDTO> PredictGrowthAsync(int childId, int days = 90)
         {
             try
             {
@@ -47,9 +47,8 @@ namespace Services.Implementations
                 if (sortedRecords.Count < 2)
                     throw new InvalidOperationException("Cần ít nhất 2 điểm dữ liệu để dự đoán tăng trưởng");
 
-                // Parse period
-                var predictionDays = ParsePeriodToDays(period);
-                var timePoints = GenerateTimePoints(period);
+                // Tạo mốc dự đoán từ số ngày
+                var timePoints = GenerateTimePoints(days);
 
                 // Sử dụng tối đa 6 điểm gần nhất cho dự đoán
                 var recentRecords = sortedRecords.TakeLast(Math.Min(6, sortedRecords.Count)).ToList();
@@ -69,7 +68,7 @@ namespace Services.Implementations
                 var weightTrend = CalculateLinearTrend(recentRecords, r => (double)r.Weight, r => r.CreatedAt);
                 var headTrend = CalculateLinearTrend(recentRecords, r => (double)r.HeadCircumference, r => r.CreatedAt);
 
-                // Tạo các điểm dự đoán
+                // Tạo điểm dự đoán duy nhất theo số ngày yêu cầu
                 foreach (var timePoint in timePoints)
                 {
                     var predictedDate = lastRecord.CreatedAt.AddDays(timePoint.Days);
@@ -117,32 +116,19 @@ namespace Services.Implementations
             }
         }
 
-        private int ParsePeriodToDays(string period)
+        private List<(int Days, string Label)> GenerateTimePoints(int days)
         {
-            return period.ToLower() switch
+            string label = days switch
             {
-                "1day" => 1,
-                "1week" => 7,
-                "1month" => 30,
-                "3months" => 90,
-                "6months" => 180,
-                "1year" => 365,
-                _ => 90 // default 3 months
+                1 => "1 ngày",
+                7 => "1 tuần",
+                30 => "1 tháng",
+                90 => "3 tháng",
+                180 => "6 tháng",
+                365 => "1 năm",
+                _ => $"{days} ngày"
             };
-        }
-
-        private List<(int Days, string Label)> GenerateTimePoints(string period)
-        {
-            return period.ToLower() switch
-            {
-                "1day" => new List<(int, string)> { (1, "1 ngày") },
-                "1week" => new List<(int, string)> { (7, "1 tuần") },
-                "1month" => new List<(int, string)> { (30, "1 tháng") },
-                "3months" => new List<(int, string)> { (90, "3 tháng") },
-                "6months" => new List<(int, string)> { (180, "6 tháng") },
-                "1year" => new List<(int, string)> { (365, "1 năm") },
-                _ => new List<(int, string)> { (90, "3 tháng") }
-            };
+            return new List<(int, string)> { (days, label) };
         }
 
         private (double Slope, double Intercept) CalculateLinearTrend(

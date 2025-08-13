@@ -121,7 +121,7 @@ namespace KidTracking.API.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<GrowthPredictionDTO>> PredictGrowthByChildId(
             int childId, 
-            [FromQuery] string period = "3months")
+            [FromQuery] int days = 90)
         {
             try
             {
@@ -135,13 +135,12 @@ namespace KidTracking.API.Controllers
                 if (membership == null)
                     return BadRequest(new { message = "Bạn cần đăng ký gói thành viên để sử dụng chức năng này" });
 
-                var validPeriods = new[] { "1day", "1week", "1month", "3months", "6months", "1year" };
-                if (!validPeriods.Contains(period.ToLower()))
+                if (days <= 0)
                 {
-                    return BadRequest($"Khoảng thời gian không hợp lệ. Chọn một trong: {string.Join(", ", validPeriods)}");
+                    return BadRequest("Giá trị days phải là số nguyên dương");
                 }
 
-                var prediction = await _assessmentService.PredictGrowthAsync(childId, period);
+                var prediction = await _assessmentService.PredictGrowthAsync(childId, days);
                 return Ok(prediction);
             }
             catch (KeyNotFoundException ex)
