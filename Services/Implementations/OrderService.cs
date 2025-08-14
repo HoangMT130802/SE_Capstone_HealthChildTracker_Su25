@@ -80,7 +80,7 @@ namespace Services.Implementations
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
                 var package = await packageRepository.GetAsync(
                     p => p.PackageId == orderDto.PackageId,
-                    includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine,Package.Facility"
+                    includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine"
                 );
                 if (package == null)
                 {
