@@ -119,7 +119,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "FacilityStaff")] // Manager có role FacilityStaff
         public async Task<IActionResult> CreateFacility([FromBody] CreateVaccinationFacilityDTO createDto)
         {
             if (!ModelState.IsValid)

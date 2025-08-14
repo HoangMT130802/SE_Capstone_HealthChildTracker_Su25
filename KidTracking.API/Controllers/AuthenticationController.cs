@@ -167,61 +167,6 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo tài khoản Staff/Doctor" });
             }
         }
-
-        [HttpPost("fix-missing-staff-records")]
-        [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<string>> FixMissingStaffRecords()
-        {
-            try
-            {
-                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
-                {
-                    return Unauthorized(new { message = "Token không hợp lệ" });
-                }
-
-                var result = await _authService.FixMissingFacilityStaffRecordsAsync(currentUserId);
-                return Ok(new { message = result });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                _logger.LogWarning($"Fix missing staff records unauthorized: {ex.Message}");
-                return Forbid(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Fix missing staff records error: {ex.Message}");
-                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi migration dữ liệu" });
-            }
-        }
-
-        [HttpGet("data-integrity-report")]
-        [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<string>> GetDataIntegrityReport()
-        {
-            try
-            {
-                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
-                {
-                    return Unauthorized(new { message = "Token không hợp lệ" });
-                }
-
-                var report = await _authService.CheckDataIntegrityReportAsync(currentUserId);
-                return Ok(new { report = report });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                _logger.LogWarning($"Data integrity report unauthorized: {ex.Message}");
-                return Forbid(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Data integrity report error: {ex.Message}");
-                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo báo cáo" });
-            }
-        }
-
         [HttpPut("update-member-profile")]
         [Authorize(Roles = "Member")]
         public async Task<ActionResult<MemberInfoResponseDTO>> UpdateMemberInfo([FromBody] UpdateMemberInfoDTO request)

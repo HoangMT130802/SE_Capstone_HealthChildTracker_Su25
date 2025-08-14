@@ -2730,21 +2730,21 @@ namespace Services.Implementations
         {
             try
             {
-                // Kiểm tra xem đã có profile cho vaccine này chưa (theo ChildId, VaccineId, DiseaseId)
-                var existingProfile = await childVaccineProfileRepo.GetAsync(
+                // ✅ FIX: Kiểm tra duplicate theo AppointmentId (không tạo 2 CVP cho cùng 1 appointment)
+                var duplicateForAppointment = await childVaccineProfileRepo.GetAsync(
                     p => p.ChildId == childId &&
                          p.VaccineId == vaccineId &&
                          p.DiseaseId == diseaseId &&
                          p.AppointmentId == appointmentId);
 
-                if (existingProfile != null)
+                if (duplicateForAppointment != null)
                 {
-                    _logger.LogInformation("ChildVaccineProfile đã tồn tại cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, bỏ qua",
-                        childId, vaccineId, diseaseId);
+                    _logger.LogInformation("ChildVaccineProfile đã tồn tại cho Appointment {AppointmentId}, bỏ qua",
+                        appointmentId);
                     return;
                 }
 
-                // Tìm dose number tiếp theo cho vaccine này
+                // Tìm dose number tiếp theo cho vaccine này (tất cả CVP của child cho vaccine/disease này)
                 var existingProfiles = await childVaccineProfileRepo.FindAsync(
                     p => p.ChildId == childId &&
                          p.VaccineId == vaccineId &&
@@ -2755,13 +2755,31 @@ namespace Services.Implementations
                 {
                     var maxDose = existingProfiles.Max(p => p.DoseNum);
                     nextDoseNum = maxDose + 1;
+                    
+                    _logger.LogInformation("Child {ChildId} đã có {ExistingCount} liều cho Vaccine {VaccineId}/Disease {DiseaseId}, dose tiếp theo: {NextDose}",
+                        childId, existingProfiles.Count(), vaccineId, diseaseId, nextDoseNum);
                 }
 
                 // Kiểm tra không vượt quá số liều tối đa
                 if (nextDoseNum > totalDoses)
                 {
-                    _logger.LogWarning("Dose {DoseNum} vượt quá số liều tối đa {TotalDoses} cho vaccine {VaccineId}",
+                    _logger.LogWarning("Dose {DoseNum} vượt quá số liều tối đa {TotalDoses} cho vaccine {VaccineId}, không tạo CVP",
                         nextDoseNum, totalDoses, vaccineId);
+                    return;
+                }
+
+                // ✅ Kiểm tra xem đã có CVP Pending cho dose này chưa (tránh duplicate booking)
+                var existingPendingForDose = await childVaccineProfileRepo.GetAsync(
+                    p => p.ChildId == childId &&
+                         p.VaccineId == vaccineId &&
+                         p.DiseaseId == diseaseId &&
+                         p.DoseNum == nextDoseNum &&
+                         p.Status == "Pending");
+
+                if (existingPendingForDose != null)
+                {
+                    _logger.LogWarning("Đã có CVP Pending cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum}. Không tạo thêm.",
+                        childId, vaccineId, diseaseId, nextDoseNum);
                     return;
                 }
 
@@ -2777,15 +2795,15 @@ namespace Services.Implementations
                     Status = "Pending", // ✅ Đặt status thành "Pending" khi book appointment
                     IsRequired = true,
                     Priority = "High",
-                    Note = $"Được tạo từ appointment booking",
+                    Note = $"Mũi {nextDoseNum}/{totalDoses} - Được tạo từ appointment booking",
                     CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                     UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                 };
 
                 await childVaccineProfileRepo.AddAsync(newProfile);
 
-                _logger.LogInformation("Đã tạo ChildVaccineProfile mới cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum} với status 'Pending'",
-                    childId, vaccineId, diseaseId, nextDoseNum);
+                _logger.LogInformation("✅ Đã tạo ChildVaccineProfile mới cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum}/{TotalDoses} với status 'Pending'",
+                    childId, vaccineId, diseaseId, nextDoseNum, totalDoses);
             }
             catch (Exception ex)
             {

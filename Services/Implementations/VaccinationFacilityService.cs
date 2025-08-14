@@ -93,12 +93,12 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Manager này đã có cơ sở tiêm chủng hoạt động. Mỗi manager chỉ được tạo 1 cơ sở.");
                 }
 
-                // Kiểm tra account có tồn tại và có role Manager không
+                // Kiểm tra account có tồn tại và có role FacilityStaff không
                 var accountRepository = _unitOfWork.GetRepository<Account>();
-                var account = await accountRepository.GetAsync(a => a.AccountId == managerAccountId && a.Status && a.Role == "Manager");
+                var account = await accountRepository.GetAsync(a => a.AccountId == managerAccountId && a.Status && a.Role == "FacilityStaff");
                 if (account == null)
                 {
-                    throw new UnauthorizedAccessException("Account không tồn tại hoặc không có quyền Manager.");
+                    throw new UnauthorizedAccessException("Account không tồn tại hoặc không có quyền FacilityStaff.");
                 }
 
                 // Kiểm tra số giấy phép đã tồn tại chưa
