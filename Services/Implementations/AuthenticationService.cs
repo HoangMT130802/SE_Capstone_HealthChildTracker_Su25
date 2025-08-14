@@ -30,6 +30,195 @@ namespace Services.Implementations
             _logger = logger;
         }
 
+        /// <summary>
+        /// Helper method để check xem role có phải là staff role không
+        /// </summary>
+        private static bool IsStaffRole(string role)
+        {
+            return role == "FacilityStaff";
+        }
+
+        /// <summary>
+        /// Helper method để debug staff data integrity
+        /// </summary>
+        private async Task<bool> ValidateStaffDataIntegrity(int accountId, string accountName)
+        {
+            try
+            {
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                var staffCount = await staffRepository.CountAsync(s => s.AccountId == accountId);
+                
+                _logger.LogInformation($"Staff data integrity check for Account {accountName} (ID: {accountId}): Found {staffCount} FacilityStaff records");
+                
+                if (staffCount == 0)
+                {
+                    _logger.LogError($"Data integrity issue: Account {accountName} has role FacilityStaff but no FacilityStaff record exists!");
+                    return false;
+                }
+                else if (staffCount > 1)
+                {
+                    _logger.LogWarning($"Data integrity issue: Account {accountName} has {staffCount} FacilityStaff records (should be 1)");
+                }
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error during staff data integrity check: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Migration method để tạo lại FacilityStaff records cho những Manager cũ bị thiếu
+        /// </summary>
+        public async Task<string> FixMissingFacilityStaffRecordsAsync(int adminAccountId)
+        {
+            try
+            {
+                // Validate admin permission
+                var adminAccountRepository = _unitOfWork.GetRepository<Account>();
+                var adminAccount = await adminAccountRepository.GetAsync(a => a.AccountId == adminAccountId);
+                
+                if (adminAccount == null || adminAccount.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền thực hiện migration này");
+                }
+
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                
+                // Tìm tất cả Account có role "FacilityStaff" nhưng không có FacilityStaff record
+                var facilityStaffAccounts = await accountRepository.FindAsync(a => a.Role == "FacilityStaff");
+                var missingStaffRecords = new List<Account>();
+                
+                foreach (var account in facilityStaffAccounts)
+                {
+                    var existingStaff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
+                    if (existingStaff == null)
+                    {
+                        missingStaffRecords.Add(account);
+                    }
+                }
+
+                _logger.LogInformation($"Found {missingStaffRecords.Count} accounts missing FacilityStaff records");
+
+                if (missingStaffRecords.Count == 0)
+                {
+                    return "Không tìm thấy Account nào thiếu FacilityStaff record";
+                }
+
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                var createdRecords = 0;
+
+                try
+                {
+                    foreach (var account in missingStaffRecords)
+                    {
+                        // Tạo FacilityStaff record với thông tin mặc định
+                        var newStaff = new FacilityStaff
+                        {
+                            AccountId = account.AccountId,
+                            FacilityId = 0, // Chưa có facility, cần assign sau
+                            FullName = $"Staff_{account.AccountName}", // Tên mặc định
+                            Email = account.Email,
+                            Phone = null, // Chưa có phone
+                            Position = "Manager", // Giả sử là Manager (có thể cần điều chỉnh manual sau)
+                            Description = "Migrated from old data - please update information",
+                            Status = account.Status,
+                            CreatedAt = account.CreatedAt,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        await staffRepository.AddAsync(newStaff);
+                        createdRecords++;
+                        
+                        _logger.LogInformation($"Created FacilityStaff record for Account {account.AccountName} (StaffId: {newStaff.StaffId})");
+                    }
+
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var result = $"Migration completed successfully! Created {createdRecords} FacilityStaff records.";
+                    _logger.LogInformation($"Migration completed by Admin {adminAccount.AccountName}: {result}");
+                    
+                    return result;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Migration failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Method để kiểm tra và báo cáo tình trạng data integrity
+        /// </summary>
+        public async Task<string> CheckDataIntegrityReportAsync(int adminAccountId)
+        {
+            try
+            {
+                // Validate admin permission
+                var adminAccountRepository = _unitOfWork.GetRepository<Account>();
+                var adminAccount = await adminAccountRepository.GetAsync(a => a.AccountId == adminAccountId);
+                
+                if (adminAccount == null || adminAccount.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền xem báo cáo này");
+                }
+
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                
+                // Đếm các loại account
+                var totalFacilityStaffAccounts = await accountRepository.CountAsync(a => a.Role == "FacilityStaff");
+                var totalFacilityStaffRecords = await staffRepository.CountAsync();
+                
+                // Tìm accounts thiếu FacilityStaff record
+                var facilityStaffAccounts = await accountRepository.FindAsync(a => a.Role == "FacilityStaff");
+                var missingCount = 0;
+                var duplicateCount = 0;
+                var validCount = 0;
+
+                foreach (var account in facilityStaffAccounts)
+                {
+                    var staffCount = await staffRepository.CountAsync(s => s.AccountId == account.AccountId);
+                    if (staffCount == 0)
+                        missingCount++;
+                    else if (staffCount > 1)
+                        duplicateCount++;
+                    else
+                        validCount++;
+                }
+
+                var report = $@"
+=== DATA INTEGRITY REPORT ===
+Total FacilityStaff Accounts: {totalFacilityStaffAccounts}
+Total FacilityStaff Records: {totalFacilityStaffRecords}
+
+✅ Valid (1:1 mapping): {validCount}
+❌ Missing FacilityStaff record: {missingCount}
+⚠️  Duplicate FacilityStaff records: {duplicateCount}
+
+{(missingCount > 0 ? "❗ Cần chạy migration để fix missing records" : "✅ Data integrity OK")}
+";
+
+                _logger.LogInformation($"Data integrity report requested by Admin {adminAccount.AccountName}");
+                return report;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Data integrity check failed: {ex.Message}");
+                throw;
+            }
+        }
+
         public async Task<UserResponseDTO> LoginAsync(LoginRequestDTO request)
         {
             try
@@ -80,9 +269,10 @@ namespace Services.Implementations
                 }
 
                 var response = _mapper.Map<UserResponseDTO>(account);
+                FacilityStaff? staffInfo = null; // Biến để lưu staff info và tái sử dụng
 
                
-                // ✅ Lấy thông tin staff nếu role = "FacilityStaff"
+                // ✅ Lấy thông tin theo role
                 if (account.Role == "Member")
                 {
                     var memberRepository = _unitOfWork.GetRepository<Member>();
@@ -94,27 +284,50 @@ namespace Services.Implementations
                         response.Address = member.Address;
                     }
                 }
-                else if (account.Role == "FacilityStaff") // ✅ Chỉ check "FacilityStaff"
+                else if (IsStaffRole(account.Role))
                 {
+                    // Validate data integrity first
+                    await ValidateStaffDataIntegrity(account.AccountId, account.AccountName);
+                    
                     var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                    var staff = await staffRepository.GetAsync(s => s.AccountId == account.AccountId, 
+                    staffInfo = await staffRepository.GetAsync(s => s.AccountId == account.AccountId, 
                         includeProperties: "Account,Facility");
-                    if (staff != null)
+                    
+                    _logger.LogInformation($"Staff lookup for AccountId {account.AccountId}: {(staffInfo != null ? "Found" : "Not Found")}");
+                    
+                    if (staffInfo != null)
                     {
-                        response.FullName = staff.FullName;
-                        response.Phone = staff.Phone?.ToString();
-                        response.StaffId = staff.StaffId;
-                        response.Position = staff.Position; // "Manager", "Doctor", "Staff"
-                        response.FacilityId = staff.FacilityId;
+                        response.FullName = staffInfo.FullName;
+                        response.Phone = staffInfo.Phone?.ToString() ?? "";
+                        response.StaffId = staffInfo.StaffId;
+                        response.Position = staffInfo.Position; // "Manager", "Doctor", "Staff"
+                        response.FacilityId = staffInfo.FacilityId;
+                        
+                        _logger.LogInformation($"Staff info loaded - StaffId: {staffInfo.StaffId}, Position: {staffInfo.Position}, FacilityId: {staffInfo.FacilityId}");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"FacilityStaff record not found for AccountId {account.AccountId} with role {account.Role}");
+                        // Set default values to avoid null
+                        response.StaffId = null;
+                        response.Position = null;
+                        response.FacilityId = null;
                     }
                 }
 
-                // ✅ Generate JWT với FacilityId cho Staff
-                if (account.Role == "FacilityStaff") // ✅ Chỉ check "FacilityStaff"
+                // ✅ Generate JWT với FacilityId cho Staff (sử dụng lại staffInfo đã load)
+                if (IsStaffRole(account.Role))
                 {
-                    var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                    var staffInfo = await staffRepository.GetAsync(s => s.AccountId == account.AccountId);
-                    response.Token = _jwtService.GenerateToken(account, staffInfo?.FacilityId);
+                    if (staffInfo != null)
+                    {
+                        response.Token = _jwtService.GenerateToken(account, staffInfo.FacilityId);
+                        _logger.LogInformation($"JWT generated with FacilityId: {staffInfo.FacilityId}");
+                    }
+                    else
+                    {
+                        response.Token = _jwtService.GenerateToken(account);
+                        _logger.LogWarning($"JWT generated without FacilityId for staff account {account.AccountName}");
+                    }
                 }
                 else
                 {
@@ -352,7 +565,7 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Chỉ Admin mới có quyền tạo tài khoản Manager");
                 }
 
-                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone);
+                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone ?? "");
 
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
                 
@@ -377,25 +590,38 @@ namespace Services.Implementations
                     await accountRepository.AddAsync(newAccount);
                     await _unitOfWork.SaveChangesAsync();
 
-                    await transaction.CommitAsync();
-
-                    // Prepare response (chỉ từ Account, chưa có FacilityStaff)
-                    var response = new StaffResponseDTO
+                    // ✅ CREATE FACILITYSTAFF RECORD cho Manager
+                    var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var newManagerStaff = new FacilityStaff
                     {
                         AccountId = newAccount.AccountId,
-                        StaffId = 0, // Manager chưa có Staff record
-                        AccountName = newAccount.AccountName,
-                        Email = newAccount.Email,
-                        Role = newAccount.Role, // ✅ "FacilityStaff"
+                        FacilityId = 0, // Manager chưa có facility, sẽ được assign sau
                         FullName = request.FullName,
-                        Phone = request.Phone ?? "",
-                        FacilityId = 0, // Manager chưa có facility
-                        Position = "Manager", // ✅ Position = "Manager" trong FacilityStaff
+                        Email = request.Email,
+                        Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
+                            (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null),
+                        Position = "Manager",
                         Description = request.Description ?? "",
                         Status = true,
-                        CreatedAt = newAccount.CreatedAt,
-                        Token = _jwtService.GenerateToken(newAccount, null) // Manager mới chưa có facility
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
                     };
+
+                    await staffRepository.AddAsync(newManagerStaff);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    _logger.LogInformation($"FacilityStaff record created for Manager {newAccount.AccountName} - StaffId: {newManagerStaff.StaffId}");
+
+                    await transaction.CommitAsync();
+
+                    // ✅ Prepare response với thông tin FacilityStaff
+                    var staffWithAccount = await staffRepository.GetAsync(
+                        s => s.StaffId == newManagerStaff.StaffId, 
+                        includeProperties: "Account"
+                    );
+
+                    var response = _mapper.Map<StaffResponseDTO>(staffWithAccount);
+                    response.Token = _jwtService.GenerateToken(newAccount, null); // Manager mới chưa có facility
 
                     _logger.LogInformation($"Manager {newAccount.AccountName} created successfully by Admin {adminAccount.AccountName}");
                     return response;
@@ -438,7 +664,7 @@ namespace Services.Implementations
                 // ✅ FacilityId được lấy từ Manager, không cần từ request
                 var facilityId = managerStaff.FacilityId;
 
-                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone);
+                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone ?? "");
 
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
                 

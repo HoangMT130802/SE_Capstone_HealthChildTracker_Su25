@@ -18,5 +18,9 @@ namespace Services.Interfaces
         Task<UserResponseDTO> BanUserAsync(BanUserRequestDTO request, int currentUserId);
         Task<bool> DeleteStaffAsync(int staffId, int managerAccountId);
         Task<QueryResultModel<List<MemberDTO>>> GetAllMembersAsync(int currentUserId, int pageIndex = 1, int pageSize = 10);
+        
+        // Migration methods
+        Task<string> FixMissingFacilityStaffRecordsAsync(int adminAccountId);
+        Task<string> CheckDataIntegrityReportAsync(int adminAccountId);
     }
 }

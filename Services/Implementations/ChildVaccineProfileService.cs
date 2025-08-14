@@ -418,54 +418,28 @@ namespace Services.Implementations
                 // ✅ ActualDate tự động = ngày hôm nay
                 var actualDate = DateOnly.FromDateTime(DateTime.Today);
 
-                // 3. Tìm hoặc tạo bản ghi cho mũi hiện tại
+                // 3. Tìm CVP đã có (được tạo từ Book) theo AppointmentId
                 ChildVaccineProfile? currentProfile = null;
-                // Ưu tiên cập nhật hồ sơ đã được tạo khi booking (theo AppointmentId)
-                if (profileByAppointment != null)
-                {
-                    currentProfile = profileByAppointment;
-                }
-                else
-                {
-                    currentProfile = await profileRepository.GetAsync(p =>
-                        p.ChildId == childId &&
-                        p.VaccineId == facilityVaccine.VaccineId &&
-                        p.DiseaseId == determinedDiseaseId.Value &&
-                        p.DoseNum == completeDto.DoseNumber);
-                }
+                
+                // Tìm CVP theo AppointmentId (bỏ qua VaccineId mismatch)
+                currentProfile = await profileRepository.GetAsync(p => 
+                    p.AppointmentId == completeDto.AppointmentId);
 
                 if (currentProfile == null)
                 {
-                    // Tạo mới nếu chưa có
-                    currentProfile = new ChildVaccineProfile
-                    {
-                        ChildId = childId,
-                        VaccineId = facilityVaccine.VaccineId,
-                        DiseaseId = determinedDiseaseId.Value,
-                        AppointmentId = completeDto.AppointmentId,
-                        DoseNum = completeDto.DoseNumber,
-                        ExpectedDate = actualDate, // Set same as actual initially
-                        ActualDate = actualDate,
-                        Status = "Completed",
-                        IsRequired = true, // Default value
-                        Priority = "High", // Default value  
-                        Note = string.Empty,
-                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                        UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-                    };
-                    await profileRepository.AddAsync(currentProfile);
-                    await _unitOfWork.SaveChangesAsync(); // Save để có ID
+                    throw new InvalidOperationException("Không tìm thấy ChildVaccineProfile cho AppointmentId này. CVP phải được tạo từ booking trước.");
                 }
-                else
-                {
-                    // 4. Cập nhật bản ghi hiện tại thành "Completed"
-                    currentProfile.ActualDate = actualDate;
-                    currentProfile.Status = "Completed";
-                    currentProfile.AppointmentId = completeDto.AppointmentId;
-                    currentProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-                    profileRepository.Update(currentProfile);
-                }
+                // 4. Cập nhật CVP hiện tại thành "Completed"
+                currentProfile.ActualDate = actualDate;
+                currentProfile.Status = "Completed";
+                // Sync lại VaccineId nếu cần (do mismatch giữa Book và Complete)
+                currentProfile.VaccineId = facilityVaccine.VaccineId;
+                currentProfile.DiseaseId = determinedDiseaseId.Value;
+                currentProfile.DoseNum = completeDto.DoseNumber;
+                currentProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                profileRepository.Update(currentProfile);
 
                 // 5. Check xem vaccine có bao nhiêu mũi và đã tiêm được mũi nào chưa
                 var totalDoses = vaccine.NumberOfDoses; // Tổng số mũi của vaccine
@@ -477,28 +451,28 @@ namespace Services.Implementations
                 ChildVaccineProfile? nextProfile = null;
                 DateOnly? nextExpectedDate = null;
 
-                // 6. Nếu còn mũi tiếp theo, tạo bản ghi cho mũi đó (tính/validate ExpectedDate theo VaccineTemplate)
+                // 6. Tạo CVP mũi tiếp theo (nếu chưa đủ liều)
                 if (nextDoseNumber <= totalDoses)
                 {
                     // Check xem đã có bản ghi cho mũi tiếp theo chưa
                     var existingNextProfile = await profileRepository.GetAsync(p =>
-                        p.ChildId == childId &&
-                        p.VaccineId == facilityVaccine.VaccineId &&
-                        p.DiseaseId == determinedDiseaseId.Value &&
+                        p.ChildId == currentProfile.ChildId &&
+                        p.VaccineId == currentProfile.VaccineId &&
+                        p.DiseaseId == currentProfile.DiseaseId &&
                         p.DoseNum == nextDoseNumber);
 
                     if (existingNextProfile == null)
                     {
-                        // Tạm thời bỏ kiểm tra theo VaccineTemplate: ưu tiên ngày client gửi, nếu không có thì +30 ngày
+                        // Tạo CVP mũi tiếp theo với cùng Disease, Vaccine như CVP hiện tại
                         nextExpectedDate = completeDto.ExpectedDateForNextDose != default
                             ? completeDto.ExpectedDateForNextDose
                             : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
 
                         nextProfile = new ChildVaccineProfile
                         {
-                            ChildId = childId,
-                            VaccineId = facilityVaccine.VaccineId,
-                            DiseaseId = determinedDiseaseId.Value,
+                            ChildId = currentProfile.ChildId,
+                            VaccineId = currentProfile.VaccineId,  // Cùng vaccine với CVP hiện tại
+                            DiseaseId = currentProfile.DiseaseId,  // Cùng disease với CVP hiện tại
                             AppointmentId = null, // ✅ NextDose chưa có appointment
                             DoseNum = nextDoseNumber,
                             ExpectedDate = nextExpectedDate.Value,
@@ -514,20 +488,20 @@ namespace Services.Implementations
                         await profileRepository.AddAsync(nextProfile);
                         
                         _logger.LogInformation("Created next dose profile for Child {ChildId}, Vaccine {VaccineId}, Dose {NextDose}, Expected date: {ExpectedDate}", 
-                            childId, facilityVaccine.VaccineId, nextDoseNumber, nextExpectedDate);
+                            currentProfile.ChildId, currentProfile.VaccineId, nextDoseNumber, nextExpectedDate);
                     }
                     else
                     {
                         nextProfile = existingNextProfile;
                         nextExpectedDate = existingNextProfile.ExpectedDate;
                         _logger.LogInformation("Next dose profile already exists for Child {ChildId}, Vaccine {VaccineId}, Dose {NextDose}", 
-                            childId, facilityVaccine.VaccineId, nextDoseNumber);
+                            currentProfile.ChildId, currentProfile.VaccineId, nextDoseNumber);
                     }
                 }
                 else
                 {
                     _logger.LogInformation("Vaccine {VaccineId} course completed for Child {ChildId}. No more doses needed.", 
-                        facilityVaccine.VaccineId, childId);
+                        currentProfile.VaccineId, currentProfile.ChildId);
                 }
 
                 // 7. Cập nhật appointment: status và note
@@ -593,9 +567,9 @@ namespace Services.Implementations
 
                 // 9. Đếm số mũi đã hoàn thành
                 var completedProfiles = await profileRepository.FindAsync(p =>
-                    p.ChildId == childId &&
-                    p.VaccineId == facilityVaccine.VaccineId &&
-                    p.DiseaseId == determinedDiseaseId.Value &&
+                    p.ChildId == currentProfile.ChildId &&
+                    p.VaccineId == currentProfile.VaccineId &&
+                    p.DiseaseId == currentProfile.DiseaseId &&
                     p.Status == "Completed");
 
                 var completedDoses = completedProfiles.Count();
@@ -617,7 +591,7 @@ namespace Services.Implementations
                 }
 
                 _logger.LogInformation("Successfully completed vaccination for Child {ChildId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
-                    childId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
+                    currentProfile.ChildId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
 
                 var result = new VaccinationCompletionResponseDTO
                 {

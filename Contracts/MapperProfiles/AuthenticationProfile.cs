@@ -22,9 +22,9 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Token, opt => opt.Ignore()) 
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt))
-                .ForMember(dest => dest.StaffId, opt => opt.Ignore())
-                .ForMember(dest => dest.Position, opt => opt.Ignore())
-                .ForMember(dest => dest.FacilityId, opt => opt.Ignore());
+                .ForMember(dest => dest.StaffId, opt => opt.Ignore()) // Sẽ được set manual trong service
+                .ForMember(dest => dest.Position, opt => opt.Ignore()) // Sẽ được set manual trong service
+                .ForMember(dest => dest.FacilityId, opt => opt.Ignore()); // Sẽ được set manual trong service
 
             CreateMap<RegisterRequestDTO, Account>()
                 .ForMember(dest => dest.AccountId, opt => opt.Ignore())
