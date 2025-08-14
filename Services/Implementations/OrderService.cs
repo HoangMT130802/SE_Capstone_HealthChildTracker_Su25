@@ -46,9 +46,7 @@ namespace Services.Implementations
             }
             return 0;
         }
-
-
-        public async Task<ResponseDataModel<OrderDTO>> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
+        public async Task<OrderDTO> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
         {
             try
             {
@@ -57,22 +55,15 @@ namespace Services.Implementations
                 var accountId = GetCurrentAccountId();
                 if (accountId == 0)
                 {
-                    return new ResponseDataModel<OrderDTO>
-                    {
-                        Status = false,
-                        Message = "Không thể xác định AccountId của người dùng hiện tại từ token"
-                    };
+                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại từ token");
                 }
 
+                // Tra cứu Member dựa trên AccountId
                 var memberRepository = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepository.GetAsync(m => m.AccountId == accountId);
                 if (member == null)
                 {
-                    return new ResponseDataModel<OrderDTO>
-                    {
-                        Status = false,
-                        Message = $"Không tìm thấy Member gắn với AccountId {accountId}. Chỉ thành viên mới có thể tạo đơn hàng."
-                    };
+                    throw new UnauthorizedAccessException($"Không tìm thấy Member gắn với AccountId {accountId}. Chỉ thành viên mới có thể tạo đơn hàng.");
                 }
 
                 var memberId = member.MemberId;
@@ -80,15 +71,11 @@ namespace Services.Implementations
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
                 var package = await packageRepository.GetAsync(
                     p => p.PackageId == orderDto.PackageId,
-                    includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine,Package.Facility"
+                    includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine"
                 );
                 if (package == null)
                 {
-                    return new ResponseDataModel<OrderDTO>
-                    {
-                        Status = false,
-                        Message = $"Package với ID {orderDto.PackageId} không tồn tại"
-                    };
+                    throw new InvalidOperationException($"Package với ID {orderDto.PackageId} không tồn tại");
                 }
 
                 var order = _mapper.Map<Order>(orderDto);
@@ -107,11 +94,7 @@ namespace Services.Implementations
 
                 if (selectedDiseaseIds.Except(packageDiseaseIds).Any())
                 {
-                    return new ResponseDataModel<OrderDTO>
-                    {
-                        Status = false,
-                        Message = "Một hoặc nhiều DiseaseId không thuộc gói vaccine này"
-                    };
+                    throw new InvalidOperationException("Một hoặc nhiều DiseaseId không thuộc gói vaccine này");
                 }
 
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
@@ -123,49 +106,21 @@ namespace Services.Implementations
                     );
                     if (facilityVaccine == null)
                     {
-                        return new ResponseDataModel<OrderDTO>
-                        {
-                            Status = false,
-                            Message = $"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không tồn tại"
-                        };
+                        throw new InvalidOperationException($"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không tồn tại");
                     }
                     if (facilityVaccine.AvailableQuantity < selectedVaccine.Quantity)
                     {
-                        return new ResponseDataModel<OrderDTO>
-                        {
-                            Status = false,
-                            Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không đủ, chỉ còn {facilityVaccine.AvailableQuantity}"
-                        };
-                    }
-                    if (selectedVaccine.Quantity <= 0)
-                    {
-                        return new ResponseDataModel<OrderDTO>
-                        {
-                            Status = false,
-                            Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không được âm"
-                        };
-                    }
-                    if (selectedVaccine.Quantity > facilityVaccine.Vaccine.NumberOfDoses)
-                    {
-                        return new ResponseDataModel<OrderDTO>
-                        {
-                            Status = false,
-                            Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} vượt quá số liều tối đa {facilityVaccine.Vaccine.NumberOfDoses}"
-                        };
+                        throw new InvalidOperationException($"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không đủ, chỉ còn {facilityVaccine.AvailableQuantity}");
                     }
 
                     var diseaseMatch = facilityVaccine.Vaccine?.VaccineDiseases?.Any(vd => vd.DiseaseId == selectedVaccine.DiseaseId);
                     if (diseaseMatch == null || !diseaseMatch.Value)
                     {
-                        return new ResponseDataModel<OrderDTO>
-                        {
-                            Status = false,
-                            Message = $"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không phù hợp với DiseaseId {selectedVaccine.DiseaseId}"
-                        };
+                        throw new InvalidOperationException($"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không phù hợp với DiseaseId {selectedVaccine.DiseaseId}");
                     }
 
                     var orderDetail = _mapper.Map<OrderDetail>(selectedVaccine);
-                    orderDetail.OrderId = order.OrderId;
+                    orderDetail.OrderId = order.OrderId; // OrderId sẽ được gán sau khi lưu
                     orderDetail.Price = facilityVaccine.Price * selectedVaccine.Quantity;
                     orderDetail.CreatedAt = currentTime;
                     orderDetail.UpdatedAt = currentTime;
@@ -180,27 +135,173 @@ namespace Services.Implementations
                 await orderRepository.AddAsync(order);
                 await _unitOfWork.SaveChangesAsync();
 
+                // Lấy lại order đã lưu để đảm bảo OrderId được gán
                 var savedOrder = await orderRepository.GetAsync(
                     o => o.OrderId == order.OrderId,
                     includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
                 );
-                return new ResponseDataModel<OrderDTO>
-                {
-                    Status = true,
-                    Message = "Tạo đơn hàng thành công",
-                    Data = _mapper.Map<OrderDTO>(savedOrder)
-                };
+                return _mapper.Map<OrderDTO>(savedOrder);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error creating package order for PackageId {orderDto?.PackageId}");
-                return new ResponseDataModel<OrderDTO>
-                {
-                    Status = false,
-                    Message = $"Lỗi khi tạo đơn hàng: {ex.Message}"
-                };
+                throw;
             }
         }
+
+        //public async Task<ResponseDataModel<OrderDTO>> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
+        //{
+        //    try
+        //    {
+        //        _logger.LogInformation($"Creating package order for PackageId: {orderDto.PackageId}");
+
+        //        var accountId = GetCurrentAccountId();
+        //        if (accountId == 0)
+        //        {
+        //            return new ResponseDataModel<OrderDTO>
+        //            {
+        //                Status = false,
+        //                Message = "Không thể xác định AccountId của người dùng hiện tại từ token"
+        //            };
+        //        }
+
+        //        var memberRepository = _unitOfWork.GetRepository<Member>();
+        //        var member = await memberRepository.GetAsync(m => m.AccountId == accountId);
+        //        if (member == null)
+        //        {
+        //            return new ResponseDataModel<OrderDTO>
+        //            {
+        //                Status = false,
+        //                Message = $"Không tìm thấy Member gắn với AccountId {accountId}. Chỉ thành viên mới có thể tạo đơn hàng."
+        //            };
+        //        }
+
+        //        var memberId = member.MemberId;
+
+        //        var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
+        //        var package = await packageRepository.GetAsync(
+        //            p => p.PackageId == orderDto.PackageId,
+        //            includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine,Package.Facility"
+        //        );
+        //        if (package == null)
+        //        {
+        //            return new ResponseDataModel<OrderDTO>
+        //            {
+        //                Status = false,
+        //                Message = $"Package với ID {orderDto.PackageId} không tồn tại"
+        //            };
+        //        }
+
+        //        var order = _mapper.Map<Order>(orderDto);
+        //        var currentTime = DateTime.UtcNow;
+        //        order.OrderDate = orderDto.OrderDate != default ? orderDto.OrderDate : currentTime;
+        //        order.CreatedAt = currentTime;
+        //        order.UpdatedAt = currentTime;
+        //        order.Status = orderDto.Status ?? "Pending";
+        //        order.TotalAmount = 0;
+        //        order.MemberId = memberId;
+        //        order.Package = package;
+
+        //        var orderDetailRepository = _unitOfWork.GetRepository<OrderDetail>();
+        //        var selectedDiseaseIds = orderDto.SelectedVaccines.Select(v => v.DiseaseId).Distinct().ToList();
+        //        var packageDiseaseIds = package.PackageVaccines.Select(pv => pv.DiseaseId).Distinct().ToList();
+
+        //        if (selectedDiseaseIds.Except(packageDiseaseIds).Any())
+        //        {
+        //            return new ResponseDataModel<OrderDTO>
+        //            {
+        //                Status = false,
+        //                Message = "Một hoặc nhiều DiseaseId không thuộc gói vaccine này"
+        //            };
+        //        }
+
+        //        var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+        //        foreach (var selectedVaccine in orderDto.SelectedVaccines)
+        //        {
+        //            var facilityVaccine = await facilityVaccineRepository.GetAsync(
+        //                fv => fv.FacilityVaccineId == selectedVaccine.FacilityVaccineId,
+        //                includeProperties: "Vaccine.VaccineDiseases"
+        //            );
+        //            if (facilityVaccine == null)
+        //            {
+        //                return new ResponseDataModel<OrderDTO>
+        //                {
+        //                    Status = false,
+        //                    Message = $"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không tồn tại"
+        //                };
+        //            }
+        //            if (facilityVaccine.AvailableQuantity < selectedVaccine.Quantity)
+        //            {
+        //                return new ResponseDataModel<OrderDTO>
+        //                {
+        //                    Status = false,
+        //                    Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không đủ, chỉ còn {facilityVaccine.AvailableQuantity}"
+        //                };
+        //            }
+        //            if (selectedVaccine.Quantity <= 0)
+        //            {
+        //                return new ResponseDataModel<OrderDTO>
+        //                {
+        //                    Status = false,
+        //                    Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không được âm"
+        //                };
+        //            }
+        //            if (selectedVaccine.Quantity > facilityVaccine.Vaccine.NumberOfDoses)
+        //            {
+        //                return new ResponseDataModel<OrderDTO>
+        //                {
+        //                    Status = false,
+        //                    Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} vượt quá số liều tối đa {facilityVaccine.Vaccine.NumberOfDoses}"
+        //                };
+        //            }
+
+        //            var diseaseMatch = facilityVaccine.Vaccine?.VaccineDiseases?.Any(vd => vd.DiseaseId == selectedVaccine.DiseaseId);
+        //            if (diseaseMatch == null || !diseaseMatch.Value)
+        //            {
+        //                return new ResponseDataModel<OrderDTO>
+        //                {
+        //                    Status = false,
+        //                    Message = $"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không phù hợp với DiseaseId {selectedVaccine.DiseaseId}"
+        //                };
+        //            }
+
+        //            var orderDetail = _mapper.Map<OrderDetail>(selectedVaccine);
+        //            orderDetail.OrderId = order.OrderId;
+        //            orderDetail.Price = facilityVaccine.Price * selectedVaccine.Quantity;
+        //            orderDetail.CreatedAt = currentTime;
+        //            orderDetail.UpdatedAt = currentTime;
+        //            order.OrderDetails.Add(orderDetail);
+
+        //            order.TotalAmount += orderDetail.Price;
+        //            facilityVaccine.AvailableQuantity -= selectedVaccine.Quantity;
+        //            facilityVaccineRepository.Update(facilityVaccine);
+        //        }
+
+        //        var orderRepository = _unitOfWork.GetRepository<Order>();
+        //        await orderRepository.AddAsync(order);
+        //        await _unitOfWork.SaveChangesAsync();
+
+        //        var savedOrder = await orderRepository.GetAsync(
+        //            o => o.OrderId == order.OrderId,
+        //            includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
+        //        );
+        //        return new ResponseDataModel<OrderDTO>
+        //        {
+        //            Status = true,
+        //            Message = "Tạo đơn hàng thành công",
+        //            Data = _mapper.Map<OrderDTO>(savedOrder)
+        //        };
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, $"Error creating package order for PackageId {orderDto?.PackageId}");
+        //        return new ResponseDataModel<OrderDTO>
+        //        {
+        //            Status = false,
+        //            Message = $"Lỗi khi tạo đơn hàng: {ex.Message}"
+        //        };
+        //    }
+        //}
 
 
         public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetOrdersAsync(string status = null, int? facilityId = null, DateTime? orderDate = null, int? pageIndex = null, int? pageSize = null)
