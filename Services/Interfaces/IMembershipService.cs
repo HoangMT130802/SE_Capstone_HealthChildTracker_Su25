@@ -12,5 +12,6 @@ namespace Services.Interfaces
         Task<bool> DeleteMembershipAsync(int membershipId);
         Task<bool> ToggleMembershipStatusAsync(int membershipId);
         Task<List<MembershipDTO>> GetActiveMembershipsAsync();
+        Task<int> GetTotalCountAsync();
     }
 } 

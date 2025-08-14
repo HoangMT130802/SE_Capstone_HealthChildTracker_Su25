@@ -33,5 +33,6 @@ namespace Services.Interfaces
         /// Cập nhật trạng thái transaction
         /// </summary>
         Task<bool> UpdateTransactionStatusAsync(string transactionCode, string status);
+        Task<decimal> GetTotalRevenueFromMembershipsAsync();
     }
 } 

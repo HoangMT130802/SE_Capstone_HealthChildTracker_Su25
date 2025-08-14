@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.Dashboard;
+using Contracts.DTOs.Models;
 using Contracts.DTOs.Order;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -47,7 +48,7 @@ namespace Services.Implementations
         }
 
 
-        public async Task<OrderDTO> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
+        public async Task<ResponseDataModel<OrderDTO>> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
         {
             try
             {
@@ -56,15 +57,22 @@ namespace Services.Implementations
                 var accountId = GetCurrentAccountId();
                 if (accountId == 0)
                 {
-                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại từ token");
+                    return new ResponseDataModel<OrderDTO>
+                    {
+                        Status = false,
+                        Message = "Không thể xác định AccountId của người dùng hiện tại từ token"
+                    };
                 }
 
-                // Tra cứu Member dựa trên AccountId
                 var memberRepository = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepository.GetAsync(m => m.AccountId == accountId);
                 if (member == null)
                 {
-                    throw new UnauthorizedAccessException($"Không tìm thấy Member gắn với AccountId {accountId}. Chỉ thành viên mới có thể tạo đơn hàng.");
+                    return new ResponseDataModel<OrderDTO>
+                    {
+                        Status = false,
+                        Message = $"Không tìm thấy Member gắn với AccountId {accountId}. Chỉ thành viên mới có thể tạo đơn hàng."
+                    };
                 }
 
                 var memberId = member.MemberId;
@@ -72,11 +80,15 @@ namespace Services.Implementations
                 var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
                 var package = await packageRepository.GetAsync(
                     p => p.PackageId == orderDto.PackageId,
-                    includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine"
+                    includeProperties: "PackageVaccines,PackageVaccines.Disease,PackageVaccines.FacilityVaccine,Package.Facility"
                 );
                 if (package == null)
                 {
-                    throw new InvalidOperationException($"Package với ID {orderDto.PackageId} không tồn tại");
+                    return new ResponseDataModel<OrderDTO>
+                    {
+                        Status = false,
+                        Message = $"Package với ID {orderDto.PackageId} không tồn tại"
+                    };
                 }
 
                 var order = _mapper.Map<Order>(orderDto);
@@ -95,7 +107,11 @@ namespace Services.Implementations
 
                 if (selectedDiseaseIds.Except(packageDiseaseIds).Any())
                 {
-                    throw new InvalidOperationException("Một hoặc nhiều DiseaseId không thuộc gói vaccine này");
+                    return new ResponseDataModel<OrderDTO>
+                    {
+                        Status = false,
+                        Message = "Một hoặc nhiều DiseaseId không thuộc gói vaccine này"
+                    };
                 }
 
                 var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
@@ -107,21 +123,49 @@ namespace Services.Implementations
                     );
                     if (facilityVaccine == null)
                     {
-                        throw new InvalidOperationException($"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không tồn tại");
+                        return new ResponseDataModel<OrderDTO>
+                        {
+                            Status = false,
+                            Message = $"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không tồn tại"
+                        };
                     }
                     if (facilityVaccine.AvailableQuantity < selectedVaccine.Quantity)
                     {
-                        throw new InvalidOperationException($"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không đủ, chỉ còn {facilityVaccine.AvailableQuantity}");
+                        return new ResponseDataModel<OrderDTO>
+                        {
+                            Status = false,
+                            Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không đủ, chỉ còn {facilityVaccine.AvailableQuantity}"
+                        };
+                    }
+                    if (selectedVaccine.Quantity <= 0)
+                    {
+                        return new ResponseDataModel<OrderDTO>
+                        {
+                            Status = false,
+                            Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không được âm"
+                        };
+                    }
+                    if (selectedVaccine.Quantity > facilityVaccine.Vaccine.NumberOfDoses)
+                    {
+                        return new ResponseDataModel<OrderDTO>
+                        {
+                            Status = false,
+                            Message = $"Số lượng vaccine {selectedVaccine.FacilityVaccineId} vượt quá số liều tối đa {facilityVaccine.Vaccine.NumberOfDoses}"
+                        };
                     }
 
                     var diseaseMatch = facilityVaccine.Vaccine?.VaccineDiseases?.Any(vd => vd.DiseaseId == selectedVaccine.DiseaseId);
                     if (diseaseMatch == null || !diseaseMatch.Value)
                     {
-                        throw new InvalidOperationException($"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không phù hợp với DiseaseId {selectedVaccine.DiseaseId}");
+                        return new ResponseDataModel<OrderDTO>
+                        {
+                            Status = false,
+                            Message = $"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không phù hợp với DiseaseId {selectedVaccine.DiseaseId}"
+                        };
                     }
 
                     var orderDetail = _mapper.Map<OrderDetail>(selectedVaccine);
-                    orderDetail.OrderId = order.OrderId; // OrderId sẽ được gán sau khi lưu
+                    orderDetail.OrderId = order.OrderId;
                     orderDetail.Price = facilityVaccine.Price * selectedVaccine.Quantity;
                     orderDetail.CreatedAt = currentTime;
                     orderDetail.UpdatedAt = currentTime;
@@ -136,17 +180,25 @@ namespace Services.Implementations
                 await orderRepository.AddAsync(order);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Lấy lại order đã lưu để đảm bảo OrderId được gán
                 var savedOrder = await orderRepository.GetAsync(
                     o => o.OrderId == order.OrderId,
                     includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
                 );
-                return _mapper.Map<OrderDTO>(savedOrder);
+                return new ResponseDataModel<OrderDTO>
+                {
+                    Status = true,
+                    Message = "Tạo đơn hàng thành công",
+                    Data = _mapper.Map<OrderDTO>(savedOrder)
+                };
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error creating package order for PackageId {orderDto?.PackageId}");
-                throw;
+                return new ResponseDataModel<OrderDTO>
+                {
+                    Status = false,
+                    Message = $"Lỗi khi tạo đơn hàng: {ex.Message}"
+                };
             }
         }
 
@@ -293,10 +345,22 @@ namespace Services.Implementations
             {
                 _logger.LogInformation($"Deleting order with ID: {orderId}");
                 var orderRepository = _unitOfWork.GetRepository<Order>();
-                var order = await orderRepository.GetAsync(o => o.OrderId == orderId);
+                var order = await orderRepository.GetAsync(
+                    o => o.OrderId == orderId,
+                    includeProperties: "OrderDetails"
+                );
                 if (order == null)
                 {
                     throw new KeyNotFoundException($"Order with ID {orderId} not found");
+                }
+
+                var orderDetailRepository = _unitOfWork.GetRepository<OrderDetail>();
+                if (order.OrderDetails != null && order.OrderDetails.Any())
+                {
+                    foreach (var orderDetail in order.OrderDetails)
+                    {
+                        orderDetailRepository.Delete(orderDetail);
+                    }
                 }
 
                 orderRepository.Delete(order);
@@ -307,6 +371,12 @@ namespace Services.Implementations
                 _logger.LogError(ex, $"Error deleting order with ID {orderId}");
                 throw;
             }
+        }
+        public async Task<decimal> GetTotalRevenueAsync()
+        {
+            var repository = _unitOfWork.GetRepository<Order>();
+            var orders = await repository.GetAllAsync(o => o.Status == "Paid");
+            return orders.Data.Sum(o => o.TotalAmount);
         }
         public async Task<int> GetCountByFacilityAsync(int facilityId)
         {

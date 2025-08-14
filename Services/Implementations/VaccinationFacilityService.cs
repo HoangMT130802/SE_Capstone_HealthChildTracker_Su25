@@ -265,5 +265,10 @@ namespace Services.Implementations
                 throw new Exception($"Lỗi khi kiểm tra facility của manager: {ex.Message}");
             }
         }
+        public async Task<int> GetTotalCountAsync()
+        {
+            var repository = _unitOfWork.GetRepository<VaccinationFacility>();
+            return await repository.CountAsync(a => true);
+        }
     }
 } 

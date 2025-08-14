@@ -2847,6 +2847,54 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<AppointmentStatsDTO> GetAppointmentStatsAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Calculating appointment stats for the entire system");
+                var repository = _unitOfWork.GetRepository<VaccinationAppointment>();
 
+                var appointments = await repository.GetAllAsync(
+                    include: "Schedule,Order"
+                );
+
+                var data = appointments.Data;
+
+                var totalAppointments = data.Count();
+
+                var packageAppointments = data.Count(a => a.OrderId.HasValue && a.Order != null && a.Order.PackageId > 0);
+                var individualAppointments = data.Count(a => !a.OrderId.HasValue);
+
+                var pending = data.Count(a => a.Status == "Pending");
+                var completed = data.Count(a => a.Status == "Completed");
+                var approval = data.Count(a => a.Status == "Approval");
+                var cancelled = data.Count(a => a.Status == "Cancelled");
+                var paid = data.Count(a => a.Status == "Paid");
+
+                var uniqueChildrenVaccinated = data
+                    .Where(a => a.Status == "Completed")
+                    .Select(a => a.ChildId)
+                    .Distinct()
+                    .Count();
+
+                return new AppointmentStatsDTO
+                {
+                    TotalAppointments = totalAppointments,
+                    PackageAppointments = packageAppointments,
+                    IndividualAppointments = individualAppointments,
+                    Pending = pending,
+                    Completed = completed,
+                    Approval = approval,
+                    Cancelled = cancelled,
+                    Paid = paid,
+                    UniqueChildrenVaccinated = uniqueChildrenVaccinated
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating appointment stats for the entire system");
+                throw;
+            }
+        }
     }
 }

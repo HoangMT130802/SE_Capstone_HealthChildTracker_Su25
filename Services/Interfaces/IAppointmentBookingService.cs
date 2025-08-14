@@ -43,5 +43,6 @@ namespace Services.Interfaces
         // Helper Methods
         Task<List<AppointmentSuggestionDTO>> GenerateAppointmentSuggestionsAsync(AppointmentQuickBookingDTO request, int maxSuggestions = 5);
         Task<AppointmentStatsDTO> GetAppointmentStatsByFacilityAsync(int facilityId);
+        Task<AppointmentStatsDTO> GetAppointmentStatsAsync();
     }
 } 

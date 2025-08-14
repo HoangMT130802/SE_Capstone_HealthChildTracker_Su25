@@ -14,5 +14,6 @@ namespace Services.Interfaces
         Task<GrowthRecordDTO> CreateGrowthRecordAsync(int childId, CreateGrowthRecordDTO recordDTO);
         Task<GrowthRecordDTO> UpdateGrowthRecordAsync(int recordId, UpdateGrowthRecordDTO recordDTO);
         Task<bool> DeleteGrowthRecordAsync(int recordId);
+        Task<int> GetTotalCountAsync();
     }
 }
