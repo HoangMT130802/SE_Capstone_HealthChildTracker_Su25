@@ -12,6 +12,7 @@ namespace Services.Interfaces
         Task<StaffResponseDTO> LoginStaffAsync(LoginRequestDTO request);
         Task<UserResponseDTO> RegisterAsync(RegisterRequestDTO request);
         Task<StaffResponseDTO> CreateManagerAsync(CreateManagerDTO request, int adminAccountId);
+        Task<ManagerWithFacilityResponseDTO> CreateManagerWithFacilityAsync(CreateManagerWithFacilityDTO request, int adminAccountId);
         Task<StaffResponseDTO> CreateStaffAsync(CreateStaffDTO request, int managerAccountId);
         Task<MemberInfoResponseDTO> UpdateMemberInfoAsync(UpdateMemberInfoDTO request, int currentUserId);
         Task<FacilityStaffInfoResponseDTO> UpdateFacilityStaffInfoAsync(UpdateFacilityStaffInfoDTO request, int currentUserId);

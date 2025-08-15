@@ -2,6 +2,7 @@
 using Contracts.DTOs.Authentication;
 using Contracts.DTOs.Member;
 using Contracts.DTOs.FacilityStaff;
+using Contracts.DTOs.VaccinationFacility;
 using Services.Interfaces;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -443,6 +444,131 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError($"Create manager failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<ManagerWithFacilityResponseDTO> CreateManagerWithFacilityAsync(CreateManagerWithFacilityDTO request, int adminAccountId)
+        {
+            try
+            {
+                // Validate admin account
+                var adminAccountRepository = _unitOfWork.GetRepository<Account>();
+                var adminAccount = await adminAccountRepository.GetAsync(a => a.AccountId == adminAccountId);
+                
+                if (adminAccount == null || adminAccount.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền tạo tài khoản Manager với cơ sở");
+                }
+
+                // Validate manager account uniqueness
+                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.ManagerEmail, request.ManagerPhone ?? "");
+
+                // Validate facility license number uniqueness
+                var facilityRepository = _unitOfWork.GetRepository<VaccinationFacility>();
+                var existingFacility = await facilityRepository.GetAsync(f => f.LicenseNumber == request.LicenseNumber && f.Status > 0);
+                if (existingFacility != null)
+                {
+                    throw new InvalidOperationException("Số giấy phép này đã được sử dụng bởi cơ sở khác");
+                }
+
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                
+                try
+                {
+                    // 1. Create Manager Account
+                    var hashedPassword = BC.HashPassword(request.Password);
+                    
+                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    var newManagerAccount = new Account
+                    {
+                        AccountName = request.AccountName,
+                        Email = request.ManagerEmail,
+                        Password = hashedPassword,
+                        Role = "FacilityStaff", // Manager có role FacilityStaff
+                        Status = true,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await accountRepository.AddAsync(newManagerAccount);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    _logger.LogInformation($"Manager account created with ID: {newManagerAccount.AccountId}");
+
+                    // 2. Create VaccinationFacility
+                    var currentTimestamp = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds();
+                    var newFacility = new VaccinationFacility
+                    {
+                        FacilityName = request.FacilityName,
+                        LicenseNumber = request.LicenseNumber,
+                        Address = request.FacilityAddress,
+                        Phone = request.FacilityPhone,
+                        Email = request.FacilityEmail,
+                        Description = request.FacilityDescription ?? "",
+                        Status = 1, // Active
+                        CreatedAt = currentTimestamp,
+                        UpdatedAt = currentTimestamp
+                    };
+
+                    await facilityRepository.AddAsync(newFacility);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    _logger.LogInformation($"Facility created with ID: {newFacility.FacilityId}");
+
+                    // 3. Create FacilityStaff record for Manager
+                    var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var newManagerStaff = new FacilityStaff
+                    {
+                        AccountId = newManagerAccount.AccountId,
+                        FacilityId = newFacility.FacilityId,
+                        FullName = request.ManagerFullName,
+                        Email = request.ManagerEmail,
+                        Phone = string.IsNullOrEmpty(request.ManagerPhone) ? (int?)null : 
+                            (int.TryParse(request.ManagerPhone, out int phoneNumber) ? phoneNumber : (int?)null),
+                        Position = "Manager",
+                        Description = request.ManagerDescription ?? "Quản lý cơ sở",
+                        Status = true,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await facilityStaffRepository.AddAsync(newManagerStaff);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    _logger.LogInformation($"Manager staff record created with ID: {newManagerStaff.StaffId}");
+
+                    await transaction.CommitAsync();
+
+                    // Prepare response
+                    var managerWithAccount = await facilityStaffRepository.GetAsync(
+                        s => s.StaffId == newManagerStaff.StaffId, 
+                        includeProperties: "Account"
+                    );
+
+                    var managerResponse = _mapper.Map<StaffResponseDTO>(managerWithAccount);
+                    managerResponse.Token = _jwtService.GenerateToken(newManagerAccount, newFacility.FacilityId);
+
+                    var facilityResponse = _mapper.Map<VaccinationFacilityDTO>(newFacility);
+
+                    var response = new ManagerWithFacilityResponseDTO
+                    {
+                        Manager = managerResponse,
+                        Facility = facilityResponse
+                    };
+
+                    _logger.LogInformation($"Manager {newManagerAccount.AccountName} with facility {newFacility.FacilityName} created successfully by Admin {adminAccount.AccountName}");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Create manager with facility failed: {ex.Message}");
                 throw;
             }
         }

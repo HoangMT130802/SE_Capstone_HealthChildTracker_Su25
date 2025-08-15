@@ -131,6 +131,43 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        [HttpPost("create-manager-with-facility")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ManagerWithFacilityResponseDTO>> CreateManagerWithFacility([FromBody] CreateManagerWithFacilityDTO request)
+        {
+            try
+            {
+                var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
+                {
+                    return Unauthorized(new { message = "Token không hợp lệ" });
+                }
+
+                var response = await _authService.CreateManagerWithFacilityAsync(request, currentUserId);
+                return CreatedAtAction(nameof(Login), new { accountName = response.Manager.AccountName }, response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Create manager with facility unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Create manager with facility validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Create manager with facility failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Create manager with facility error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo Manager và cơ sở" });
+            }
+        }
+
         [HttpPost("create-staff")]
         [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<StaffResponseDTO>> CreateStaff([FromBody] CreateStaffDTO request)
