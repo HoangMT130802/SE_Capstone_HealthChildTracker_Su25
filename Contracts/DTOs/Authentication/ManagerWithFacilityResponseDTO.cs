@@ -9,3 +9,4 @@ namespace Contracts.DTOs.Authentication
         public VaccinationFacilityDTO Facility { get; set; }
     }
 }
+

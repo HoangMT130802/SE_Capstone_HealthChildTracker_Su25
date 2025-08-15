@@ -52,3 +52,4 @@ namespace Contracts.DTOs.Authentication
         public string FacilityDescription { get; set; }
     }
 }
+
