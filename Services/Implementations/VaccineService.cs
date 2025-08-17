@@ -277,13 +277,24 @@ namespace Services.Implementations
             try
             {
                 var vaccineRepository = _unitOfWork.GetRepository<Vaccine>();
-                var vaccine = await vaccineRepository.GetAsync(v => v.VaccineId == vaccineId, includeProperties: "VaccineDiseases");
+                var vaccine = await vaccineRepository.GetAsync(v => v.VaccineId == vaccineId, includeProperties: "VaccineDiseases,FacilityVaccines");
                 if (vaccine == null)
                 {
                     throw new KeyNotFoundException($"Vaccine with ID {vaccineId} not found");
                 }
 
-                // Xóa vaccine (cascade delete sẽ xử lý VaccineDiseases)
+                var vaccineDiseaseRepository = _unitOfWork.GetRepository<VaccineDisease>();
+                foreach (var vaccineDisease in vaccine.VaccineDiseases)
+                {
+                    vaccineDiseaseRepository.Delete(vaccineDisease);
+                }
+
+                var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+                foreach (var facilityVaccine in vaccine.FacilityVaccines)
+                {
+                    facilityVaccineRepository.Delete(facilityVaccine);
+                }
+
                 vaccineRepository.Delete(vaccine);
                 await _unitOfWork.SaveChangesAsync();
                 return true;
