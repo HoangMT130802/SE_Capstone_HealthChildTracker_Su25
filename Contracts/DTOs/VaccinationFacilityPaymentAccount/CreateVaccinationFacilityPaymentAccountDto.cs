@@ -1,10 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace Contracts.DTOs.VaccinationFacilityPaymentAccount
 {
@@ -15,19 +9,19 @@ namespace Contracts.DTOs.VaccinationFacilityPaymentAccount
 
         [Required(ErrorMessage = "Bank name is required")]
         [StringLength(100, ErrorMessage = "Bank name cannot exceed 100 characters")]
-        public string BankName { get; set; }
+        public string BankName { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Account number is required")]
-        [StringLength(50, ErrorMessage = "Account number cannot exceed 50 characters")]
-        public string AccountNumber { get; set; }
+        [Required(ErrorMessage = "Client ID is required")]
+        [StringLength(100, ErrorMessage = "Client ID cannot exceed 100 characters")]
+        public string ClientId { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Account holder is required")]
-        [StringLength(100, ErrorMessage = "Account holder name cannot exceed 100 characters")]
-        public string AccountHolder { get; set; }
+        [Required(ErrorMessage = "API Key is required")]
+        [StringLength(200, ErrorMessage = "API Key cannot exceed 200 characters")]
+        public string ApiKey { get; set; } = string.Empty;
 
-        // Thay URL bằng file
-        [Required(ErrorMessage = "QR code image is required")]
-        public IFormFile QrcodeImage { get; set; }
+        [Required(ErrorMessage = "Checksum Key is required")]
+        [StringLength(200, ErrorMessage = "Checksum Key cannot exceed 200 characters")]
+        public string ChecksumKey { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "IsActive is required")]
         public bool IsActive { get; set; }

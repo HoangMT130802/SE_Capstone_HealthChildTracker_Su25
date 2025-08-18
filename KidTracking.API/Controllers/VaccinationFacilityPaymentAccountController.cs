@@ -1,10 +1,8 @@
-﻿using Contracts.DTOs;
-using Contracts.DTOs.VaccinationFacilityPaymentAccount;
+﻿using Contracts.DTOs.VaccinationFacilityPaymentAccount;
+using Contracts.DTOs.Transaction;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
-using System;
 
 namespace KidTracking.API.Controllers
 {
@@ -30,8 +28,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPost]
-        [Consumes("multipart/form-data")]
-        public async Task<IActionResult> CreatePaymentAccount([FromForm] CreateVaccinationFacilityPaymentAccountDto paymentAccountDto)
+        public async Task<IActionResult> CreatePaymentAccount([FromBody] CreateVaccinationFacilityPaymentAccountDto paymentAccountDto)
         {
             if (!ModelState.IsValid)
             {
@@ -56,8 +53,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPut("{id}")]
-        [Consumes("multipart/form-data")]
-        public async Task<IActionResult> UpdatePaymentAccount(int id, [FromForm] UpdateVaccinationFacilityPaymentAccountDto paymentAccountDto)
+        public async Task<IActionResult> UpdatePaymentAccount(int id, [FromBody] UpdateVaccinationFacilityPaymentAccountDto paymentAccountDto)
         {
             if (!ModelState.IsValid)
             {
@@ -176,5 +172,101 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Internal server error: " + ex.Message });
             }
         }
+
+        #region Payment Methods
+
+        /// <summary>
+        /// Tạo payment link thống nhất cho Order/Package/Individual Vaccine
+        /// </summary>
+        [HttpPost("payment")]
+        public async Task<IActionResult> CreateFacilityPayment([FromBody] CreateFacilityPaymentDTO request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var accountId = GetAccountId();
+                var result = await _paymentAccountService.CreateFacilityPaymentAsync(request, accountId);
+                
+                return Ok(new 
+                { 
+                    success = true,
+                    data = result
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to create facility payment");
+                return StatusCode(403, new { success = false, message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid argument for facility payment");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation for facility payment");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating facility payment");
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi tạo payment" });
+            }
+        }
+
+        /// <summary>
+        /// Kiểm tra trạng thái thanh toán
+        /// </summary>
+        [HttpGet("payment-status/{orderCode}")]
+        public async Task<IActionResult> CheckFacilityPaymentStatus(string orderCode, [FromQuery] int facilityId)
+        {
+            if (string.IsNullOrEmpty(orderCode))
+            {
+                return BadRequest(new { success = false, message = "OrderCode không được để trống" });
+            }
+
+            if (facilityId <= 0)
+            {
+                return BadRequest(new { success = false, message = "FacilityId không hợp lệ" });
+            }
+
+            try
+            {
+                var accountId = GetAccountId();
+                
+                // Validate quyền truy cập facility (có thể thêm validation ở đây)
+                var result = await _paymentAccountService.CheckFacilityPaymentStatusAsync(orderCode, facilityId);
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        status = result.Status,
+                        message = result.Message,
+                        success = result.Success,
+                        amount = result.Amount,
+                        paidAt = result.PaidAt
+                    }
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "Transaction not found: {OrderCode}", orderCode);
+                return NotFound(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking facility payment status: {OrderCode}", orderCode);
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
+            }
+        }
+
+        #endregion
     }
 }
