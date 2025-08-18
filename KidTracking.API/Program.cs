@@ -22,7 +22,7 @@ namespace KidTracking.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            
+
             builder.Services.AddControllers(options =>
             {
                 options.ModelValidatorProviders.Clear();
@@ -55,22 +55,22 @@ namespace KidTracking.API
             var secretKeyString = jwtSettings["SecretKey"];
             var issuer = jwtSettings["Issuer"];
             var audience = jwtSettings["Audience"];
-            
+
             if (string.IsNullOrEmpty(secretKeyString))
             {
                 throw new InvalidOperationException("JWT SecretKey is not configured!");
             }
-            
+
             if (string.IsNullOrEmpty(issuer))
             {
                 throw new InvalidOperationException("JWT Issuer is not configured!");
             }
-            
+
             if (string.IsNullOrEmpty(audience))
             {
                 throw new InvalidOperationException("JWT Audience is not configured!");
             }
-            
+
             var secretKey = Encoding.UTF8.GetBytes(secretKeyString);
 
             builder.Services.AddAuthentication(options =>
@@ -94,7 +94,7 @@ namespace KidTracking.API
                     ValidateLifetime = true,
                     RequireExpirationTime = true,
                 };
-                
+
                 options.Events = new JwtBearerEvents
                 {
                     OnMessageReceived = context =>
@@ -102,7 +102,7 @@ namespace KidTracking.API
                         var authHeader = context.Request.Headers["Authorization"].ToString();
                         if (!string.IsNullOrEmpty(authHeader))
                         {
-                        
+
                             if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                             {
                                 context.Token = authHeader.Trim();
@@ -145,7 +145,7 @@ namespace KidTracking.API
             builder.Services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "Health Child Tracker API", Version = "v1" });
-                
+
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
                     Description = "Authorization: Bearer {token}",
@@ -172,7 +172,6 @@ namespace KidTracking.API
             });
 
             builder.Services.AddHttpContextAccessor();
-            builder.Services.AddMemoryCache();
             // singleton của payos
             builder.Services.AddSingleton(new PayOS(
                 clientId: builder.Configuration["Environment:PAYOS_CLIENT_ID"],
@@ -203,7 +202,7 @@ namespace KidTracking.API
             builder.Services.AddScoped<IVaccineService, VaccineService>();
             builder.Services.AddScoped<IChildVaccineProfileService, ChildVaccineProfileService>();
             builder.Services.AddScoped<IVaccinationFacilityService, VaccinationFacilityService>();
-            builder.Services.AddScoped<IVaccinePackageService,VaccinePackageService>();
+            builder.Services.AddScoped<IVaccinePackageService, VaccinePackageService>();
             builder.Services.AddScoped<IFacilityVaccineService, FacilityVaccineService>();
             builder.Services.AddScoped<IOrderService, OrderService>();
             // ✅ Thêm Schedule Slot và Appointment Schedule Services
@@ -221,7 +220,6 @@ namespace KidTracking.API
             builder.Services.AddScoped<IVaccinationFacilityPaymentAccountService, VaccinationFacilityPaymentAccountService>();
             builder.Services.AddScoped<IBlogService, BlogService>();
             builder.Services.AddScoped<IFacilityRatingService, FacilityRatingService>();
-            builder.Services.AddScoped<IFacilityStaffService, FacilityStaffService>();
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);
 
@@ -239,7 +237,7 @@ namespace KidTracking.API
 
             var app = builder.Build();
 
-         
+
             app.UseExceptionHandler("/error");
             app.UseHsts();
 
@@ -248,8 +246,8 @@ namespace KidTracking.API
             app.UseSwaggerUI(c =>
             {
                 c.SwaggerEndpoint("/swagger/v1/swagger.json", "Health Child Tracker API V1");
-                
-                
+
+
                 if (app.Environment.IsDevelopment())
                 {
                     c.RoutePrefix = "swagger"; // Local development: /swagger
@@ -258,11 +256,11 @@ namespace KidTracking.API
                 {
                     c.RoutePrefix = string.Empty; // Production: root URL
                 }
-                
+
                 c.DocumentTitle = "Health Child Tracker API";
             });
 
-        
+
             if (!app.Environment.IsDevelopment())
             {
                 app.Use(async (context, next) =>
