@@ -13,11 +13,11 @@ public partial class VaccinationFacilityPaymentAccount
 
     public string BankName { get; set; }
 
-    public string AccountNumber { get; set; }
+    public string ClientId { get; set; }
 
-    public string AccountHolder { get; set; }
+    public string ApiKey { get; set; }
 
-    public string QrcodeImageUrl { get; set; }
+    public string ChecksumKey { get; set; }
 
     public string IsActive { get; set; }
 

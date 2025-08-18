@@ -102,7 +102,7 @@ public partial class HealthChildTrackerContext : DbContext
     {
         modelBuilder.Entity<Account>(entity =>
         {
-            entity.HasKey(e => e.AccountId).HasName("PK__Account__46A222CDB8992EC7");
+            entity.HasKey(e => e.AccountId).HasName("PK__Account__46A222CD5E74E6F2");
 
             entity.ToTable("Account");
 
@@ -136,7 +136,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<AppointmentSchedule>(entity =>
         {
-            entity.HasKey(e => e.ScheduleId).HasName("PK__Appointm__9C8A5B49FFF049A4");
+            entity.HasKey(e => e.ScheduleId).HasName("PK__Appointm__9C8A5B495B108186");
 
             entity.ToTable("AppointmentSchedule");
 
@@ -160,7 +160,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<AppointmentSurvey>(entity =>
         {
-            entity.HasKey(e => e.SurveyId).HasName("PK__Appointm__A5481F9D68CAD746");
+            entity.HasKey(e => e.SurveyId).HasName("PK__Appointm__A5481F9D60D7135D");
 
             entity.ToTable("AppointmentSurvey");
 
@@ -188,7 +188,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<Blog>(entity =>
         {
-            entity.HasKey(e => e.BlogId).HasName("PK__Blog__54379E300AEF0D9C");
+            entity.HasKey(e => e.BlogId).HasName("PK__Blog__54379E301C4A37F6");
 
             entity.ToTable("Blog");
 
@@ -276,7 +276,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<DailyRecord>(entity =>
         {
-            entity.HasKey(e => e.DailyRecordId).HasName("PK__DailyRec__3A7D5F1252DBEA3D");
+            entity.HasKey(e => e.DailyRecordId).HasName("PK__DailyRec__3A7D5F1257D35D34");
 
             entity.ToTable("DailyRecord");
 
@@ -295,7 +295,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<Disease>(entity =>
         {
-            entity.HasKey(e => e.DiseaseId).HasName("PK__Disease__69B533A9CC1737F0");
+            entity.HasKey(e => e.DiseaseId).HasName("PK__Disease__69B533A9B18E9888");
 
             entity.ToTable("Disease");
 
@@ -309,7 +309,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<DoctorProfile>(entity =>
         {
-            entity.HasKey(e => e.DoctorId).HasName("PK__DoctorPr__F39935642AD8422F");
+            entity.HasKey(e => e.DoctorId).HasName("PK__DoctorPr__F3993564114C2FB6");
 
             entity.ToTable("DoctorProfile");
 
@@ -357,7 +357,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<FacilityMembershipSubscription>(entity =>
         {
-            entity.HasKey(e => e.SubscriptionId).HasName("PK__Facility__9A2B249D6A81CE1D");
+            entity.HasKey(e => e.SubscriptionId).HasName("PK__Facility__9A2B249DDEA385BC");
 
             entity.ToTable("FacilityMembershipSubscription");
 
@@ -379,7 +379,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<FacilityRating>(entity =>
         {
-            entity.HasKey(e => e.RatingId).HasName("PK__Facility__FCCDF87C2077F72D");
+            entity.HasKey(e => e.RatingId).HasName("PK__Facility__FCCDF87CDA136E1A");
 
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
@@ -397,7 +397,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<FacilityStaff>(entity =>
         {
-            entity.HasKey(e => e.StaffId).HasName("PK__Facility__1963DD9C97F4A22E");
+            entity.HasKey(e => e.StaffId).HasName("PK__Facility__1963DD9CC10C7CC7");
 
             entity.ToTable("FacilityStaff");
 
@@ -462,7 +462,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<GrowthRecord>(entity =>
         {
-            entity.HasKey(e => e.RecordId).HasName("PK__GrowthRe__FBDF78E98DBDFE97");
+            entity.HasKey(e => e.RecordId).HasName("PK__GrowthRe__FBDF78E9B2005EBC");
 
             entity.ToTable("GrowthRecord");
 
@@ -533,7 +533,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<HealthSurvey>(entity =>
         {
-            entity.HasKey(e => e.SurveyId).HasName("PK__HealthSu__A5481F9DD8CBB480");
+            entity.HasKey(e => e.SurveyId).HasName("PK__HealthSu__A5481F9DBED73A25");
 
             entity.ToTable("HealthSurvey");
 
@@ -550,7 +550,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<Member>(entity =>
         {
-            entity.HasKey(e => e.MemberId).HasName("PK__Member__0CF04B38D777CE4F");
+            entity.HasKey(e => e.MemberId).HasName("PK__Member__0CF04B38CBC2F1D8");
 
             entity.ToTable("Member");
 
@@ -609,7 +609,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<Order>(entity =>
         {
-            entity.HasKey(e => e.OrderId).HasName("PK__Order__C3905BAF5BD6DF4F");
+            entity.HasKey(e => e.OrderId).HasName("PK__Order__C3905BAF19E6F715");
 
             entity.ToTable("Order");
 
@@ -715,7 +715,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<SurveyAnswer>(entity =>
         {
-            entity.HasKey(e => e.AnswerId).HasName("PK__SurveyAn__D4825024FF2896E5");
+            entity.HasKey(e => e.AnswerId).HasName("PK__SurveyAn__D4825024454589C2");
 
             entity.ToTable("SurveyAnswer");
 
@@ -733,7 +733,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<SurveyQuestion>(entity =>
         {
-            entity.HasKey(e => e.QuestionId).HasName("PK__SurveyQu__0DC06F8CF626FE91");
+            entity.HasKey(e => e.QuestionId).HasName("PK__SurveyQu__0DC06F8CD5C32C01");
 
             entity.ToTable("SurveyQuestion");
 
@@ -788,7 +788,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<UserMembership>(entity =>
         {
-            entity.HasKey(e => e.UserMembershipId).HasName("PK__UserMemb__5A4E736A7B3A0478");
+            entity.HasKey(e => e.UserMembershipId).HasName("PK__UserMemb__5A4E736ADEB288E5");
 
             entity.ToTable("UserMembership");
 
@@ -809,7 +809,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<VaccinationAppointment>(entity =>
         {
-            entity.HasKey(e => e.AppointmentId).HasName("PK__Vaccinat__8ECDFCC26944DC1C");
+            entity.HasKey(e => e.AppointmentId).HasName("PK__Vaccinat__8ECDFCC2632D9887");
 
             entity.ToTable("VaccinationAppointment");
 
@@ -839,7 +839,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<VaccinationAppointmentDetail>(entity =>
         {
-            entity.HasKey(e => e.DetailId).HasName("PK__Vaccinat__135C314DDBAE2800");
+            entity.HasKey(e => e.DetailId).HasName("PK__Vaccinat__135C314DAC148B60");
 
             entity.ToTable("VaccinationAppointmentDetail");
 
@@ -862,7 +862,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<VaccinationFacility>(entity =>
         {
-            entity.HasKey(e => e.FacilityId).HasName("PK__Vaccinat__5FB08A74321E1CAC");
+            entity.HasKey(e => e.FacilityId).HasName("PK__Vaccinat__5FB08A7437F949F2");
 
             entity.ToTable("VaccinationFacility");
 
@@ -881,22 +881,20 @@ public partial class HealthChildTrackerContext : DbContext
         {
             entity.ToTable("VaccinationFacilityPaymentAccount");
 
-            entity.Property(e => e.AccountHolder)
+            entity.Property(e => e.ApiKey)
                 .IsRequired()
                 .HasMaxLength(250);
-            entity.Property(e => e.AccountNumber)
-                .IsRequired()
-                .HasMaxLength(250)
-                .IsFixedLength();
             entity.Property(e => e.BankName)
                 .IsRequired()
                 .HasMaxLength(250);
+            entity.Property(e => e.ChecksumKey).IsRequired();
+            entity.Property(e => e.ClientId)
+                .IsRequired()
+                .HasMaxLength(250)
+                .HasColumnName("ClientID");
             entity.Property(e => e.IsActive)
                 .IsRequired()
                 .HasMaxLength(50);
-            entity.Property(e => e.QrcodeImageUrl)
-                .IsRequired()
-                .HasColumnName("QRCodeImageUrl");
 
             entity.HasOne(d => d.Facility).WithMany(p => p.VaccinationFacilityPaymentAccounts)
                 .HasForeignKey(d => d.FacilityId)
@@ -939,7 +937,7 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<VaccineDisease>(entity =>
         {
-            entity.HasKey(e => e.VaccineDiseaseId).HasName("PK__VaccineD__02EF30FB63B3E461");
+            entity.HasKey(e => e.VaccineDiseaseId).HasName("PK__VaccineD__02EF30FB3F801934");
 
             entity.ToTable("VaccineDisease");
 
