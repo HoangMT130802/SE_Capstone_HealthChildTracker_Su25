@@ -57,7 +57,7 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
             paymentAccount.ApiKey?.Substring(0, Math.Min(8, paymentAccount.ApiKey.Length)) + "...",
             paymentAccount.ChecksumKey?.Substring(0, Math.Min(8, paymentAccount.ChecksumKey.Length)) + "...");
         
-        return new PayOS(paymentAccount.ClientId, paymentAccount.ApiKey, paymentAccount.ChecksumKey);
+        return new PayOS(paymentAccount.ClientId!, paymentAccount.ApiKey!, paymentAccount.ChecksumKey!);
     }
 
     /// <summary>
@@ -132,10 +132,10 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                     pageSize: null
                 );
 
-                var activeAccountIds = existingAccountsResult.Data
+                var activeAccountIds = existingAccountsResult.Data?
                     .Where(pa => pa.IsActive == "true")
                     .Select(pa => pa.Id)
-                    .ToList();
+                    .ToList() ?? new List<int>();
 
                 if (activeAccountIds.Any())
                 {
@@ -185,10 +185,10 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                     pageIndex: null,
                     pageSize: null
                 );
-                var activeAccountIds = existingAccountsResult.Data
+                var activeAccountIds = existingAccountsResult.Data?
                     .Where(pa => pa.IsActive == "true")
                     .Select(pa => pa.Id)
-                    .ToList();
+                    .ToList() ?? new List<int>();
 
                 if (activeAccountIds.Any())
                 {
@@ -408,10 +408,22 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
     /// <summary>
     /// Kiểm tra trạng thái thanh toán và cập nhật
     /// </summary>
-    public async Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCode, int facilityId)
+    public async Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCode)
     {
         try
         {
+            // Extract FacilityId từ OrderCode format: {timestamp}_{facilityId}_{appointmentId}_{orderId}
+            var orderParts = orderCode.Split('_');
+            if (orderParts.Length < 3)
+            {
+                throw new ArgumentException($"OrderCode format không hợp lệ: {orderCode}. Expected format: timestamp_facilityId_appointmentId[_orderId]");
+            }
+
+            if (!int.TryParse(orderParts[1], out var facilityId))
+            {
+                throw new ArgumentException($"FacilityId trong OrderCode không hợp lệ: {orderParts[1]}");
+            }
+
             _logger.LogInformation("Kiểm tra trạng thái facility payment - OrderCode: {OrderCode}, FacilityId: {FacilityId}", 
                 orderCode, facilityId);
 

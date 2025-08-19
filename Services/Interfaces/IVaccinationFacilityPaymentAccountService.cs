@@ -16,6 +16,6 @@ namespace Services.Interfaces
 
         // Payment methods
         Task<FacilityPaymentResponseDTO> CreateFacilityPaymentAsync(CreateFacilityPaymentDTO request, int accountId);
-        Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCode, int facilityId);
+        Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCode);
     }
 }

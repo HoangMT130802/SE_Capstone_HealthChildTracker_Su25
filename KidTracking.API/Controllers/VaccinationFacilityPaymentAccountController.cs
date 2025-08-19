@@ -221,27 +221,23 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Kiểm tra trạng thái thanh toán
+        /// Kiểm tra trạng thái thanh toán - chỉ cần OrderCode
+        /// OrderCode format: {timestamp}_{facilityId}_{appointmentId}[_{orderId}]
         /// </summary>
         [HttpGet("payment-status/{orderCode}")]
-        public async Task<IActionResult> CheckFacilityPaymentStatus(string orderCode, [FromQuery] int facilityId)
+        public async Task<IActionResult> CheckFacilityPaymentStatus(string orderCode)
         {
             if (string.IsNullOrEmpty(orderCode))
             {
                 return BadRequest(new { success = false, message = "OrderCode không được để trống" });
             }
 
-            if (facilityId <= 0)
-            {
-                return BadRequest(new { success = false, message = "FacilityId không hợp lệ" });
-            }
-
             try
             {
                 var accountId = GetAccountId();
                 
-                // Validate quyền truy cập facility (có thể thêm validation ở đây)
-                var result = await _paymentAccountService.CheckFacilityPaymentStatusAsync(orderCode, facilityId);
+                // FacilityId sẽ được extract từ OrderCode trong service
+                var result = await _paymentAccountService.CheckFacilityPaymentStatusAsync(orderCode);
 
                 return Ok(new
                 {
