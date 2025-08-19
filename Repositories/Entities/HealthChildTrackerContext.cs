@@ -887,7 +887,8 @@ public partial class HealthChildTrackerContext : DbContext
             entity.Property(e => e.BankName)
                 .IsRequired()
                 .HasMaxLength(250);
-            entity.Property(e => e.ChecksumKey).IsRequired();
+            entity.Property(e => e.ChecksumKey)
+                .IsRequired();
             entity.Property(e => e.ClientId)
                 .IsRequired()
                 .HasMaxLength(250)

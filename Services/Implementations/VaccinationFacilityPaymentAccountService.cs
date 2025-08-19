@@ -49,6 +49,14 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
     private async Task<PayOS> GetFacilityPayOSInstanceAsync(int facilityId)
     {
         var paymentAccount = await GetActiveFacilityPaymentAccountAsync(facilityId);
+        
+        // Log PayOS credentials để debug (chỉ log một phần để bảo mật)
+        _logger.LogInformation("Creating PayOS instance for FacilityId {FacilityId} with ClientId: {ClientId}, ApiKey: {ApiKey}, ChecksumKey: {ChecksumKey}", 
+            facilityId, 
+            paymentAccount.ClientId?.Substring(0, Math.Min(8, paymentAccount.ClientId.Length)) + "...",
+            paymentAccount.ApiKey?.Substring(0, Math.Min(8, paymentAccount.ApiKey.Length)) + "...",
+            paymentAccount.ChecksumKey?.Substring(0, Math.Min(8, paymentAccount.ChecksumKey.Length)) + "...");
+        
         return new PayOS(paymentAccount.ClientId, paymentAccount.ApiKey, paymentAccount.ChecksumKey);
     }
 
@@ -62,6 +70,7 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
         
         if (paymentAccount == null)
         {
+            _logger.LogError("❌ Facility {FacilityId} chưa cấu hình PayOS account hoặc account không active", facilityId);
             throw new InvalidOperationException($"Facility {facilityId} chưa cấu hình PayOS account hoặc account không active");
         }
 
@@ -69,10 +78,40 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
             string.IsNullOrEmpty(paymentAccount.ApiKey) || 
             string.IsNullOrEmpty(paymentAccount.ChecksumKey))
         {
+            _logger.LogError("❌ PayOS configuration không đầy đủ cho facility {FacilityId}. ClientId: {HasClientId}, ApiKey: {HasApiKey}, ChecksumKey: {HasChecksumKey}", 
+                facilityId, 
+                !string.IsNullOrEmpty(paymentAccount.ClientId),
+                !string.IsNullOrEmpty(paymentAccount.ApiKey),
+                !string.IsNullOrEmpty(paymentAccount.ChecksumKey));
             throw new InvalidOperationException($"PayOS configuration không đầy đủ cho facility {facilityId}");
         }
 
+        // Validate PayOS credentials format
+        if (!IsValidPayOSCredentials(paymentAccount))
+        {
+            _logger.LogError("❌ PayOS credentials không hợp lệ cho facility {FacilityId}", facilityId);
+            throw new InvalidOperationException($"PayOS credentials không hợp lệ cho facility {facilityId}");
+        }
+
         return paymentAccount;
+    }
+
+    /// <summary>
+    /// Validate PayOS credentials format
+    /// </summary>
+    private bool IsValidPayOSCredentials(VaccinationFacilityPaymentAccount paymentAccount)
+    {
+        // Basic validation - có thể thêm regex hoặc format checks khác
+        if (paymentAccount.ClientId.Length < 10 || 
+            paymentAccount.ApiKey.Length < 20 || 
+            paymentAccount.ChecksumKey.Length < 20)
+        {
+            return false;
+        }
+
+        // PayOS ClientId thường bắt đầu bằng số hoặc có format đặc biệt
+        // ApiKey và ChecksumKey thường là hex string hoặc base64
+        return true;
     }
 
     public async Task<int> CreatePaymentAccountAsync(CreateVaccinationFacilityPaymentAccountDto paymentAccountDto, int accountId)
@@ -309,7 +348,21 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 null
             );
 
-            var createPayment = await payOS.createPaymentLink(paymentData);
+            _logger.LogInformation("Creating PayOS payment link - OrderCode: {OrderCode}, Amount: {Amount}, Description: {Description}", 
+                orderCode, amount, description);
+
+            CreatePaymentResult createPayment;
+            try
+            {
+                createPayment = await payOS.createPaymentLink(paymentData);
+                _logger.LogInformation("✅ PayOS payment link created successfully: {CheckoutUrl}", createPayment.checkoutUrl);
+            }
+            catch (Exception payOSException)
+            {
+                _logger.LogError(payOSException, "❌ PayOS createPaymentLink failed for FacilityId {FacilityId}. Error: {ErrorMessage}", 
+                    appointmentInfo.FacilityId, payOSException.Message);
+                throw;
+            }
 
             // Tạo Transaction record
             var transaction = new Transaction
