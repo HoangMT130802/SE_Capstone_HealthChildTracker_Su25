@@ -277,28 +277,27 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
     #region Payment Methods
 
     /// <summary>
-    /// Tạo payment link thống nhất cho Order/Package/Individual Vaccine
+    /// Tạo payment link dựa trên AppointmentId - tự động phát hiện loại thanh toán
     /// </summary>
     public async Task<FacilityPaymentResponseDTO> CreateFacilityPaymentAsync(CreateFacilityPaymentDTO request, int accountId)
     {
         using var dbTransaction = await _unitOfWork.BeginTransactionAsync();
         try
         {
-            _logger.LogInformation("Bắt đầu tạo facility payment - Type: {PaymentType}, FacilityId: {FacilityId}, AppointmentId: {AppointmentId}", 
-                request.PaymentType, request.FacilityId, request.AppointmentId);
+            _logger.LogInformation("Bắt đầu tạo facility payment cho AppointmentId: {AppointmentId}", request.AppointmentId);
 
+            // Lấy thông tin appointment và validate
+            var appointmentInfo = await GetAppointmentInfoAsync(request.AppointmentId);
+            
             // Validate quyền truy cập facility
-            await ValidateFacilityAccess(accountId, request.FacilityId);
+            await ValidateFacilityAccess(accountId, appointmentInfo.FacilityId);
 
-            // Validate appointment thuộc facility
-            await ValidateAppointmentFacility(request.AppointmentId, request.FacilityId);
+            // Tính toán amount và description dựa trên appointment
+            var (amount, description, paymentType, orderId) = await CalculatePaymentFromAppointment(appointmentInfo);
 
-            // Tính toán amount và tạo/validate Order
-            var (amount, description, orderId) = await CalculatePaymentAmount(request);
-
-            // Tạo PayOS payment link
-            var payOS = await GetFacilityPayOSInstanceAsync(request.FacilityId);
-            var orderCode = GenerateOrderCode(request.FacilityId, request.AppointmentId, orderId);
+            // Tạo PayOS payment link với config của facility
+            var payOS = await GetFacilityPayOSInstanceAsync(appointmentInfo.FacilityId);
+            var orderCode = GenerateOrderCode(appointmentInfo.FacilityId, request.AppointmentId, orderId);
 
             var paymentData = new PaymentData(
                 long.Parse(orderCode.Split('_')[0]), // timestamp part
@@ -315,7 +314,7 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
             // Tạo Transaction record
             var transaction = new Transaction
             {
-                TransactionType = request.PaymentType,
+                TransactionType = paymentType,
                 Amount = amount,
                 PaymentMethod = "PAYOS",
                 TransactionCode = orderCode,
@@ -329,8 +328,8 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
             await _unitOfWork.SaveChangesAsync();
             await dbTransaction.CommitAsync();
 
-            _logger.LogInformation("✅ Tạo facility payment thành công. OrderCode: {OrderCode}, PaymentUrl: {PaymentUrl}", 
-                orderCode, createPayment.checkoutUrl);
+            _logger.LogInformation("✅ Tạo facility payment thành công. OrderCode: {OrderCode}, PaymentType: {PaymentType}, PaymentUrl: {PaymentUrl}", 
+                orderCode, paymentType, createPayment.checkoutUrl);
 
             return new FacilityPaymentResponseDTO
             {
@@ -338,19 +337,17 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 OrderCode = orderCode,
                 Amount = amount,
                 Status = "PENDING",
-                ReturnUrl = $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
-                CancelUrl = $"{GetBaseUrl()}/payment/cancel?orderId={orderCode}",
-                OrderId = orderId,
                 AppointmentId = request.AppointmentId,
-                PaymentType = request.PaymentType,
-                TransactionId = transaction.TransactionId,
-                Description = description
+                PaymentType = paymentType,
+                Description = description,
+                OrderId = orderId,
+                TransactionId = transaction.TransactionId
             };
         }
         catch (Exception ex)
         {
             await dbTransaction.RollbackAsync();
-            _logger.LogError(ex, "Lỗi khi tạo facility payment");
+            _logger.LogError(ex, "Lỗi khi tạo facility payment cho AppointmentId: {AppointmentId}", request.AppointmentId);
             throw;
         }
     }
@@ -433,92 +430,115 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
         }
     }
 
-    private async Task ValidateAppointmentFacility(int appointmentId, int facilityId)
+    /// <summary>
+    /// Lấy thông tin appointment và validate
+    /// </summary>
+    private async Task<AppointmentInfo> GetAppointmentInfoAsync(int appointmentId)
     {
         var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
         var appointment = await appointmentRepo.GetAsync(
-            a => a.AppointmentId == appointmentId, 
-            includeProperties: "Schedule");
+            a => a.AppointmentId == appointmentId,
+            includeProperties: "Schedule,Child,Order,VaccinationAppointmentDetails.Vaccine");
 
-        if (appointment?.Schedule?.FacilityId != facilityId)
+        if (appointment == null)
         {
-            throw new ArgumentException($"Appointment {appointmentId} không thuộc về facility {facilityId}");
+            throw new ArgumentException($"Không tìm thấy Appointment {appointmentId}");
         }
-    }
 
-    private async Task<(decimal amount, string description, int? orderId)> CalculatePaymentAmount(CreateFacilityPaymentDTO request)
-    {
-        return request.PaymentType switch
+        if (appointment.Schedule == null)
         {
-            "ORDER" => await CalculateOrderPayment(request.OrderId!.Value),
-            "PACKAGE" => await CalculatePackagePayment(request.PackageId!.Value, request.ChildIds!),
-            "INDIVIDUAL_VACCINE" => await CalculateIndividualVaccinePayment(request.FacilityVaccineIds!, request.ChildIds!),
-            _ => throw new ArgumentException($"PaymentType không hợp lệ: {request.PaymentType}")
+            throw new InvalidOperationException($"Appointment {appointmentId} không có Schedule");
+        }
+
+        if (appointment.Status != "Approval")
+        {
+            throw new InvalidOperationException($"Appointment {appointmentId} phải có status 'Approval' mới có thể thanh toán. Status hiện tại: {appointment.Status}");
+        }
+
+        return new AppointmentInfo
+        {
+            AppointmentId = appointmentId,
+            FacilityId = appointment.Schedule.FacilityId,
+            ChildId = appointment.ChildId,
+            OrderId = appointment.OrderId,
+            Order = appointment.Order,
+            VaccinationDetails = appointment.VaccinationAppointmentDetails?.ToList() ?? new List<VaccinationAppointmentDetail>()
         };
     }
 
-    private async Task<(decimal amount, string description, int? orderId)> CalculateOrderPayment(int orderId)
+    /// <summary>
+    /// Tính toán payment dựa trên thông tin appointment
+    /// </summary>
+    private async Task<(decimal amount, string description, string paymentType, int? orderId)> CalculatePaymentFromAppointment(AppointmentInfo appointmentInfo)
     {
-        var orderRepo = _unitOfWork.GetRepository<Order>();
-        var order = await orderRepo.GetByIdAsync(orderId);
-        
-        if (order == null)
+        // Nếu có OrderId - thanh toán cho Order đã tồn tại
+        if (appointmentInfo.OrderId.HasValue && appointmentInfo.Order != null)
         {
-            throw new ArgumentException($"Không tìm thấy Order {orderId}");
+            if (appointmentInfo.Order.Status == "Paid")
+            {
+                throw new InvalidOperationException($"Order {appointmentInfo.OrderId} đã được thanh toán");
+            }
+
+            return (
+                appointmentInfo.Order.TotalAmount,
+                $"Thanh toan don hang #{appointmentInfo.OrderId}",
+                "ORDER",
+                appointmentInfo.OrderId
+            );
         }
 
-        if (order.Status == "Paid")
+        // Nếu không có OrderId - thanh toán vaccine lẻ từ VaccinationAppointmentDetails
+        if (!appointmentInfo.VaccinationDetails.Any())
         {
-            throw new InvalidOperationException($"Order {orderId} đã được thanh toán");
+            throw new InvalidOperationException($"Appointment {appointmentInfo.AppointmentId} không có thông tin vaccine để thanh toán");
         }
 
-        return (order.TotalAmount, $"Thanh toan don hang #{orderId}", orderId);
-    }
-
-    private async Task<(decimal amount, string description, int? orderId)> CalculatePackagePayment(int packageId, List<int> childIds)
-    {
-        var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
-        var package = await packageRepo.GetByIdAsync(packageId);
-        
-        if (package == null)
-        {
-            throw new ArgumentException($"Không tìm thấy VaccinePackage {packageId}");
-        }
-
-        var amount = package.Price * childIds.Count;
-        var description = $"Goi vaccine {package.Name}";
-
-        // TODO: Tạo Order mới cho package payment
-        // var newOrderId = await CreateOrderForPackage(packageId, childIds);
-
-        return (amount, description, null);
-    }
-
-    private async Task<(decimal amount, string description, int? orderId)> CalculateIndividualVaccinePayment(List<int> facilityVaccineIds, List<int> childIds)
-    {
-        var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+        // Tính tổng tiền vaccine lẻ
         decimal totalAmount = 0;
         var vaccineNames = new List<string>();
+        var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
 
-        foreach (var vaccineId in facilityVaccineIds)
+        foreach (var detail in appointmentInfo.VaccinationDetails)
         {
-            var facilityVaccine = await facilityVaccineRepo.GetAsync(
-                fv => fv.FacilityVaccineId == vaccineId,
+            // Tìm FacilityVaccine để lấy giá - sửa lại query
+            var facilityVaccines = await facilityVaccineRepo.FindAsync(
+                fv => fv.VaccineId == detail.VaccineId && fv.FacilityId == appointmentInfo.FacilityId,
                 includeProperties: "Vaccine");
 
+            var facilityVaccine = facilityVaccines.FirstOrDefault();
+            
             if (facilityVaccine != null)
             {
-                totalAmount += facilityVaccine.Price * childIds.Count;
-                vaccineNames.Add(facilityVaccine.Vaccine?.Name ?? "Unknown");
+                totalAmount += facilityVaccine.Price;
+                vaccineNames.Add(facilityVaccine.Vaccine?.Name ?? "Unknown Vaccine");
+            }
+            else
+            {
+                _logger.LogWarning("Không tìm thấy FacilityVaccine cho VaccineId {VaccineId} tại Facility {FacilityId}", 
+                    detail.VaccineId, appointmentInfo.FacilityId);
+                // Fallback: sử dụng tên vaccine từ detail hoặc giá mặc định
+                vaccineNames.Add(detail.Vaccine?.Name ?? "Unknown Vaccine");
+                // Có thể set giá mặc định hoặc throw exception tùy business logic
+                totalAmount += 0; // Hoặc một giá mặc định
             }
         }
 
         var description = $"Vaccine le: {string.Join(", ", vaccineNames)}";
 
-        // TODO: Tạo Order mới cho individual vaccine payment
-        // var newOrderId = await CreateOrderForIndividualVaccines(facilityVaccineIds, childIds);
+        return (totalAmount, description, "INDIVIDUAL_VACCINE", null);
+    }
 
-        return (totalAmount, description, null);
+    /// <summary>
+    /// Class để chứa thông tin appointment
+    /// </summary>
+    private class AppointmentInfo
+    {
+        public int AppointmentId { get; set; }
+        public int FacilityId { get; set; }
+        public int ChildId { get; set; }
+        public int? OrderId { get; set; }
+        public Order? Order { get; set; }
+        public List<VaccinationAppointmentDetail> VaccinationDetails { get; set; } = new();
     }
 
     private async Task UpdateAppointmentToPaid(string orderCode)

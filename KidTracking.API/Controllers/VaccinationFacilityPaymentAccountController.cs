@@ -176,7 +176,8 @@ namespace KidTracking.API.Controllers
         #region Payment Methods
 
         /// <summary>
-        /// Tạo payment link thống nhất cho Order/Package/Individual Vaccine
+        /// Tạo payment link dựa trên AppointmentId - tự động phát hiện loại thanh toán
+        /// Hỗ trợ: ORDER (nếu appointment có OrderId) hoặc INDIVIDUAL_VACCINE (tiêm lẻ)
         /// </summary>
         [HttpPost("payment")]
         public async Task<IActionResult> CreateFacilityPayment([FromBody] CreateFacilityPaymentDTO request)
