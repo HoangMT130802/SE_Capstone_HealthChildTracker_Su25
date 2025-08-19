@@ -542,25 +542,46 @@ namespace Services.Implementations
                             // Debug logging
                             _logger.LogInformation("Kiểm tra Order {OrderId} cho DiseaseId: {DiseaseId}, FacilityId: {FacilityId}", 
                                 request.OrderId.Value, diseaseId, facilityId);
+                            _logger.LogInformation("Order có {OrderDetailsCount} OrderDetails", order.OrderDetails?.Count ?? 0);
                             
                             if (order.OrderDetails != null)
                             {
                                 foreach (var od in order.OrderDetails)
                                 {
-                                    _logger.LogInformation("OrderDetail - DiseaseId: {DiseaseId}, FacilityVaccineId: {FacilityVaccineId}, FacilityVaccine.FacilityId: {FacilityId}", 
-                                        od.DiseaseId, od.FacilityVaccineId, od.FacilityVaccine?.FacilityId);
+                                    _logger.LogInformation("OrderDetail - DiseaseId: {DiseaseId}, FacilityVaccineId: {FacilityVaccineId}, FacilityVaccine: {FacilityVaccine}, FacilityVaccine.FacilityId: {FacilityId}", 
+                                        od.DiseaseId, od.FacilityVaccineId, od.FacilityVaccine != null ? "NotNull" : "NULL", od.FacilityVaccine?.FacilityId);
                                 }
                             }
+                            else
+                            {
+                                _logger.LogWarning("Order.OrderDetails is NULL!");
+                            }
                             
+                            // Thử cách khác: query trực tiếp từ database để tránh vấn đề navigation property
+                            var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                            var dbMatchedDetails = await orderDetailRepo.FindAsync(
+                                od => od.OrderId == request.OrderId.Value 
+                                   && od.DiseaseId == diseaseId
+                                   && od.FacilityVaccine.FacilityId == facilityId,
+                                "FacilityVaccine");
+
+                            _logger.LogInformation("Query trực tiếp từ DB tìm thấy {Count} OrderDetail phù hợp", dbMatchedDetails.Count());
+
                             var matchedDetails = order.OrderDetails?
                                 .Where(od => od.DiseaseId == diseaseId
                                           && od.FacilityVaccine != null
                                           && od.FacilityVaccine.FacilityId == facilityId)
                                 .ToList() ?? new List<OrderDetail>();
 
-                            _logger.LogInformation("Tìm thấy {Count} OrderDetail phù hợp", matchedDetails.Count);
-
-                            if (!matchedDetails.Any())
+                            _logger.LogInformation("Include navigation property tìm thấy {Count} OrderDetail phù hợp", matchedDetails.Count);
+                            
+                            // Sử dụng kết quả từ DB query trực tiếp nếu include không work
+                            if (!matchedDetails.Any() && dbMatchedDetails.Any())
+                            {
+                                _logger.LogWarning("Include navigation property failed, using direct DB query result");
+                                // Validation pass vì DB query tìm thấy matching details
+                            }
+                            else if (!matchedDetails.Any())
                             {
                                 validation.CanBook = false;
                                 validation.Errors.Add(new ValidationErrorDTO
@@ -571,7 +592,7 @@ namespace Services.Implementations
                                     Severity = ValidationSeverity.Error
                                 });
                             }
-                            else if (!matchedDetails.Any(od => od.RemainingQuantity > 0))
+                            else if (!matchedDetails.Any(od => od.RemainingQuantity > 0) && !dbMatchedDetails.Any(od => od.RemainingQuantity > 0))
                             {
                                 validation.CanBook = false;
                                 validation.Errors.Add(new ValidationErrorDTO
