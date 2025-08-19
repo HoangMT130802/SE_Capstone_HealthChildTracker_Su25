@@ -622,6 +622,36 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 appointmentRepo.Update(appointment);
                 
                 _logger.LogInformation("✅ Updated Appointment {AppointmentId} status to Paid", appointmentId);
+
+                // ✅ Cập nhật Order status nếu appointment có OrderId
+                if (appointment.OrderId.HasValue)
+                {
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    var order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value);
+
+                    if (order != null && order.Status == "Pending")
+                    {
+                        order.Status = "Paid";
+                        order.UpdatedAt = DateTime.UtcNow;
+                        orderRepo.Update(order);
+                        _logger.LogInformation("✅ Updated Order {OrderId} status từ Pending sang Paid", order.OrderId);
+                    }
+                    else if (order != null)
+                    {
+                        _logger.LogInformation("Order {OrderId} đã có status {Status}, không cần cập nhật", order.OrderId, order.Status);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("❌ Không tìm thấy Order {OrderId} cho appointment {AppointmentId}", appointment.OrderId.Value, appointmentId);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Appointment {AppointmentId} không có OrderId (thanh toán vaccine lẻ)", appointmentId);
+                }
+
+                // Note: VaccinationAppointmentDetails.VaccinationDate và ChildVaccineProfile.Status 
+                // sẽ được cập nhật bởi Complete Vaccination API, không cần làm ở đây
             }
         }
     }
