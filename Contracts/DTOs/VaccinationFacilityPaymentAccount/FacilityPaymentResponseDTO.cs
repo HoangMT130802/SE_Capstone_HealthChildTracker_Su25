@@ -61,3 +61,4 @@ namespace Contracts.DTOs.VaccinationFacilityPaymentAccount
         public string Description { get; set; } = string.Empty;
     }
 }
+

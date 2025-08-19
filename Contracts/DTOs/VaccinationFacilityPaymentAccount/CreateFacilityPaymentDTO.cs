@@ -48,3 +48,4 @@ namespace Contracts.DTOs.VaccinationFacilityPaymentAccount
         public string? Note { get; set; }
     }
 }
+
