@@ -1,4 +1,5 @@
 using Contracts.DTOs.Appointment;
+using Contracts.DTOs.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
@@ -171,14 +172,19 @@ namespace KidTracking.API.Controllers
         /// <param name="request">Thông tin đặt lịch</param>
         /// <returns>Kết quả đặt lịch</returns>
         [HttpPost("book")]
-        public async Task<ActionResult<AppointmentBookingResponseDTO>> BookAppointment(
+        public async Task<ActionResult<ResponseDataModel<AppointmentBookingResponseDTO>>> BookAppointment(
             [FromBody] AppointmentBookingRequestDTO request)
         {
             try
             {
                 if (!ModelState.IsValid)
                 {
-                    return BadRequest(ModelState);
+                    return BadRequest(new ResponseDataModel<AppointmentBookingResponseDTO>
+                    {
+                        Status = false,
+                        Message = "Dữ liệu đầu vào không hợp lệ",
+                        Data = null
+                    });
                 }
 
                 var result = await _appointmentBookingService.BookAppointmentAsync(request);
@@ -187,7 +193,12 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi đặt lịch cho trẻ {ChildId}", request.ChildId);
-                return StatusCode(500, "Có lỗi xảy ra khi đặt lịch");
+                return StatusCode(500, new ResponseDataModel<AppointmentBookingResponseDTO>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi đặt lịch",
+                    Data = null
+                });
             }
         }
 
@@ -197,14 +208,19 @@ namespace KidTracking.API.Controllers
         /// <param name="request">Thông tin đặt lịch nhanh</param>
         /// <returns>Kết quả đặt lịch hoặc gợi ý</returns>
         [HttpPost("quick-book")]
-        public async Task<ActionResult<AppointmentQuickBookingResponseDTO>> QuickBookAppointment(
+        public async Task<ActionResult<ResponseDataModel<AppointmentQuickBookingResponseDTO>>> QuickBookAppointment(
             [FromBody] AppointmentQuickBookingDTO request)
         {
             try
             {
                 if (!ModelState.IsValid)
                 {
-                    return BadRequest(ModelState);
+                    return BadRequest(new ResponseDataModel<AppointmentQuickBookingResponseDTO>
+                    {
+                        Status = false,
+                        Message = "Dữ liệu đầu vào không hợp lệ",
+                        Data = null
+                    });
                 }
 
                 var result = await _appointmentBookingService.QuickBookAppointmentAsync(request);
@@ -213,7 +229,12 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi đặt lịch nhanh cho trẻ {ChildId}", request.ChildId);
-                return StatusCode(500, "Có lỗi xảy ra khi đặt lịch nhanh");
+                return StatusCode(500, new ResponseDataModel<AppointmentQuickBookingResponseDTO>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi đặt lịch nhanh",
+                    Data = null
+                });
             }
         }
 
@@ -224,7 +245,7 @@ namespace KidTracking.API.Controllers
         /// <param name="reason">Lý do hủy</param>
         /// <returns>Kết quả hủy</returns>
         [HttpDelete("{appointmentId}/cancel")]
-        public async Task<ActionResult<bool>> CancelAppointment(
+        public async Task<ActionResult<ResponseDataModel<bool>>> CancelAppointment(
             int appointmentId,
             [FromBody] string reason)
         {
@@ -236,7 +257,12 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi hủy lịch hẹn {AppointmentId}", appointmentId);
-                return StatusCode(500, "Có lỗi xảy ra khi hủy lịch hẹn");
+                return StatusCode(500, new ResponseDataModel<bool>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi hủy lịch hẹn",
+                    Data = false
+                });
             }
         }
 
@@ -350,7 +376,7 @@ namespace KidTracking.API.Controllers
         /// <param name="request">Thông tin đặt lại lịch</param>
         /// <returns>Kết quả đặt lại lịch</returns>
         [HttpPost("rebook")]
-        public async Task<ActionResult<AppointmentRebookingResponseDTO>> RebookAppointment(
+        public async Task<ActionResult<ResponseDataModel<AppointmentRebookingResponseDTO>>> RebookAppointment(
             [FromBody] AppointmentRebookingRequestDTO request)
         {
             try
@@ -370,22 +396,15 @@ namespace KidTracking.API.Controllers
                 var result = await _appointmentBookingService.RebookAppointmentAsync(request, accountId);
                 return Ok(result);
             }
-            catch (InvalidOperationException ex)
-            {
-                _logger.LogWarning(ex, "Không thể đặt lại lịch cho ChildVaccineProfile {ProfileId}. Lý do: {Message}", 
-                    request.ChildVaccineProfileId, ex.Message);
-                return BadRequest(new { message = ex.Message, errorType = "InvalidOperation" });
-            }
-            catch (ArgumentException ex)
-            {
-                _logger.LogWarning(ex, "Thông tin đặt lại lịch không hợp lệ cho ChildVaccineProfile {ProfileId}. Lý do: {Message}", 
-                    request.ChildVaccineProfileId, ex.Message);
-                return BadRequest(new { message = ex.Message, errorType = "ArgumentException" });
-            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi đặt lại lịch cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
-                return StatusCode(500, new { message = "Có lỗi xảy ra khi đặt lại lịch", errorType = "InternalError" });
+                return StatusCode(500, new ResponseDataModel<AppointmentRebookingResponseDTO>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi đặt lại lịch",
+                    Data = null
+                });
             }
         }
 

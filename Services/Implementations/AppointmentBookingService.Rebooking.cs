@@ -5,6 +5,7 @@ using Contracts.DTOs.ChildVaccineProfile;
 using Contracts.DTOs.Disease;
 using Contracts.DTOs.Order;
 using Contracts.DTOs.Vaccine;
+using Contracts.DTOs.Models;
 using Microsoft.Extensions.Logging;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -93,7 +94,7 @@ namespace Services.Implementations
             };
         }
 
-        public async Task<AppointmentRebookingResponseDTO> RebookAppointmentAsync(AppointmentRebookingRequestDTO request, int accountId)
+        public async Task<ResponseDataModel<AppointmentRebookingResponseDTO>> RebookAppointmentAsync(AppointmentRebookingRequestDTO request, int accountId)
         {
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
@@ -102,11 +103,12 @@ namespace Services.Implementations
                     request.ChildVaccineProfileId, accountId);
 
                 // 1. Validate request trước
-                var validation = await ValidateRebookingRequestAsync(request.ChildVaccineProfileId, accountId);
-                if (!validation.CanRebook)
+                var validationResult = await ValidateRebookingRequestAsync(request.ChildVaccineProfileId, accountId);
+                if (!validationResult.Status || !validationResult.Data.CanRebook)
                 {
-                    throw new InvalidOperationException(validation.ReasonCannotRebook);
+                    return CreateErrorResponse<AppointmentRebookingResponseDTO>(validationResult.Data.ReasonCannotRebook ?? validationResult.Message);
                 }
+                var validation = validationResult.Data;
 
                 // ===============
                 // Re-validate bổ sung: chặn double-book & overbook order tại thời điểm rebook
@@ -118,7 +120,7 @@ namespace Services.Implementations
                         includeProperties: "Child,Vaccine,Disease");
                     if (profileForCheck == null)
                     {
-                        throw new ArgumentException("Không tìm thấy vaccine profile để rebook");
+                        return CreateErrorResponse<AppointmentRebookingResponseDTO>("Không tìm thấy vaccine profile để rebook");
                     }
 
                     // Chặn nếu đã có appointment active khác cho cùng child+disease+dose (ngoài profile này)
@@ -145,7 +147,7 @@ namespace Services.Implementations
 
                         if (hasActive)
                         {
-                            throw new InvalidOperationException("Đã có lịch đang hoạt động cho bệnh này. Không thể đặt lại.");
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>("Đã có lịch đang hoạt động cho bệnh này. Không thể đặt lại.");
                         }
                     }
 
@@ -175,7 +177,7 @@ namespace Services.Implementations
 
                             if (reservedCount >= totalRemaining)
                             {
-                                throw new InvalidOperationException("Gói đã hết số lượng khả dụng cho bệnh này do đã được giữ bởi các lịch đang chờ.");
+                                return CreateErrorResponse<AppointmentRebookingResponseDTO>("Gói đã hết số lượng khả dụng cho bệnh này do đã được giữ bởi các lịch đang chờ.");
                             }
                         }
                     }
@@ -183,7 +185,7 @@ namespace Services.Implementations
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi re-validate chặn double-book/overbook trước khi rebook");
-                    throw;
+                    return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Có lỗi xảy ra khi kiểm tra: {ex.Message}");
                 }
 
                 // 2. Lấy thông tin ChildVaccineProfile và Schedule
@@ -201,13 +203,13 @@ namespace Services.Implementations
 
                 if (schedule == null)
                 {
-                    throw new ArgumentException("Không tìm thấy lịch trống");
+                    return CreateErrorResponse<AppointmentRebookingResponseDTO>("Không tìm thấy lịch trống");
                 }
 
                 // 3. Kiểm tra lịch trống còn slot không
                 if (schedule.BookedCount >= schedule.Slot.MaxCapacity)
                 {
-                    throw new InvalidOperationException("Lịch này đã hết chỗ");
+                    return CreateErrorResponse<AppointmentRebookingResponseDTO>("Lịch này đã hết chỗ");
                 }
 
                 // 3.5. Kiểm tra cơ sở có vaccine phù hợp không (nếu không dùng order)
@@ -234,11 +236,11 @@ namespace Services.Implementations
                         if (allFacilityVaccines.Any())
                         {
                             var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
-                            throw new InvalidOperationException($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
                         }
                     }
                 }
@@ -350,11 +352,11 @@ namespace Services.Implementations
                         if (allFacilityVaccines.Any())
                         {
                             var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
-                            throw new InvalidOperationException($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
                         }
                     }
 
@@ -403,13 +405,13 @@ namespace Services.Implementations
                 _logger.LogInformation("Rebooking successful for ChildVaccineProfile {ProfileId}. AppointmentId: {AppointmentId}", 
                     request.ChildVaccineProfileId, newAppointment.AppointmentId);
 
-                return response;
+                return CreateSuccessResponse(response, "Đặt lại lịch tiêm thành công");
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Lỗi khi rebooking cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
-                throw;
+                return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Có lỗi xảy ra khi đặt lại lịch: {ex.Message}");
             }
         }
     }

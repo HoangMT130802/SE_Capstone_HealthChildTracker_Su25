@@ -1,5 +1,6 @@
 using Contracts.DTOs.Appointment;
 using Contracts.DTOs.Dashboard;
+using Contracts.DTOs.Models;
 
 namespace Services.Interfaces
 {
@@ -18,13 +19,13 @@ namespace Services.Interfaces
         Task<CostBreakdownDTO> CalculateEstimatedCostAsync(int facilityId, int? orderId = null, int? packageId = null, List<int>? facilityVaccineIds = null);
         
         // Booking Methods
-        Task<AppointmentBookingResponseDTO> BookAppointmentAsync(AppointmentBookingRequestDTO request);
-        Task<AppointmentQuickBookingResponseDTO> QuickBookAppointmentAsync(AppointmentQuickBookingDTO request);
-        Task<bool> CancelAppointmentAsync(int appointmentId, string reason);
+        Task<ResponseDataModel<AppointmentBookingResponseDTO>> BookAppointmentAsync(AppointmentBookingRequestDTO request);
+        Task<ResponseDataModel<AppointmentQuickBookingResponseDTO>> QuickBookAppointmentAsync(AppointmentQuickBookingDTO request);
+        Task<ResponseDataModel<bool>> CancelAppointmentAsync(int appointmentId, string reason);
         
         // Rebooking Methods
-        Task<AppointmentRebookingValidationDTO> ValidateRebookingRequestAsync(int childVaccineProfileId, int accountId);
-        Task<AppointmentRebookingResponseDTO> RebookAppointmentAsync(AppointmentRebookingRequestDTO request, int accountId);
+        Task<ResponseDataModel<AppointmentRebookingValidationDTO>> ValidateRebookingRequestAsync(int childVaccineProfileId, int accountId);
+        Task<ResponseDataModel<AppointmentRebookingResponseDTO>> RebookAppointmentAsync(AppointmentRebookingRequestDTO request, int accountId);
         
         // History Methods
         Task<AppointmentHistoryResponseDTO> GetAppointmentHistoryAsync(int memberId, int? childId = null);
