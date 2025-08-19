@@ -493,7 +493,7 @@ namespace Services.Implementations
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     var order = await orderRepo.GetAsync(
                         o => o.OrderId == request.OrderId.Value,
-                        "Member,OrderDetails,OrderDetails.FacilityVaccine");
+                        "Member,OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.FacilityVaccine.Facility");
 
                     if (order == null)
                     {
@@ -538,11 +538,27 @@ namespace Services.Implementations
                         if (validation.CanBook)
                         {
                             var facilityId = request.FacilityId;
+                            
+                            // Debug logging
+                            _logger.LogInformation("Kiểm tra Order {OrderId} cho DiseaseId: {DiseaseId}, FacilityId: {FacilityId}", 
+                                request.OrderId.Value, diseaseId, facilityId);
+                            
+                            if (order.OrderDetails != null)
+                            {
+                                foreach (var od in order.OrderDetails)
+                                {
+                                    _logger.LogInformation("OrderDetail - DiseaseId: {DiseaseId}, FacilityVaccineId: {FacilityVaccineId}, FacilityVaccine.FacilityId: {FacilityId}", 
+                                        od.DiseaseId, od.FacilityVaccineId, od.FacilityVaccine?.FacilityId);
+                                }
+                            }
+                            
                             var matchedDetails = order.OrderDetails?
                                 .Where(od => od.DiseaseId == diseaseId
                                           && od.FacilityVaccine != null
                                           && od.FacilityVaccine.FacilityId == facilityId)
                                 .ToList() ?? new List<OrderDetail>();
+
+                            _logger.LogInformation("Tìm thấy {Count} OrderDetail phù hợp", matchedDetails.Count);
 
                             if (!matchedDetails.Any())
                             {

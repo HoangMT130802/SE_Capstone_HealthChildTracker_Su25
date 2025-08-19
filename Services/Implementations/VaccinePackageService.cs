@@ -29,10 +29,10 @@ namespace Services.Implementations
         private async Task ValidateManagerAccess(int accountId, int facilityId)
         {
             var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.FacilityId == facilityId && s.Position == "Manager");
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.FacilityId == facilityId && s.Position == "Manager,Staff,Doctor");
             if (staff == null)
             {
-                throw new UnauthorizedAccessException($"Người dùng với AccountId {accountId} không phải Manager hoặc không thuộc FacilityId {facilityId}");
+                throw new UnauthorizedAccessException($"Người dùng với AccountId {accountId} không phải FacilityStaff hoặc không thuộc FacilityId {facilityId}");
             }
         }
 

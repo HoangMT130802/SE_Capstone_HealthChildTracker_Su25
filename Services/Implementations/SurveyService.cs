@@ -19,13 +19,13 @@ public class SurveyService : ISurveyService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    private async Task ValidateManagerAccess(int accountId)
+    private async Task ValidateDoctorAccess(int accountId)
     {
         var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-        var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
+        var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Doctor");
         if (staff == null)
         {
-            throw new UnauthorizedAccessException($"User with AccountId {accountId} is not a Manager or does not belong to Facility");
+            throw new UnauthorizedAccessException($"User with AccountId {accountId} is not a Doctor or does not belong to Facility");
         }
     }
     public async Task<int> CreateSurveyQuestionAsync(int surveyId, CreateSurveyQuestionDto questionDto, int accountId)
@@ -43,7 +43,7 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateManagerAccess(accountId);
+            await ValidateDoctorAccess(accountId);
 
             var question = new SurveyQuestion
             {
@@ -190,7 +190,7 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateManagerAccess(accountId);
+            await ValidateDoctorAccess(accountId);
 
             surveyRepository.Delete(survey);
             await _unitOfWork.SaveChangesAsync();
@@ -215,7 +215,7 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateManagerAccess(accountId);
+            await ValidateDoctorAccess(accountId);
 
             _mapper.Map(surveyDto, survey);
             survey.UpdatedAt = DateTime.UtcNow;
