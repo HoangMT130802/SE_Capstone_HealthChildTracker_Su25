@@ -70,7 +70,7 @@ namespace Services.Implementations
                 _logger.LogInformation($"Stored hash starts with: '{account.Password?.Substring(0, Math.Min(20, account.Password?.Length ?? 0))}'");
                 
           
-                string trimmedStoredPassword = account.Password?.Trim();
+                string? trimmedStoredPassword = account.Password?.Trim();
                 _logger.LogInformation($"Trimmed hash length: {trimmedStoredPassword?.Length}");
                 
                 bool isPasswordValid = BC.Verify(request.Password, trimmedStoredPassword);
@@ -116,7 +116,7 @@ namespace Services.Implementations
                     if (staffInfo != null)
                     {
                         response.FullName = staffInfo.FullName;
-                        response.Phone = staffInfo.Phone?.ToString() ?? "";
+                        response.Phone = staffInfo.Phone ?? "";
                         response.StaffId = staffInfo.StaffId;
                         response.Position = staffInfo.Position; // "Manager", "Doctor", "Staff"
                         response.FacilityId = staffInfo.FacilityId;
@@ -192,7 +192,7 @@ namespace Services.Implementations
 
                 _logger.LogInformation($"Staff account found: {account.AccountName}, checking password...");
                 
-                string trimmedStoredPassword = account.Password?.Trim();
+                string? trimmedStoredPassword = account.Password?.Trim();
                 bool isPasswordValid = BC.Verify(request.Password, trimmedStoredPassword);
                 _logger.LogInformation($"BCrypt verification result: {isPasswordValid}");
                 
@@ -524,8 +524,7 @@ namespace Services.Implementations
                         FacilityId = newFacility.FacilityId,
                         FullName = request.ManagerFullName,
                         Email = request.ManagerEmail,
-                        Phone = string.IsNullOrEmpty(request.ManagerPhone) ? (int?)null : 
-                            (int.TryParse(request.ManagerPhone, out int phoneNumber) ? phoneNumber : (int?)null),
+                        Phone = request.ManagerPhone,
                         Position = "Manager",
                         Description = request.ManagerDescription ?? "Quản lý cơ sở",
                         Status = true,
@@ -630,8 +629,7 @@ namespace Services.Implementations
                         FacilityId = facilityId, // ✅ Từ Manager
                         FullName = request.FullName,
                         Email = request.Email,
-                        Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
-                            (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null),
+                        Phone = request.Phone,
                         Position = request.Position, // "Doctor" hoặc "Staff"
                         Description = request.Description ?? "",
                         Status = true,
@@ -739,14 +737,8 @@ namespace Services.Implementations
         {
             await ValidateStaffCreationRequest(accountName, email);
 
-            // Validate phone format if provided
-            if (!string.IsNullOrEmpty(phone))
-            {
-                if (!int.TryParse(phone, out _))
-                {
-                    throw new ArgumentException("Số điện thoại không hợp lệ - chỉ được chứa số");
-                }
-            }
+            // Phone validation can be removed or simplified since it's now a string
+            // The validation can be handled by data annotations in DTOs
         }
 
         public async Task<MemberInfoResponseDTO> UpdateMemberInfoAsync(UpdateMemberInfoDTO request, int currentUserId)
@@ -869,8 +861,7 @@ namespace Services.Implementations
                 {
                     // Update staff info
                     staff.FullName = request.FullName;
-                    staff.Phone = string.IsNullOrEmpty(request.Phone) ? (int?)null : 
-                        (int.TryParse(request.Phone, out int phoneNumber) ? phoneNumber : (int?)null);
+                    staff.Phone = request.Phone;
                     staff.Email = request.Email;
                     staff.Position = request.Position;
                     staff.Description = request.Description;

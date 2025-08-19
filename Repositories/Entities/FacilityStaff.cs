@@ -15,7 +15,7 @@ public partial class FacilityStaff
 
     public string FullName { get; set; }
 
-    public int? Phone { get; set; }
+    public string Phone { get; set; }
 
     public string Email { get; set; }
 

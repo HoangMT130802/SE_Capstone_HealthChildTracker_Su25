@@ -12,7 +12,7 @@ namespace Contracts.DTOs.FacilityStaff
         public int AccountId { get; set; }
         public int FacilityId { get; set; }
         public string FullName { get; set; }
-        public int? Phone { get; set; }
+        public string Phone { get; set; }
         public string Email { get; set; }
         public string Position { get; set; }
         public string Description { get; set; }

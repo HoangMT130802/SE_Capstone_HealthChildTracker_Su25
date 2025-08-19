@@ -40,7 +40,7 @@ namespace Contracts.DTOs.Authentication
         public string FacilityAddress { get; set; }
 
         [Required(ErrorMessage = "Số điện thoại cơ sở là bắt buộc")]
-        [Range(100000000, 999999999, ErrorMessage = "Số điện thoại cơ sở phải có 9 chữ số (100,000,000 - 999,999,999)")]
+        [Range(100000000, 999999999, ErrorMessage = "Số điện thoại cơ sở phải có  chữ số (100,000,000 - 999,999,999)")]
         public int FacilityPhone { get; set; }
 
         [Required(ErrorMessage = "Email cơ sở là bắt buộc")]
