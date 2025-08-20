@@ -63,6 +63,11 @@ namespace Services.Implementations
                     DataPointsUsed = recentRecords.Count
                 };
 
+                // Tính toán chất lượng dự đoán và thêm disclaimer
+                prediction.PredictionQuality = CalculatePredictionQuality(recentRecords, days);
+                prediction.RequiresMedicalConsultation = DetermineIfMedicalConsultationRequired(recentRecords, prediction.PredictionQuality);
+                prediction.DataLimitations = GetDataLimitations(recentRecords, days);
+
                 // Tính xu hướng tuyến tính cho từng chỉ số
                 var heightTrend = CalculateLinearTrend(recentRecords, r => (double)r.Height, r => r.CreatedAt);
                 var weightTrend = CalculateLinearTrend(recentRecords, r => (double)r.Weight, r => r.CreatedAt);
@@ -105,7 +110,7 @@ namespace Services.Implementations
                     });
                 }
 
-                prediction.Recommendations = GeneratePredictionRecommendations(recentRecords, prediction.PredictionPoints);
+                prediction.Recommendations = await GenerateEnhancedRecommendations(recentRecords, prediction.PredictionPoints, prediction.PredictionQuality, child);
 
                 return prediction;
             }
@@ -294,15 +299,26 @@ namespace Services.Implementations
             return predictedHead;
         }
 
-        private string GeneratePredictionRecommendations(List<GrowthRecord> recentRecords, List<PredictionDataPointDTO> predictions)
+        private async Task<string> GenerateEnhancedRecommendations(List<GrowthRecord> recentRecords, List<PredictionDataPointDTO> predictions, PredictionQualityDTO quality, Child child)
         {
             var recommendations = new List<string>();
 
-            // Phân tích xu hướng
+            // ĐÁNH GIA TÌNH TRẠNG HIỆN TẠI (DỰA TRÊN DỮ LIỆU THỰC TẾ)
+            var latestRecord = recentRecords.Last();
+            var currentAssessment = await AssessCurrentStatus(latestRecord, child);
+            
+            recommendations.Add("📊 **TÌNH TRẠNG HIỆN TẠI** (dựa trên chuẩn WHO)");
+            recommendations.Add($"- Chiều cao: {currentAssessment.HeightStatus}");
+            recommendations.Add($"- Cân nặng: {currentAssessment.WeightStatus}");
+            recommendations.Add($"- BMI: {currentAssessment.BMIStatus}");
+            recommendations.Add($"- Vòng đầu: {currentAssessment.HeadCircumferenceStatus}");
+            recommendations.Add("");
+
+            // PHÂN TÍCH XU HƯỚNG TĂNG TRƯỞNG
             var heightTrend = AnalyzeTrend(recentRecords.Select(r => (double)r.Height).ToList());
             var weightTrend = AnalyzeTrend(recentRecords.Select(r => (double)r.Weight).ToList());
 
-            recommendations.Add("📈 **DỰ ĐOÁN TĂNG TRƯỞNG:**");
+            recommendations.Add("📈 **DỰ ĐOÁN TĂNG TRƯỞNG**");
 
             if (heightTrend > 0.15)
                 recommendations.Add("- ✅ Chiều cao đang tăng trưởng tốt");
@@ -320,11 +336,12 @@ namespace Services.Implementations
             else
                 recommendations.Add("- 🚨 Cân nặng có xu hướng giảm đáng lo ngại");
 
-
-
             recommendations.Add("");
-            recommendations.Add("💡 **KHUYẾN NGHỊ:**");
+
+            // KHUYẾN NGHỊ Y KHOA DỰA TRÊN TÌNH TRẠNG
+            recommendations.Add("💡 **KHUYẾN NGHỊ**");
             
+            // Khuyến nghị dựa trên xu hướng
             if (heightTrend <= 0.05)
             {
                 recommendations.Add("- 🥛 Tăng cường canxi và vitamin D cho chiều cao");
@@ -337,11 +354,30 @@ namespace Services.Implementations
                 recommendations.Add("- 👨‍⚕️ Có thể cần tham vấn bác sĩ nếu cân nặng tiếp tục giảm");
             }
 
+            // Khuyến nghị dựa trên assessment hiện tại
+            var medicalRecommendations = GenerateMedicalRecommendations(currentAssessment, heightTrend, weightTrend);
+            recommendations.AddRange(medicalRecommendations);
+
             recommendations.Add("- 📊 Tiếp tục theo dõi định kỳ để dự đoán chính xác hơn");
             
             if (recentRecords.Count < 4)
             {
                 recommendations.Add("- 📈 Để có dự đoán chính xác hơn, hãy đo đạc thêm vài lần nữa");
+            }
+
+            // THÔNG TIN CHẤT LƯỢNG DỰ ĐOÁN
+            recommendations.Add("");
+            recommendations.Add("🎯 **THÔNG TIN DỰ ĐOÁN**");
+            recommendations.Add($"- 📊 Độ tin cậy: {quality.ConfidenceLevel} ({quality.OverallConfidence:F1}%)");
+            recommendations.Add($"- 📈 Chất lượng dữ liệu: {quality.DataQualityDescription}");
+            
+            if (quality.QualityWarnings.Any())
+            {
+                recommendations.Add("- ⚠️ **Cảnh báo:**");
+                foreach (var warning in quality.QualityWarnings)
+                {
+                    recommendations.Add($"  {warning}");
+                }
             }
 
             return string.Join("\n", recommendations);
@@ -358,6 +394,350 @@ namespace Services.Implementations
             }
 
             return diffs.Average();
+        }
+
+        private PredictionQualityDTO CalculatePredictionQuality(List<GrowthRecord> records, int predictionDays)
+        {
+            var quality = new PredictionQualityDTO
+            {
+                DataPointsUsed = records.Count
+            };
+
+            // Tính điểm dựa trên số lượng dữ liệu
+            var dataScore = Math.Min(records.Count * 16.67, 100); // 6 điểm = 100%
+
+            // Tính độ nhất quán xu hướng
+            var heightValues = records.Select(r => (double)r.Height).ToList();
+            var weightValues = records.Select(r => (double)r.Weight).ToList();
+            var heightConsistency = CalculateConsistency(heightValues);
+            var weightConsistency = CalculateConsistency(weightValues);
+            quality.TrendConsistency = (heightConsistency + weightConsistency) / 2;
+
+            // Tính điểm thời gian
+            var timeSpan = (records.Last().CreatedAt - records.First().CreatedAt).TotalDays;
+            var timeScore = Math.Min(timeSpan / 180 * 100, 100); // Tối ưu ở 6 tháng
+
+            // Điểm dự đoán (càng xa càng kém tin cậy)
+            var predictionScore = Math.Max(100 - (predictionDays / 30.0 * 15), 20); // Giảm 15% mỗi tháng
+
+            quality.OverallConfidence = (dataScore + quality.TrendConsistency + timeScore + predictionScore) / 4;
+            
+            // Xác định mức độ tin cậy
+            quality.ConfidenceLevel = quality.OverallConfidence switch
+            {
+                >= 80 => "Cao",
+                >= 60 => "Trung bình",
+                >= 40 => "Thấp",
+                _ => "Rất thấp"
+            };
+
+            quality.DataQualityDescription = records.Count switch
+            {
+                >= 6 => "Đủ dữ liệu cho dự đoán tin cậy",
+                >= 4 => "Dữ liệu khá tốt",
+                >= 2 => "Dữ liệu tối thiểu - cần thêm điểm đo",
+                _ => "Không đủ dữ liệu"
+            };
+
+            // Thêm cảnh báo chất lượng
+            if (quality.OverallConfidence < 60)
+                quality.QualityWarnings.Add("⚠️ Độ tin cậy dự đoán thấp - cần thêm dữ liệu");
+            
+            if (records.Count < 4)
+                quality.QualityWarnings.Add("📊 Cần ít nhất 4-6 điểm đo để có dự đoán chính xác");
+            
+            if (predictionDays > 180)
+                quality.QualityWarnings.Add("⏰ Dự đoán xa (>6 tháng) có độ chính xác thấp");
+
+            return quality;
+        }
+
+        private double CalculateConsistency(List<double> values)
+        {
+            if (values.Count < 3) return 50; // Điểm trung bình nếu không đủ dữ liệu
+
+            var diffs = new List<double>();
+            for (int i = 1; i < values.Count; i++)
+            {
+                diffs.Add(values[i] - values[i - 1]);
+            }
+
+            var avgDiff = diffs.Average();
+            var variance = diffs.Select(d => Math.Pow(d - avgDiff, 2)).Average();
+            var standardDev = Math.Sqrt(variance);
+
+            // Điểm nhất quán: thấp hơn nếu có biến động lớn
+            var consistencyScore = Math.Max(100 - (standardDev * 20), 0);
+            return Math.Min(consistencyScore, 100);
+        }
+
+        private bool DetermineIfMedicalConsultationRequired(List<GrowthRecord> records, PredictionQualityDTO quality)
+        {
+            // Yêu cầu tham vấn y tế nếu:
+            // 1. Độ tin cậy thấp
+            if (quality.OverallConfidence < 50) return true;
+
+            // 2. Xu hướng bất thường
+            var heightTrend = AnalyzeTrend(records.Select(r => (double)r.Height).ToList());
+            var weightTrend = AnalyzeTrend(records.Select(r => (double)r.Weight).ToList());
+            
+            if (heightTrend < 0 || weightTrend < -0.5) return true; // Giảm chiều cao hoặc giảm cân nhanh
+
+            // 3. Dữ liệu không đủ
+            if (records.Count < 3) return true;
+
+            return false;
+        }
+
+        private List<string> GetDataLimitations(List<GrowthRecord> records, int predictionDays)
+        {
+            var limitations = new List<string>();
+
+            if (records.Count < 4)
+                limitations.Add("• Số điểm dữ liệu ít - độ chính xác hạn chế");
+
+            if (predictionDays > 90)
+                limitations.Add("• Dự đoán dài hạn - độ tin cậy giảm theo thời gian");
+
+            var timeSpan = (records.Last().CreatedAt - records.First().CreatedAt).TotalDays;
+            if (timeSpan < 60)
+                limitations.Add("• Khoảng thời gian quan sát ngắn - có thể bỏ lỡ xu hướng dài hạn");
+
+            limitations.Add("• Không tính đến yếu tố di truyền, môi trường, bệnh lý");
+            limitations.Add("• Dựa trên mô hình toán học đơn giản - không thay thế đánh giá y khoa");
+
+            return limitations;
+        }
+
+        private async Task<GrowthAssessmentsDTO> AssessCurrentStatus(GrowthRecord record, Child child)
+        {
+            try
+            {
+                string gender = child.Gender?.Trim().ToUpper();
+                if (string.IsNullOrEmpty(gender) || (gender != "MALE" && gender != "FEMALE"))
+                {
+                    return new GrowthAssessmentsDTO
+                    {
+                        HeightStatus = "Không có dữ liệu chuẩn",
+                        WeightStatus = "Không có dữ liệu chuẩn",
+                        BMIStatus = "Không có dữ liệu chuẩn",
+                        HeadCircumferenceStatus = "Không có dữ liệu chuẩn"
+                    };
+                }
+                gender = char.ToUpper(gender[0]) + gender.Substring(1).ToLower();
+
+                int ageInMonths = (int)((decimal)(record.CreatedAt - child.BirthDate).TotalDays / 30.44M);
+
+                var standardRepo = _unitOfWork.GetRepository<GrowthStandard>();
+                var standards = await standardRepo.FindAsync(s =>
+                    s.Gender == gender &&
+                    s.AgeInMonths == ageInMonths
+                );
+
+                if (!standards.Any())
+                {
+                    return new GrowthAssessmentsDTO
+                    {
+                        HeightStatus = "Không có dữ liệu chuẩn cho độ tuổi này",
+                        WeightStatus = "Không có dữ liệu chuẩn cho độ tuổi này",
+                        BMIStatus = "Không có dữ liệu chuẩn cho độ tuổi này",
+                        HeadCircumferenceStatus = "Không có dữ liệu chuẩn cho độ tuổi này"
+                    };
+                }
+
+                var heightStandard = standards.FirstOrDefault(s => s.Measurement == "Height");
+                var weightStandard = standards.FirstOrDefault(s => s.Measurement == "Weight");
+                var bmiStandard = standards.FirstOrDefault(s => s.Measurement == "BMI");
+                var headStandard = standards.FirstOrDefault(s => s.Measurement == "HeadCircumference");
+
+                return new GrowthAssessmentsDTO
+                {
+                    HeightStatus = AssessHeightStatus(record.Height, heightStandard),
+                    WeightStatus = AssessWeightAndBMIStatus(record.Weight, weightStandard),
+                    BMIStatus = AssessWeightAndBMIStatus(record.Bmi, bmiStandard),
+                    HeadCircumferenceStatus = AssessHeadCircumferenceStatus(record.HeadCircumference, headStandard)
+                };
+            }
+            catch
+            {
+                return new GrowthAssessmentsDTO
+                {
+                    HeightStatus = "Lỗi đánh giá",
+                    WeightStatus = "Lỗi đánh giá",
+                    BMIStatus = "Lỗi đánh giá",
+                    HeadCircumferenceStatus = "Lỗi đánh giá"
+                };
+            }
+        }
+
+        private List<string> GenerateMedicalRecommendations(GrowthAssessmentsDTO assessment, double heightTrend, double weightTrend)
+        {
+            var recommendations = new List<string>();
+
+            // Khuyến nghị dựa trên tình trạng chiều cao
+            if (assessment.HeightStatus.Contains("Thấp còi nặng"))
+            {
+                recommendations.Add("- 🏥 Cần đưa trẻ đi khám bác sĩ chuyên khoa nhi gấp");
+                recommendations.Add("- 🔬 Kiểm tra các vấn đề về nội tiết và dinh dưỡng");
+                recommendations.Add("- 💊 Có thể cần bổ sung hormone tăng trưởng theo chỉ định bác sĩ");
+            }
+            else if (assessment.HeightStatus.Contains("Thấp còi"))
+            {
+                recommendations.Add("- 🥛 Cần bổ sung vitamin D và canxi");
+                recommendations.Add("- 🍖 Đảm bảo chế độ ăn đủ protein (thịt, cá, trứng, sữa)");
+                recommendations.Add("- 🌞 Tăng cường vận động ngoài trời");
+                recommendations.Add("- 👨‍⚕️ Tham vấn bác sĩ nhi khoa về nguyên nhân");
+            }
+            else if (assessment.HeightStatus.Contains("Nguy cơ thấp còi"))
+            {
+                recommendations.Add("- 🥛 Tăng cường canxi và vitamin D cho chiều cao");
+                recommendations.Add("- 🏃‍♂️ Khuyến khích vận động và thể dục");
+            }
+
+            // Khuyến nghị dựa trên tình trạng cân nặng và BMI
+            if (assessment.WeightStatus.Contains("Suy dinh dưỡng nặng") || assessment.BMIStatus.Contains("Suy dinh dưỡng nặng"))
+            {
+                recommendations.Add("- 🏥 Cần nhập viện điều trị dinh dưỡng ngay lập tức");
+                recommendations.Add("- 💊 Bổ sung các vitamin và khoáng chất theo chỉ định bác sĩ");
+                recommendations.Add("- 🍼 Có thể cần sữa công thức đặc biệt");
+            }
+            else if (assessment.WeightStatus.Contains("Suy dinh dưỡng") || assessment.BMIStatus.Contains("Suy dinh dưỡng"))
+            {
+                recommendations.Add("- 🍎 Cần tăng cường dinh dưỡng ngay");
+                recommendations.Add("- 🥩 Bổ sung protein chất lượng cao");
+                recommendations.Add("- 💊 Bổ sung các vitamin và khoáng chất cần thiết");
+                recommendations.Add("- 👨‍⚕️ Tham vấn bác sĩ dinh dưỡng");
+            }
+            else if (assessment.WeightStatus.Contains("Béo phì nặng") || assessment.BMIStatus.Contains("Béo phì nặng"))
+            {
+                recommendations.Add("- 🏥 Cần tham vấn bác sĩ nhi khoa và dinh dưỡng ngay");
+                recommendations.Add("- 🥗 Điều chỉnh chế độ ăn theo hướng dẫn chuyên gia");
+                recommendations.Add("- 🏃‍♂️ Tăng cường hoạt động thể chất phù hợp");
+                recommendations.Add("- 🔬 Kiểm tra các vấn đề về chuyển hóa");
+            }
+            else if (assessment.WeightStatus.Contains("Béo phì") || assessment.BMIStatus.Contains("Béo phì"))
+            {
+                recommendations.Add("- 👨‍⚕️ Cần tham vấn bác sĩ về chế độ ăn phù hợp");
+                recommendations.Add("- 🏃‍♂️ Tăng cường vận động hàng ngày");
+                recommendations.Add("- 🥗 Giảm đồ ăn nhiều đường và chất béo");
+            }
+            else if (assessment.WeightStatus.Contains("Nguy cơ") || assessment.BMIStatus.Contains("Nguy cơ"))
+            {
+                recommendations.Add("- 📊 Theo dõi chế độ ăn và hoạt động thể chất");
+                recommendations.Add("- 👨‍⚕️ Tham khảo ý kiến bác sĩ nếu cần");
+            }
+
+            // Khuyến nghị dựa trên vòng đầu
+            if (assessment.HeadCircumferenceStatus.Contains("Đầu rất nhỏ") || 
+                assessment.HeadCircumferenceStatus.Contains("Microcephaly"))
+            {
+                recommendations.Add("- 🧠 Cần đưa trẻ đi khám chuyên khoa thần kinh nhi ngay");
+                recommendations.Add("- 🔬 Cần các xét nghiệm chẩn đoán hình ảnh não bộ");
+                recommendations.Add("- 👨‍⚕️ Theo dõi sát sự phát triển trí tuệ và vận động");
+            }
+            else if (assessment.HeadCircumferenceStatus.Contains("Đầu rất to") || 
+                     assessment.HeadCircumferenceStatus.Contains("Macrocephaly"))
+            {
+                recommendations.Add("- 🧠 Cần đưa trẻ đi khám chuyên khoa thần kinh nhi ngay");
+                recommendations.Add("- 🔬 Kiểm tra áp lực nội sọ và não úng thủy");
+                recommendations.Add("- 📊 Theo dõi sự phát triển của não bộ");
+            }
+
+            return recommendations;
+        }
+
+        private List<string> GenerateStatusBasedRecommendations(GrowthAssessmentsDTO assessment, double heightTrend, double weightTrend)
+        {
+            var recommendations = new List<string>();
+
+            // Dựa trên tình trạng chiều cao
+            if (assessment.HeightStatus.Contains("Thấp còi") || assessment.HeightStatus.Contains("thấp còi"))
+            {
+                recommendations.Add("- 📏 Tình trạng chiều cao cần chú ý - tham vấn bác sĩ về dinh dưỡng và hormone tăng trưởng");
+                if (heightTrend <= 0.05)
+                    recommendations.Add("- 📈 Xu hướng tăng chiều cao chậm - cần đánh giá chuyên sâu");
+            }
+            else if (assessment.HeightStatus.Contains("Nguy cơ"))
+            {
+                recommendations.Add("- 📏 Theo dõi sát chiều cao - đảm bảo dinh dưỡng đầy đủ");
+            }
+
+            // Dựa trên tình trạng cân nặng
+            if (assessment.WeightStatus.Contains("Suy dinh dưỡng") || assessment.BMIStatus.Contains("Suy dinh dưỡng"))
+            {
+                recommendations.Add("- ⚖️ Tình trạng cân nặng cần can thiệp - tham vấn bác sĩ dinh dưỡng ngay");
+                if (weightTrend < -0.1)
+                    recommendations.Add("- 📉 Xu hướng giảm cân - cần đánh giá nguyên nhân");
+            }
+            else if (assessment.WeightStatus.Contains("Béo phì") || assessment.BMIStatus.Contains("Béo phì"))
+            {
+                recommendations.Add("- ⚖️ Tình trạng thừa cân/béo phì - tham vấn bác sĩ về chế độ ăn và vận động");
+            }
+            else if (assessment.WeightStatus.Contains("Nguy cơ") || assessment.BMIStatus.Contains("Nguy cơ"))
+            {
+                recommendations.Add("- ⚖️ Cân nặng/BMI ở mức cần theo dõi - tham khảo bác sĩ");
+            }
+
+            // Dựa trên tình trạng vòng đầu
+            if (assessment.HeadCircumferenceStatus.Contains("Microcephaly") || 
+                assessment.HeadCircumferenceStatus.Contains("Macrocephaly") ||
+                assessment.HeadCircumferenceStatus.Contains("rất"))
+            {
+                recommendations.Add("- 🧠 Vòng đầu bất thường - cần khám bác sĩ thần kinh nhi ngay");
+            }
+
+            // Khuyến nghị chung cho trường hợp bình thường
+            if (assessment.HeightStatus.Contains("Bình thường") && 
+                assessment.WeightStatus.Contains("Bình thường") && 
+                assessment.BMIStatus.Contains("Bình thường"))
+            {
+                recommendations.Add("- ✅ Tình trạng phát triển trong giới hạn bình thường");
+                recommendations.Add("- 📊 Tiếp tục duy trì chế độ sinh hoạt hiện tại và theo dõi định kỳ");
+            }
+
+            return recommendations;
+        }
+
+        private bool RequiresMedicalAttention(GrowthAssessmentsDTO assessment)
+        {
+            // Cần tham vấn y tế nếu có bất kỳ tình trạng nào ở mức nghiêm trọng
+            return assessment.HeightStatus.Contains("nặng") ||
+                   assessment.WeightStatus.Contains("nặng") ||
+                   assessment.BMIStatus.Contains("nặng") ||
+                   assessment.HeadCircumferenceStatus.Contains("rất") ||
+                   assessment.HeightStatus.Contains("Thấp còi") ||
+                   assessment.WeightStatus.Contains("Suy dinh dưỡng") ||
+                   assessment.BMIStatus.Contains("Suy dinh dưỡng") ||
+                   assessment.WeightStatus.Contains("Béo phì") ||
+                   assessment.BMIStatus.Contains("Béo phì");
+        }
+
+        private List<string> GetMedicalConsultationReasons(GrowthAssessmentsDTO assessment, PredictionQualityDTO quality, double heightTrend, double weightTrend)
+        {
+            var reasons = new List<string>();
+
+            if (quality.OverallConfidence < 60)
+                reasons.Add("Độ tin cậy dự đoán thấp");
+
+            if (heightTrend < 0)
+                reasons.Add("Xu hướng giảm chiều cao bất thường");
+
+            if (weightTrend < -0.3)
+                reasons.Add("Xu hướng giảm cân đáng lo ngại");
+
+            if (assessment.HeightStatus.Contains("nặng") || assessment.HeightStatus.Contains("Thấp còi"))
+                reasons.Add($"Tình trạng chiều cao: {assessment.HeightStatus}");
+
+            if (assessment.WeightStatus.Contains("nặng") || assessment.WeightStatus.Contains("Suy dinh dưỡng") || assessment.WeightStatus.Contains("Béo phì"))
+                reasons.Add($"Tình trạng cân nặng: {assessment.WeightStatus}");
+
+            if (assessment.BMIStatus.Contains("nặng") || assessment.BMIStatus.Contains("Suy dinh dưỡng") || assessment.BMIStatus.Contains("Béo phì"))
+                reasons.Add($"Tình trạng BMI: {assessment.BMIStatus}");
+
+            if (assessment.HeadCircumferenceStatus.Contains("rất"))
+                reasons.Add($"Tình trạng vòng đầu: {assessment.HeadCircumferenceStatus}");
+
+            return reasons;
         }
 
         public async Task<GrowthAssessmentDTO> AssessGrowthAsync(GrowthRecord record)
@@ -420,7 +800,7 @@ namespace Services.Implementations
                     }
                 };
 
-                assessment.Recommendations = GenerateRecommendations(assessment.Assessments);
+                assessment.Recommendations = GenerateBasicRecommendations(assessment.Assessments);
 
                 return assessment;
             }
@@ -473,47 +853,69 @@ namespace Services.Implementations
             return "Đầu rất to (Macrocephaly)";
         }
 
-        private string GenerateRecommendations(GrowthAssessmentsDTO assessments)
+        private string GenerateBasicRecommendations(GrowthAssessmentsDTO assessments)
         {
             var recommendations = new List<string>();
 
+            // Hiển thị tình trạng hiện tại
+            recommendations.Add("📊 **TÌNH TRẠNG HIỆN TẠI**");
+            recommendations.Add($"- Chiều cao: {assessments.HeightStatus}");
+            recommendations.Add($"- Cân nặng: {assessments.WeightStatus}");
+            recommendations.Add($"- BMI: {assessments.BMIStatus}");
+            recommendations.Add($"- Vòng đầu: {assessments.HeadCircumferenceStatus}");
+            recommendations.Add("");
+
+            // Khuyến nghị cơ bản (không chi tiết như VIP)
+            recommendations.Add("💡 **KHUYẾN NGHỊ CỦA BÁC SĨ**");
+
             // Đánh giá chiều cao
-            if (assessments.HeightStatus.Contains("nặng"))
+            if (assessments.HeightStatus.Contains("nặng") || assessments.HeightStatus.Contains("Thấp còi"))
             {
-                recommendations.Add("- Cần đưa trẻ đi khám bác sĩ chuyên khoa nhi gấp");
-                recommendations.Add("- Kiểm tra các vấn đề về nội tiết và dinh dưỡng");
+                recommendations.Add("- 🏥 Cần tham vấn bác sĩ nhi khoa");
+                recommendations.Add("- 🥛 Chú ý chế độ dinh dưỡng");
             }
-            else if (assessments.HeightStatus.Contains("Thấp còi"))
+            else if (assessments.HeightStatus.Contains("Nguy cơ"))
             {
-                recommendations.Add("- Cần bổ sung vitamin D và canxi");
-                recommendations.Add("- Đảm bảo chế độ ăn đủ protein (thịt, cá, trứng, sữa)");
-                recommendations.Add("- Tăng cường vận động ngoài trời");
+                recommendations.Add("- 📊 Theo dõi sát chiều cao");
+                recommendations.Add("- 🏃‍♂️ Tăng cường vận động");
             }
 
             // Đánh giá cân nặng và BMI
-            if (assessments.WeightStatus.Contains("nặng") || assessments.BMIStatus.Contains("nặng"))
+            if (assessments.WeightStatus.Contains("nặng") || assessments.BMIStatus.Contains("nặng") ||
+                assessments.WeightStatus.Contains("Suy dinh dưỡng") || assessments.BMIStatus.Contains("Suy dinh dưỡng") ||
+                assessments.WeightStatus.Contains("Béo phì") || assessments.BMIStatus.Contains("Béo phì"))
             {
-                recommendations.Add("- Cần tham vấn bác sĩ về chế độ ăn phù hợp");
-                recommendations.Add("- Theo dõi chế độ ăn và hoạt động thể chất");
+                recommendations.Add("- 🏥 Cần tham vấn bác sĩ dinh dưỡng");
+                recommendations.Add("- 🍎 Điều chỉnh chế độ ăn uống");
             }
-            else if (assessments.WeightStatus.Contains("Suy dinh dưỡng") || assessments.BMIStatus.Contains("Suy dinh dưỡng"))
+            else if (assessments.WeightStatus.Contains("Nguy cơ") || assessments.BMIStatus.Contains("Nguy cơ"))
             {
-                recommendations.Add("- Cần tăng cường dinh dưỡng");
-                recommendations.Add("- Bổ sung các vitamin và khoáng chất cần thiết");
+                recommendations.Add("- 📊 Theo dõi cân nặng thường xuyên");
             }
 
             // Đánh giá vòng đầu
-            if (assessments.HeadCircumferenceStatus.Contains("rất"))
+            if (assessments.HeadCircumferenceStatus.Contains("rất") ||
+                assessments.HeadCircumferenceStatus.Contains("Microcephaly") ||
+                assessments.HeadCircumferenceStatus.Contains("Macrocephaly"))
             {
-                recommendations.Add("- Cần đưa trẻ đi khám chuyên khoa thần kinh");
-                recommendations.Add("- Theo dõi sự phát triển của não bộ");
+                recommendations.Add("- 🧠 Cần khám chuyên khoa thần kinh nhi");
             }
 
-            if (recommendations.Count == 0)
+            // Khuyến nghị chung cho trường hợp bình thường
+            if (assessments.HeightStatus.Contains("Bình thường") && 
+                assessments.WeightStatus.Contains("Bình thường") && 
+                assessments.BMIStatus.Contains("Bình thường"))
             {
-                recommendations.Add("Trẻ đang phát triển bình thường.");
-                recommendations.Add("- Tiếp tục duy trì chế độ dinh dưỡng và vận động hiện tại");
+                recommendations.Add("- ✅ Trẻ đang phát triển bình thường");
+                recommendations.Add("- 📊 Tiếp tục theo dõi định kỳ");
             }
+
+            recommendations.Add("");
+            recommendations.Add("🔄 **NÂNG CẤP VIP**");
+            recommendations.Add("- 📈 Xem dự đoán tăng trưởng chi tiết");
+            recommendations.Add("- 💊 Nhận khuyến nghị y khoa cụ thể");
+            recommendations.Add("- 📊 Phân tích xu hướng phát triển");
+            recommendations.Add("- 🎯 Lời khuyên cá nhân hóa");
 
             return string.Join("\n", recommendations);
         }
