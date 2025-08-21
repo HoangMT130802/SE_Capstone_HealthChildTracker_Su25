@@ -725,25 +725,11 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Tài khoản Member không tồn tại");
                 }
 
-                // Validate email uniqueness (exclude current user)
-                var accountRepository = _unitOfWork.GetRepository<Account>();
-                var existingAccountByEmail = await accountRepository.GetAsync(u => 
-                    u.Email.ToLower() == request.Email.ToLower() && u.AccountId != currentUserId);
-                if (existingAccountByEmail != null)
-                {
-                    throw new InvalidOperationException("Email đã được sử dụng");
-                }
-
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
                 
                 try
                 {
-                    // Update account email
-                    member.Account.Email = request.Email;
-                    member.Account.UpdatedAt = DateTime.UtcNow;
-                    accountRepository.Update(member.Account);
-
-                    // Update member info
+                    // Update member info (email không được phép thay đổi)
                     member.FullName = request.FullName;
                     member.PhoneNumber = request.PhoneNumber;
                     member.Address = request.Address;
@@ -819,22 +805,13 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Không có quyền cập nhật thông tin staff");
                 }
 
-                // Validate email uniqueness (exclude current staff)
-                var staffWithSameEmail = await staffRepository.GetAsync(s => 
-                    s.Email.ToLower() == request.Email.ToLower() && s.StaffId != request.StaffId);
-                if (staffWithSameEmail != null)
-                {
-                    throw new InvalidOperationException("Email đã được sử dụng bởi staff khác");
-                }
-
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
                 
                 try
                 {
-                    // Update staff info
+                    // Update staff info (email không được phép thay đổi)
                     staff.FullName = request.FullName;
                     staff.Phone = request.Phone;
-                    staff.Email = request.Email;
                     staff.Position = request.Position;
                     staff.Description = request.Description;
                     staff.Status = request.Status;

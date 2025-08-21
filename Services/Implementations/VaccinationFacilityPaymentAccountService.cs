@@ -343,8 +343,8 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 (int)amount,
                 TruncateDescription(description),
                 new List<ItemData>(),
-                $"{GetFrontendUrl()}/payment/cancel?orderId={orderCode}",
-                $"{GetFrontendUrl()}/staff/appointments/{request.AppointmentId}/step-3?orderId={orderCode}&status=success",
+                $"{GetFrontendUrl()}/staff/appointments/{request.AppointmentId}/step-3?orderId={orderCode}&status=cancel",
+                $"http://localhost:5173/staff/appointments/{request.AppointmentId}/payment-complete",
                 null
             );
 
@@ -408,74 +408,117 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
     /// <summary>
     /// Kiểm tra trạng thái thanh toán và cập nhật
     /// </summary>
-    public async Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCode)
+    public async Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCodeOrTimestamp)
     {
         try
         {
-            // Extract FacilityId từ OrderCode format: {timestamp}_{facilityId}_{appointmentId}_{orderId}
-            var orderParts = orderCode.Split('_');
-            if (orderParts.Length < 3)
-            {
-                throw new ArgumentException($"OrderCode format không hợp lệ: {orderCode}. Expected format: timestamp_facilityId_appointmentId[_orderId]");
-            }
-
-            if (!int.TryParse(orderParts[1], out var facilityId))
-            {
-                throw new ArgumentException($"FacilityId trong OrderCode không hợp lệ: {orderParts[1]}");
-            }
-
-            _logger.LogInformation("Kiểm tra trạng thái facility payment - OrderCode: {OrderCode}, FacilityId: {FacilityId}", 
-                orderCode, facilityId);
-
-            var transactionRepo = _unitOfWork.GetRepository<Transaction>();
-            var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == orderCode);
+            string fullOrderCode;
+            int facilityId;
             
-            if (transaction == null)
+            // Kiểm tra nếu input chỉ là timestamp (VD: 1755787333854) hoặc full orderCode (VD: 1755787333854_5_170_2)
+            var inputParts = orderCodeOrTimestamp.Split('_');
+            
+            if (inputParts.Length == 1)
             {
-                throw new KeyNotFoundException($"Không tìm thấy transaction với OrderCode: {orderCode}");
+                // Chỉ có timestamp, tìm transaction bằng cách search LIKE
+                _logger.LogInformation("Searching transaction by timestamp: {Timestamp}", orderCodeOrTimestamp);
+                
+                var transactionRepo = _unitOfWork.GetRepository<Transaction>();
+                var transaction = await transactionRepo.GetAsync(t => t.TransactionCode.StartsWith(orderCodeOrTimestamp + "_"));
+                
+                if (transaction == null)
+                {
+                    throw new KeyNotFoundException($"Không tìm thấy transaction với timestamp: {orderCodeOrTimestamp}");
+                }
+                
+                fullOrderCode = transaction.TransactionCode;
+                
+                // Extract facilityId từ full orderCode
+                var orderParts = fullOrderCode.Split('_');
+                if (orderParts.Length < 3 || !int.TryParse(orderParts[1], out facilityId))
+                {
+                    throw new ArgumentException($"OrderCode format không hợp lệ: {fullOrderCode}");
+                }
+                
+                _logger.LogInformation("Found transaction: {FullOrderCode} for timestamp: {Timestamp}", 
+                    fullOrderCode, orderCodeOrTimestamp);
+            }
+            else
+            {
+                // Full orderCode format: {timestamp}_{facilityId}_{appointmentId}_{orderId}
+                if (inputParts.Length < 3)
+                {
+                    throw new ArgumentException($"OrderCode format không hợp lệ: {orderCodeOrTimestamp}. Expected format: timestamp_facilityId_appointmentId[_orderId] or just timestamp");
+                }
+
+                if (!int.TryParse(inputParts[1], out facilityId))
+                {
+                    throw new ArgumentException($"FacilityId trong OrderCode không hợp lệ: {inputParts[1]}");
+                }
+                
+                fullOrderCode = orderCodeOrTimestamp;
+                
+                var transactionRepo = _unitOfWork.GetRepository<Transaction>();
+                var transaction = await transactionRepo.GetAsync(t => t.TransactionCode == fullOrderCode);
+                
+                if (transaction == null)
+                {
+                    throw new KeyNotFoundException($"Không tìm thấy transaction với OrderCode: {fullOrderCode}");
+                }
+            }
+
+            _logger.LogInformation("Kiểm tra trạng thái facility payment - Input: {Input}, FullOrderCode: {FullOrderCode}, FacilityId: {FacilityId}", 
+                orderCodeOrTimestamp, fullOrderCode, facilityId);
+
+            var transactionRepo2 = _unitOfWork.GetRepository<Transaction>();
+            var finalTransaction = await transactionRepo2.GetAsync(t => t.TransactionCode == fullOrderCode);
+            
+            if (finalTransaction == null)
+            {
+                throw new KeyNotFoundException($"Không tìm thấy transaction với FullOrderCode: {fullOrderCode}");
             }
 
             // Chỉ check PayOS nếu chưa PAID
-            if (!string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(finalTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase))
             {
                 var payOS = await GetFacilityPayOSInstanceAsync(facilityId);
-                var payInfo = await payOS.getPaymentLinkInformation(long.Parse(orderCode.Split('_')[0]));
+                var payInfo = await payOS.getPaymentLinkInformation(long.Parse(fullOrderCode.Split('_')[0]));
                 
-                _logger.LogInformation("PayOS status: {Status} for OrderCode: {OrderCode}", payInfo.status, orderCode);
+                _logger.LogInformation("PayOS status: {Status} for OrderCode: {OrderCode}", payInfo.status, fullOrderCode);
 
                 if (payInfo.status.Equals("PAID", StringComparison.OrdinalIgnoreCase))
                 {
-                    transaction.Status = "PAID";
-                    transaction.Amount = payInfo.amount;
-                    transactionRepo.Update(transaction);
+                    finalTransaction.Status = "PAID";
+                    finalTransaction.Amount = payInfo.amount;
+                    transactionRepo2.Update(finalTransaction);
 
                     // Cập nhật appointment status thành Paid
-                    await UpdateAppointmentToPaid(orderCode);
+                    await UpdateAppointmentToPaid(fullOrderCode);
                     
                     await _unitOfWork.SaveChangesAsync();
-                    _logger.LogInformation("✅ Transaction {OrderCode} updated to PAID", orderCode);
+                    _logger.LogInformation("✅ Transaction {OrderCode} updated to PAID", fullOrderCode);
                 }
                 else if (payInfo.status.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase))
                 {
-                    transaction.Status = "CANCELLED";
-                    transactionRepo.Update(transaction);
+                    finalTransaction.Status = "CANCELLED";
+                    transactionRepo2.Update(finalTransaction);
                     await _unitOfWork.SaveChangesAsync();
-                    _logger.LogInformation("❌ Transaction {OrderCode} updated to CANCELLED", orderCode);
+                    _logger.LogInformation("❌ Transaction {OrderCode} updated to CANCELLED", fullOrderCode);
                 }
             }
 
             return new PaymentStatusDTO
             {
-                Success = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase),
-                Status = transaction.Status,
-                Message = GetPaymentStatusMessage(transaction.Status),
-                Amount = transaction.Amount,
-                PaidAt = string.Equals(transaction.Status, "PAID", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : null
+                Success = string.Equals(finalTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase),
+                Status = finalTransaction.Status,
+                Message = GetPaymentStatusMessage(finalTransaction.Status),
+                Amount = finalTransaction.Amount,
+                PaidAt = string.Equals(finalTransaction.Status, "PAID", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : null
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái facility payment - OrderCode: {OrderCode}", orderCode);
+            _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái facility payment - Input: {Input}", orderCodeOrTimestamp);
             throw;
         }
     }

@@ -221,15 +221,17 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Kiểm tra trạng thái thanh toán - chỉ cần OrderCode
-        /// OrderCode format: {timestamp}_{facilityId}_{appointmentId}[_{orderId}]
+        /// Kiểm tra trạng thái thanh toán - chấp nhận timestamp hoặc full orderCode
+        /// Input có thể là:
+        /// - Chỉ timestamp: 1755787333854
+        /// - Full orderCode: 1755787333854_5_170_2
         /// </summary>
-        [HttpGet("payment-status/{orderCode}")]
-        public async Task<IActionResult> CheckFacilityPaymentStatus(string orderCode)
+        [HttpGet("payment-status/{orderCodeOrTimestamp}")]
+        public async Task<IActionResult> CheckFacilityPaymentStatus(string orderCodeOrTimestamp)
         {
-            if (string.IsNullOrEmpty(orderCode))
+            if (string.IsNullOrEmpty(orderCodeOrTimestamp))
             {
-                return BadRequest(new { success = false, message = "OrderCode không được để trống" });
+                return BadRequest(new { success = false, message = "OrderCode hoặc Timestamp không được để trống" });
             }
 
             try
@@ -237,7 +239,7 @@ namespace KidTracking.API.Controllers
                 var accountId = GetAccountId();
                 
                 // FacilityId sẽ được extract từ OrderCode trong service
-                var result = await _paymentAccountService.CheckFacilityPaymentStatusAsync(orderCode);
+                var result = await _paymentAccountService.CheckFacilityPaymentStatusAsync(orderCodeOrTimestamp);
 
                 return Ok(new
                 {
@@ -254,12 +256,12 @@ namespace KidTracking.API.Controllers
             }
             catch (KeyNotFoundException ex)
             {
-                _logger.LogWarning(ex, "Transaction not found: {OrderCode}", orderCode);
+                _logger.LogWarning(ex, "Transaction not found: {Input}", orderCodeOrTimestamp);
                 return NotFound(new { success = false, message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking facility payment status: {OrderCode}", orderCode);
+                _logger.LogError(ex, "Error checking facility payment status: {Input}", orderCodeOrTimestamp);
                 return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi kiểm tra trạng thái thanh toán" });
             }
         }
