@@ -13,5 +13,10 @@ namespace Services.Interfaces
         Task<OtpInfo> GetRegistrationDataAsync(string email, string otpCode);
         Task<bool> VerifyOtpCodeAsync(string email, string otpCode, string type);
         Task CleanupExpiredOtpAsync();
+        
+        // Vaccine reminder methods
+        Task SendVaccineReminderEmailAsync(string email, string parentName, string childName, string vaccineName, int doseNumber, DateOnly expectedDate, string facilityName = null);
+        Task SendAppointmentReminderEmailAsync(string email, string parentName, string childName, DateOnly appointmentDate, string timeSlot, string facilityName, string facilityAddress, string vaccineName);
+        Task SendVaccinationCompletionEmailAsync(string email, string parentName, string childName, string vaccineName, int doseNumber, DateOnly vaccinationDate, DateOnly? nextDoseDate = null);
     }
 }
