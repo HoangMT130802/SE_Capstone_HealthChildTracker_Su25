@@ -72,12 +72,12 @@ namespace KidTracking.API.Controllers
 
         [HttpPost("register")]
         [AllowAnonymous]
-        public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterRequestDTO request)
+        public async Task<ActionResult<RegisterPendingResponseDTO>> Register([FromBody] RegisterRequestDTO request)
         {
             try
             {
                 var response = await _authService.RegisterAsync(request);
-                return Ok(response);
+                return StatusCode(201, response); // 201 Created - OTP sent successfully
             }
             catch (ArgumentException ex)
             {

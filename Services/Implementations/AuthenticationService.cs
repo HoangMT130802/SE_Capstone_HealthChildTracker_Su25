@@ -255,7 +255,7 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<UserResponseDTO> RegisterAsync(RegisterRequestDTO request)
+        public async Task<RegisterPendingResponseDTO> RegisterAsync(RegisterRequestDTO request)
         {
             try
             {
@@ -275,8 +275,23 @@ namespace Services.Implementations
 
                 _logger.LogInformation($"Verification email sent to {request.Email}. Registration pending email verification.");
                 
-                // Trả về thông báo yêu cầu xác thực email thay vì tạo tài khoản ngay
-                throw new InvalidOperationException("Vui lòng kiểm tra email và nhập mã xác thực để hoàn tất đăng ký");
+                // Trả về thông báo thành công thay vì throw exception
+                return new RegisterPendingResponseDTO
+                {
+                    Message = "Vui lòng kiểm tra email và nhập mã xác thực để hoàn tất đăng ký",
+                    Email = request.Email,
+                    RequiresVerification = true
+                };
+            }
+            catch (ArgumentException)
+            {
+                // Re-throw validation errors
+                throw;
+            }
+            catch (InvalidOperationException)
+            {
+                // Re-throw business logic errors (duplicate account/email)
+                throw;
             }
             catch (Exception ex)
             {
