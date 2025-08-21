@@ -146,7 +146,7 @@ namespace KidTracking.API.Controllers
                 if (pageIndex <= 0 || pageSize <= 0)
                     return BadRequest(new { message = "PageIndex and PageSize must be positive" });
 
-                var responses = await _surveyService.GetSurveyResponsesByAppointmentIdAsync(appointmentId, pageIndex, pageSize);
+                var responses = await _surveyService.GetGroupedSurveyResponsesByAppointmentIdAsync(appointmentId, pageIndex, pageSize);
                 return Ok(new
                 {
                     totalCount = responses.TotalCount,
@@ -158,6 +158,30 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error getting survey responses for appointment ID {appointmentId}");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
+        [HttpGet("{appointmentId}/responses/detailed")]
+        public async Task<IActionResult> GetDetailedSurveyResponsesByAppointmentId(int appointmentId, [FromQuery] int? pageIndex = 1, [FromQuery] int? pageSize = 10)
+        {
+            try
+            {
+                if (pageIndex <= 0 || pageSize <= 0)
+                    return BadRequest(new { message = "PageIndex and PageSize must be positive" });
+
+                var responses = await _surveyService.GetSurveyResponsesByAppointmentIdAsync(appointmentId, pageIndex, pageSize);
+                return Ok(new
+                {
+                    totalCount = responses.TotalCount,
+                    pageIndex,
+                    pageSize,
+                    data = responses.Data
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting detailed survey responses for appointment ID {appointmentId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }

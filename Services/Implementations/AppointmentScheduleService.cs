@@ -28,7 +28,7 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var result = schedules.OrderBy(s => s.Date).ThenBy(s => s.SlotId).ToList();
                 return _mapper.Map<List<AppointmentScheduleDTO>>(result);
@@ -45,7 +45,7 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var endOfWeek = startOfWeek.AddDays(6);
                 var startDateOnly = DateOnly.FromDateTime(startOfWeek);
@@ -71,7 +71,7 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var firstDayOfMonth = new DateTime(month.Year, month.Month, 1);
                 var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
@@ -98,7 +98,7 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var dateOnly = DateOnly.FromDateTime(date);
                 var result = schedules
@@ -134,7 +134,7 @@ namespace Services.Implementations
                     _logger.LogInformation("Tạo lịch hẹn cho slot {SlotId}", createDto.SlotId.Value);
 
                     // Kiểm tra xem schedule đã tồn tại chưa
-                    var existingSchedules = await repository.GetAllAsync("");
+                    var existingSchedules = await repository.GetAllAsync("Facility,Slot");
                     var exists = existingSchedules.Any(s => s.Date == createDto.Date && s.SlotId == createDto.SlotId.Value);
 
                     if (exists)
@@ -175,7 +175,7 @@ namespace Services.Implementations
                         throw new ArgumentException("Working hours group không thuộc về facility được chỉ định");
                     }
 
-                    var existingSchedules = await repository.GetAllAsync("");
+                    var existingSchedules = await repository.GetAllAsync("Facility,Slot");
                     
                     foreach (var slot in groupSlots)
                     {
@@ -224,7 +224,7 @@ namespace Services.Implementations
                 _logger.LogInformation("Cập nhật lịch hẹn ID: {ScheduleId}", scheduleId);
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId);
+                var schedule = await repository.GetAsync(s => s.ScheduleId == scheduleId, includeProperties: "Facility,Slot");
 
                 if (schedule == null)
                 {
@@ -279,7 +279,7 @@ namespace Services.Implementations
                 _logger.LogInformation("Xóa tất cả lịch hẹn của ngày: {Date}", date.ToString("yyyy-MM-dd"));
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var dateOnly = DateOnly.FromDateTime(date);
                 var schedulesToDelete = schedules.Where(s => s.Date == dateOnly).ToList();
@@ -310,7 +310,7 @@ namespace Services.Implementations
                 _logger.LogInformation("Cập nhật trạng thái ngày {Date} thành {Status}", date.ToString("yyyy-MM-dd"), status);
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var dateOnly = DateOnly.FromDateTime(date);
                 var schedulesToUpdate = schedules.Where(s => s.Date == dateOnly).ToList();
@@ -351,7 +351,7 @@ namespace Services.Implementations
                 foreach (var slotId in slotIds)
                 {
                     // Kiểm tra xem schedule đã tồn tại chưa
-                    var existingSchedules = await repository.GetAllAsync("");
+                    var existingSchedules = await repository.GetAllAsync("Facility,Slot");
                     var exists = existingSchedules.Any(s => s.Date == dateOnly && s.SlotId == slotId);
 
                     if (!exists)
@@ -391,7 +391,7 @@ namespace Services.Implementations
             try
             {
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var schedules = await repository.GetAllAsync("");
+                var schedules = await repository.GetAllAsync("Facility,Slot");
 
                 var dateOnly = DateOnly.FromDateTime(date);
                 var result = schedules
@@ -443,7 +443,7 @@ namespace Services.Implementations
                 }
 
                 var repository = _unitOfWork.GetRepository<AppointmentSchedule>();
-                var existingSchedules = await repository.GetAllAsync("");
+                var existingSchedules = await repository.GetAllAsync("Facility,Slot");
                 
                 var createdSchedules = new List<AppointmentSchedule>();
                 int existingCount = 0;

@@ -16,6 +16,7 @@ namespace Services.Interfaces
         Task<QueryResultModel<IEnumerable<SurveyQuestionDto>>> GetQuestionsBySurveyIdAsync(int surveyId, int? pageIndex = null, int? pageSize = null);
         Task SubmitAppointmentSurveyAsync(int appointmentId, IEnumerable<AppointmentSurveyDto> answers, int accountId);
         Task<QueryResultModel<IEnumerable<SurveyResponseDto>>> GetSurveyResponsesByAppointmentIdAsync(int appointmentId, int? pageIndex = null, int? pageSize = null);
+        Task<QueryResultModel<AppointmentSurveyResponseDto>> GetGroupedSurveyResponsesByAppointmentIdAsync(int appointmentId, int? pageIndex = null, int? pageSize = null);
         Task DeleteSurveyAsync(int surveyId, int accountId);
         Task UpdateSurveyAsync(int surveyId, CreateSurveyDto surveyDto, int accountId);
         Task<QueryResultModel<IEnumerable<SurveyDto>>> GetAllSurveysAsync(int? pageIndex = null, int? pageSize = null);

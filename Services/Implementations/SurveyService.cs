@@ -184,6 +184,63 @@ public class SurveyService : ISurveyService
         }
     }
 
+    public async Task<QueryResultModel<AppointmentSurveyResponseDto>> GetGroupedSurveyResponsesByAppointmentIdAsync(int appointmentId, int? pageIndex = null, int? pageSize = null)
+    {
+        try
+        {
+            var appointmentSurveyRepository = _unitOfWork.GetRepository<AppointmentSurvey>();
+            var responses = await appointmentSurveyRepository.GetAllAsync(
+                filter: asr => asr.AppointmentId == appointmentId,
+                orderBy: asr => asr.OrderBy(asr => asr.QuestionId),
+                include: "Question,Answer",
+                pageIndex: pageIndex,
+                pageSize: pageSize
+            );
+
+            if (!responses.Data.Any())
+            {
+                return new QueryResultModel<AppointmentSurveyResponseDto>
+                {
+                    TotalCount = 0,
+                    Data = null
+                };
+            }
+
+            // Lấy thông tin vital signs từ record đầu tiên (vì tất cả đều giống nhau cho cùng appointment)
+            var firstResponse = responses.Data.First();
+            
+            var groupedResponse = new AppointmentSurveyResponseDto
+            {
+                AppointmentId = appointmentId,
+                SubmittedAt = firstResponse.CreatedAt,
+                TemperatureC = firstResponse.TemperatureC,
+                HeartRateBpm = firstResponse.HeartRateBpm,
+                SystolicBpmmHg = firstResponse.SystolicBpmmHg,
+                DiastolicBpmmHg = firstResponse.DiastolicBpmmHg,
+                OxygenSatPercent = firstResponse.OxygenSatPercent,
+                DecisionNote = firstResponse.DecisionNote,
+                ConsentObtained = firstResponse.ConsentObtained,
+                Questions = responses.Data.Select(r => new SurveyQuestionAnswerDto
+                {
+                    QuestionId = r.QuestionId,
+                    QuestionText = r.Question?.QuestionText ?? "",
+                    AnswerText = r.Answer?.AnswerText ?? r.AnswerText
+                }).ToList()
+            };
+
+            return new QueryResultModel<AppointmentSurveyResponseDto>
+            {
+                TotalCount = responses.TotalCount,
+                Data = groupedResponse
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error getting grouped survey responses for appointment ID {appointmentId}");
+            throw;
+        }
+    }
+
     public async Task DeleteSurveyAsync(int surveyId, int accountId)
     {
         try
