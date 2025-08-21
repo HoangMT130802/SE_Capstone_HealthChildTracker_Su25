@@ -7,3 +7,4 @@ namespace Contracts.DTOs.Authentication
         public bool RequiresVerification { get; set; } = true;
     }
 }
+
