@@ -344,7 +344,7 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 TruncateDescription(description),
                 new List<ItemData>(),
                 $"{GetFrontendUrl()}/staff/appointments/{request.AppointmentId}/step-3?orderId={orderCode}&status=cancel",
-                $"http://localhost:5173/staff/appointments/{request.AppointmentId}/payment-complete",
+                $"{GetFrontendUrl()}/staff/appointments/{request.AppointmentId}/payment-complete?orderId={orderCode}&status=success",
                 null
             );
 
