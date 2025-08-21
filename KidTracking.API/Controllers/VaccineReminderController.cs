@@ -240,3 +240,4 @@ namespace KidTracking.API.Controllers
         public string EmailType { get; set; } = ""; // vaccine, appointment, completion
     }
 }
+
