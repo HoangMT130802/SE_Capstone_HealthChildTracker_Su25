@@ -410,6 +410,59 @@ namespace KidTracking.API.Controllers
 
         #endregion
 
+        #region Cancel and Rebook APIs
+
+        /// <summary>
+        /// Cancel appointment hiện tại và đặt lại lịch mới cho user (dành cho staff)
+        /// </summary>
+        /// <param name="request">Thông tin cancel và rebook</param>
+        /// <returns>Thông tin appointment đã cancel và appointment mới</returns>
+        [HttpPost("cancel-and-rebook")]
+        [Authorize(Roles = "FacilityStaff")]
+        public async Task<ActionResult<ResponseDataModel<CancelAndRebookResponseDTO>>> CancelAndRebookAppointment(
+            [FromBody] CancelAndRebookRequestDTO request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new ResponseDataModel<CancelAndRebookResponseDTO>
+                    {
+                        Status = false,
+                        Message = "Dữ liệu đầu vào không hợp lệ",
+                        Data = null
+                    });
+                }
+
+                // Lấy AccountId từ JWT claims
+                var accountIdClaim = User.FindFirst("AccountId")?.Value;
+                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int staffAccountId))
+                {
+                    return Unauthorized(new ResponseDataModel<CancelAndRebookResponseDTO>
+                    {
+                        Status = false,
+                        Message = "Không tìm thấy thông tin staff",
+                        Data = null
+                    });
+                }
+
+                var result = await _appointmentBookingService.CancelAndRebookAppointmentAsync(request, staffAccountId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cancel và rebook appointment {CurrentAppointmentId}", request.CurrentAppointmentId);
+                return StatusCode(500, new ResponseDataModel<CancelAndRebookResponseDTO>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi cancel và rebook appointment",
+                    Data = null
+                });
+            }
+        }
+
+        #endregion
+
         #region Helper APIs
 
         /// <summary>

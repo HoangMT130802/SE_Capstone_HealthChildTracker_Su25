@@ -19,5 +19,16 @@ namespace Services.Interfaces
         Task<UserResponseDTO> BanUserAsync(BanUserRequestDTO request, int currentUserId);
         Task<bool> DeleteStaffAsync(int staffId, int managerAccountId);
         Task<QueryResultModel<List<MemberDTO>>> GetAllMembersAsync(int currentUserId, int pageIndex = 1, int pageSize = 10);
+        
+        // Email verification methods
+        Task<bool> SendVerificationEmailAsync(string email);
+        Task<bool> ResendVerificationEmailAsync(ResendVerificationRequestDTO request);
+        
+        // Forgot password methods
+        Task<bool> SendForgotPasswordEmailAsync(ForgotPasswordRequestDTO request);
+        Task<bool> ResetPasswordAsync(ResetPasswordRequestDTO request);
+        
+        // Complete registration after email verification
+        Task<UserResponseDTO> CompleteRegistrationAsync(RegisterRequestDTO request);
     }
 }

@@ -27,6 +27,9 @@ namespace Services.Interfaces
         Task<ResponseDataModel<AppointmentRebookingValidationDTO>> ValidateRebookingRequestAsync(int childVaccineProfileId, int accountId);
         Task<ResponseDataModel<AppointmentRebookingResponseDTO>> RebookAppointmentAsync(AppointmentRebookingRequestDTO request, int accountId);
         
+        // Cancel and Rebook Methods
+        Task<ResponseDataModel<CancelAndRebookResponseDTO>> CancelAndRebookAppointmentAsync(CancelAndRebookRequestDTO request, int staffAccountId);
+        
         // History Methods
         Task<AppointmentHistoryResponseDTO> GetAppointmentHistoryAsync(int memberId, int? childId = null);
         

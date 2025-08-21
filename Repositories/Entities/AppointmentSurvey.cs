@@ -17,6 +17,20 @@ public partial class AppointmentSurvey
 
     public string AnswerText { get; set; }
 
+    public decimal? TemperatureC { get; set; }
+
+    public int? HeartRateBpm { get; set; }
+
+    public int? SystolicBpmmHg { get; set; }
+
+    public int? DiastolicBpmmHg { get; set; }
+
+    public int? OxygenSatPercent { get; set; }
+
+    public string DecisionNote { get; set; }
+
+    public bool? ConsentObtained { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

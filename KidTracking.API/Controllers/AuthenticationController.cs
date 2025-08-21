@@ -1,7 +1,9 @@
 ﻿using Contracts.DTOs.Authentication;
 using Contracts.DTOs.Member;
 using Contracts.DTOs.FacilityStaff;
+using Services;
 using Services.Interfaces;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using BCrypt.Net;
@@ -385,6 +387,146 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError($"Get all members error: {ex.Message}");
                 return StatusCode(500, new { message = "Đã có lỗi xảy ra khi lấy danh sách thành viên" });
+            }
+        }
+
+        [HttpPost("send-verification-email")]
+        [AllowAnonymous]
+        public async Task<ActionResult> SendVerificationEmail([FromBody] ResendVerificationRequestDTO request)
+        {
+            try
+            {
+                await _authService.SendVerificationEmailAsync(request.Email);
+                return Ok(new { message = "Email xác thực đã được gửi" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Send verification email failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Send verification email error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi gửi email xác thực" });
+            }
+        }
+
+
+
+        [HttpPost("complete-registration")]
+        [AllowAnonymous]
+        public async Task<ActionResult<UserResponseDTO>> CompleteRegistration([FromBody] VerifyEmailRequestDTO request)
+        {
+            try
+            {
+                // Inject IEmailService để lấy thông tin đăng ký
+                var emailService = HttpContext.RequestServices.GetRequiredService<Services.Interfaces.IEmailService>();
+                
+                // Lấy thông tin đăng ký từ cache
+                var registrationData = await emailService.GetRegistrationDataAsync(request.Email, request.OtpCode);
+                if (registrationData == null)
+                {
+                    return BadRequest(new { message = "Mã OTP không hợp lệ hoặc đã hết hạn" });
+                }
+
+                // Xác thực OTP trực tiếp qua EmailService
+                var isValidOtp = await emailService.VerifyOtpCodeAsync(request.Email, request.OtpCode, "Registration");
+                if (!isValidOtp)
+                {
+                    return BadRequest(new { message = "Mã OTP không hợp lệ hoặc đã hết hạn" });
+                }
+
+                // Hoàn tất đăng ký với thông tin từ cache
+                var registerRequest = new RegisterRequestDTO
+                {
+                    AccountName = registrationData.AccountName,
+                    Password = registrationData.Password,
+                    Email = registrationData.Email,
+                    FullName = registrationData.FullName,
+                    Phone = registrationData.Phone,
+                    Address = registrationData.Address
+                };
+
+                var response = await _authService.CompleteRegistrationAsync(registerRequest);
+                return Ok(response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Complete registration validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Complete registration failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Complete registration error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi hoàn tất đăng ký" });
+            }
+        }
+
+        [HttpPost("resend-verification")]
+        [AllowAnonymous]
+        public async Task<ActionResult> ResendVerification([FromBody] ResendVerificationRequestDTO request)
+        {
+            try
+            {
+                await _authService.ResendVerificationEmailAsync(request);
+                return Ok(new { message = "Email xác thực đã được gửi lại" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Resend verification failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Resend verification error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi gửi lại email xác thực" });
+            }
+        }
+
+        [HttpPost("forgot-password")]
+        [AllowAnonymous]
+        public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDTO request)
+        {
+            try
+            {
+                await _authService.SendForgotPasswordEmailAsync(request);
+                return Ok(new { message = "Email khôi phục mật khẩu đã được gửi" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Forgot password failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Forgot password error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi gửi email khôi phục mật khẩu" });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<ActionResult> ResetPassword([FromBody] ResetPasswordRequestDTO request)
+        {
+            try
+            {
+                await _authService.ResetPasswordAsync(request);
+                return Ok(new { message = "Mật khẩu đã được đặt lại thành công" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Reset password failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Reset password error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi đặt lại mật khẩu" });
             }
         }
     }

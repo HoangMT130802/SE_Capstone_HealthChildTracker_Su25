@@ -3014,5 +3014,156 @@ namespace Services.Implementations
                 throw;
             }
         }
+
+        #region Cancel and Rebook Methods
+
+        /// <summary>
+        /// Cancel appointment hiện tại và đặt lại lịch mới cho user
+        /// </summary>
+        public async Task<ResponseDataModel<CancelAndRebookResponseDTO>> CancelAndRebookAppointmentAsync(CancelAndRebookRequestDTO request, int staffAccountId)
+        {
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+            try
+            {
+                transaction = await _unitOfWork.BeginTransactionAsync();
+                _logger.LogInformation("Bắt đầu Cancel và Rebook appointment {CurrentAppointmentId} -> Schedule {NewScheduleId}", 
+                    request.CurrentAppointmentId, request.NewScheduleId);
+
+                // 1. Validate staff permissions
+                var staffRepo = _unitOfWork.GetRepository<FacilityStaff>();
+                var staff = await staffRepo.GetAsync(s => s.AccountId == staffAccountId);
+                if (staff == null)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Bạn không có quyền thực hiện thao tác này");
+                }
+
+                // 2. Get current appointment
+                var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
+                var currentAppointment = await appointmentRepo.GetAsync(
+                    a => a.AppointmentId == request.CurrentAppointmentId,
+                    includeProperties: "Schedule,Schedule.Slot,Schedule.VaccinationFacility,Child");
+
+                if (currentAppointment == null)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Không tìm thấy appointment cần hủy");
+                }
+
+                // 3. Validate current appointment status
+                if (currentAppointment.Status != "Approval")
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>(
+                        $"Chỉ có thể cancel và rebook appointment có status 'Approval'. Status hiện tại: {currentAppointment.Status}");
+                }
+
+                // 4. Validate staff belongs to same facility
+                if (currentAppointment.Schedule?.FacilityId != staff.FacilityId)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Bạn chỉ có thể thao tác với appointment thuộc cơ sở của mình");
+                }
+
+                // 5. Get ChildVaccineProfile
+                var profileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                var childVaccineProfile = await profileRepo.GetAsync(
+                    p => p.VaccineProfileId == request.ChildVaccineProfileId && p.AppointmentId == request.CurrentAppointmentId,
+                    includeProperties: "Disease,Vaccine");
+
+                if (childVaccineProfile == null)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Không tìm thấy ChildVaccineProfile tương ứng");
+                }
+
+                // 6. Get new schedule
+                var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
+                var newSchedule = await scheduleRepo.GetAsync(
+                    s => s.ScheduleId == request.NewScheduleId,
+                    includeProperties: "Slot,Facility");
+
+                if (newSchedule == null)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Không tìm thấy schedule mới");
+                }
+
+                // 7. Validate new schedule belongs to same facility
+                if (newSchedule.FacilityId != staff.FacilityId)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Schedule mới phải thuộc cùng cơ sở");
+                }
+
+                // 8. Validate new schedule is available
+                if (newSchedule.Status != "Available")
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Schedule mới không khả dụng");
+                }
+
+                // 9. Check capacity of new schedule
+                var existingAppointmentsCount = await appointmentRepo.CountAsync(
+                    a => a.ScheduleId == request.NewScheduleId && 
+                         (a.Status == "Pending" || a.Status == "Approval" || a.Status == "Paid"));
+
+                // Lấy thông tin slot để check capacity
+                var slotRepo = _unitOfWork.GetRepository<ScheduleSlot>();
+                var slot = await slotRepo.GetByIdAsync(newSchedule.SlotId);
+                
+                if (slot != null && existingAppointmentsCount >= slot.MaxCapacity)
+                {
+                    return CreateErrorResponse<CancelAndRebookResponseDTO>("Schedule mới đã đầy");
+                }
+
+                // 10. Cancel current appointment
+                currentAppointment.Status = "Cancelled";
+                currentAppointment.Note = $"Cancelled by staff. Reason: {request.CancelReason}";
+                currentAppointment.UpdatedAt = DateTime.UtcNow;
+
+                // 11. Create new appointment
+                var newAppointment = new VaccinationAppointment
+                {
+                    ChildId = currentAppointment.ChildId,
+                    ScheduleId = request.NewScheduleId,
+                    OrderId = currentAppointment.OrderId,
+                    Status = "Pending", // New appointment starts as Pending
+                    Note = request.Note ?? $"Rebooked from cancelled appointment {request.CurrentAppointmentId}",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await appointmentRepo.AddAsync(newAppointment);
+                await _unitOfWork.SaveChangesAsync();
+
+                // 12. Update ChildVaccineProfile
+                childVaccineProfile.AppointmentId = newAppointment.AppointmentId;
+                childVaccineProfile.Status = "Scheduled"; // Change from Pending to Scheduled
+                childVaccineProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // 13. Create response
+                var response = new CancelAndRebookResponseDTO
+                {
+                    ChildVaccineProfileId = childVaccineProfile.VaccineProfileId,
+                    CancelledAppointmentId = currentAppointment.AppointmentId,
+                    NewAppointmentId = newAppointment.AppointmentId,
+                    Status = "Success",
+                    CancelReason = request.CancelReason,
+                    CancelledAt = currentAppointment.UpdatedAt,
+                    NewAppointmentDate = newSchedule.Date.ToDateTime(newSchedule.Slot.StartTime ?? TimeOnly.MinValue),
+                    FacilityName = newSchedule.Facility.FacilityName,
+                    Message = "Đã hủy appointment cũ và đặt lại lịch mới thành công"
+                };
+
+                _logger.LogInformation("Cancel và Rebook thành công: Cancelled {CancelledId}, Created {NewId}", 
+                    currentAppointment.AppointmentId, newAppointment.AppointmentId);
+
+                return CreateSuccessResponse(response, "Đã hủy và đặt lại lịch thành công");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cancel và rebook appointment {CurrentAppointmentId}", request.CurrentAppointmentId);
+                try { if (transaction != null) await transaction.RollbackAsync(); } catch { /* ignore */ }
+                return CreateErrorResponse<CancelAndRebookResponseDTO>($"Có lỗi xảy ra: {ex.Message}");
+            }
+        }
+
+        #endregion
     }
 }

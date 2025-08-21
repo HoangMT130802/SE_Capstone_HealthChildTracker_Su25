@@ -18,17 +18,20 @@ namespace Services.Implementations
         private readonly IMapper _mapper;
         private readonly IJwtService _jwtService;
         private readonly ILogger<AuthenticationService> _logger;
+        private readonly IEmailService _emailService;
 
         public AuthenticationService(
             IUnitOfWork unitOfWork,
             IMapper mapper,
             IJwtService jwtService,
-            ILogger<AuthenticationService> logger)
+            ILogger<AuthenticationService> logger,
+            IEmailService emailService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _jwtService = jwtService;
             _logger = logger;
+            _emailService = emailService;
         }
 
         /// <summary>
@@ -258,68 +261,22 @@ namespace Services.Implementations
             {
                 await ValidateRegistrationRequest(request);
 
-             
-                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                // Gửi email xác thực và lưu thông tin đăng ký tạm thời
+                var otpCode = await _emailService.GenerateOtpCodeAsync();
+                await _emailService.SaveRegistrationDataAsync(
+                    request.Email, 
+                    otpCode, 
+                    request.AccountName, 
+                    request.Password, 
+                    request.FullName, 
+                    request.Phone, 
+                    request.Address);
+                await _emailService.SendVerificationEmailAsync(request.Email, otpCode, request.FullName);
+
+                _logger.LogInformation($"Verification email sent to {request.Email}. Registration pending email verification.");
                 
-                try
-                {
-                    // Hash mật khẩu
-                    _logger.LogInformation($"Register - Raw password: '{request.Password}' (length: {request.Password?.Length})");
-                    var hashedPassword = BC.HashPassword(request.Password);
-                    _logger.LogInformation($"Register - Hashed password: '{hashedPassword}' (length: {hashedPassword?.Length})");
-                    
-                   
-                    bool immediateVerification = BC.Verify(request.Password, hashedPassword);
-                    _logger.LogInformation($"Register - Immediate verification test: {immediateVerification}");
-                    
-                    // Tạo Account
-                    var accountRepository = _unitOfWork.GetRepository<Account>();
-                    var newAccount = _mapper.Map<Account>(request);
-                    newAccount.Password = hashedPassword;
-                    newAccount.CreatedAt = DateTime.UtcNow;
-                    newAccount.UpdatedAt = DateTime.UtcNow;
-                    newAccount.Status = true;
-                    newAccount.Role = "Member"; // Trở về logic cũ - tạo Member ngay
-
-                    await accountRepository.AddAsync(newAccount);
-                    await _unitOfWork.SaveChangesAsync(); 
-
-                    _logger.LogInformation($"Account created with ID: {newAccount.AccountId}");
-
-                    // Tạo Member record ngay khi register (logic cũ)
-                    var memberRepository = _unitOfWork.GetRepository<Member>();
-                    var newMember = new Member
-                    {
-                        AccountId = newAccount.AccountId,
-                        FullName = request.FullName,
-                        PhoneNumber = request.Phone,
-                        Address = request.Address,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    await memberRepository.AddAsync(newMember);
-                    await _unitOfWork.SaveChangesAsync();
-
-                    _logger.LogInformation($"Member record created with ID: {newMember.MemberId}");
-
-                    await transaction.CommitAsync();
-
-                    var response = _mapper.Map<UserResponseDTO>(newAccount);
-                    // Set thông tin cá nhân từ Member record
-                    response.FullName = request.FullName;
-                    response.Phone = request.Phone;
-                    response.Address = request.Address;
-                    response.Token = _jwtService.GenerateToken(newAccount);
-
-                    _logger.LogInformation($"User {newAccount.AccountName} registered successfully with role {newAccount.Role}");
-                    return response;
-                }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
+                // Trả về thông báo yêu cầu xác thực email thay vì tạo tài khoản ngay
+                throw new InvalidOperationException("Vui lòng kiểm tra email và nhập mã xác thực để hoàn tất đăng ký");
             }
             catch (Exception ex)
             {
@@ -1093,6 +1050,198 @@ namespace Services.Implementations
             {
                 _logger.LogError(ex, $"Error retrieving all members for AccountId {currentUserId}");
                 throw new Exception($"Lỗi khi lấy danh sách thành viên: {ex.Message}");
+            }
+        }
+
+        public async Task<bool> SendVerificationEmailAsync(string email)
+        {
+            try
+            {
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepository.GetAsync(u => u.Email.ToLower() == email.ToLower());
+                
+                if (account != null)
+                {
+                    throw new InvalidOperationException("Email đã được đăng ký");
+                }
+
+                var otpCode = await _emailService.GenerateOtpCodeAsync();
+                await _emailService.SaveEmailVerificationAsync(email, otpCode, "Registration");
+                await _emailService.SendVerificationEmailAsync(email, otpCode, "Người dùng");
+
+                _logger.LogInformation($"Verification email sent to {email}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to send verification email to {email}: {ex.Message}");
+                throw;
+            }
+        }
+
+
+
+        public async Task<bool> ResendVerificationEmailAsync(ResendVerificationRequestDTO request)
+        {
+            try
+            {
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepository.GetAsync(u => u.Email.ToLower() == request.Email.ToLower());
+                
+                if (account != null)
+                {
+                    throw new InvalidOperationException("Email đã được đăng ký");
+                }
+
+                var otpCode = await _emailService.GenerateOtpCodeAsync();
+                await _emailService.SaveEmailVerificationAsync(request.Email, otpCode, "Registration");
+                await _emailService.SendVerificationEmailAsync(request.Email, otpCode, "Người dùng");
+
+                _logger.LogInformation($"Verification email resent to {request.Email}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to resend verification email to {request.Email}: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<bool> SendForgotPasswordEmailAsync(ForgotPasswordRequestDTO request)
+        {
+            try
+            {
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepository.GetAsync(u => u.Email.ToLower() == request.Email.ToLower());
+                
+                if (account == null)
+                {
+                    throw new InvalidOperationException("Email không tồn tại trong hệ thống");
+                }
+
+                // Lấy tên người dùng
+                string fullName = "Người dùng";
+                if (account.Role == "Member")
+                {
+                    var memberRepository = _unitOfWork.GetRepository<Member>();
+                    var member = await memberRepository.GetAsync(m => m.AccountId == account.AccountId);
+                    if (member != null)
+                        fullName = member.FullName;
+                }
+
+                var otpCode = await _emailService.GenerateOtpCodeAsync();
+                await _emailService.SaveEmailVerificationAsync(request.Email, otpCode, "ForgotPassword", account.AccountId);
+                await _emailService.SendForgotPasswordEmailAsync(request.Email, otpCode, fullName);
+
+                _logger.LogInformation($"Forgot password email sent to {request.Email}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to send forgot password email to {request.Email}: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<bool> ResetPasswordAsync(ResetPasswordRequestDTO request)
+        {
+            try
+            {
+                var isValidOtp = await _emailService.VerifyOtpCodeAsync(request.Email, request.OtpCode, "ForgotPassword");
+                if (!isValidOtp)
+                {
+                    throw new InvalidOperationException("Mã OTP không hợp lệ hoặc đã hết hạn");
+                }
+
+                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepository.GetAsync(u => u.Email.ToLower() == request.Email.ToLower());
+                
+                if (account == null)
+                {
+                    throw new InvalidOperationException("Tài khoản không tồn tại");
+                }
+
+                // Cập nhật mật khẩu mới
+                account.Password = BC.HashPassword(request.NewPassword);
+                account.UpdatedAt = DateTime.UtcNow;
+                
+                accountRepository.Update(account);
+                await _unitOfWork.SaveChangesAsync();
+
+                _logger.LogInformation($"Password reset successfully for {request.Email}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Password reset failed for {request.Email}: {ex.Message}");
+                throw;
+            }
+        }
+
+        // Method để hoàn tất đăng ký sau khi xác thực email
+        public async Task<UserResponseDTO> CompleteRegistrationAsync(RegisterRequestDTO request)
+        {
+            try
+            {
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                
+                try
+                {
+                    // Hash mật khẩu
+                    var hashedPassword = BC.HashPassword(request.Password);
+                    
+                    // Tạo Account
+                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    var newAccount = _mapper.Map<Account>(request);
+                    newAccount.Password = hashedPassword;
+                    newAccount.CreatedAt = DateTime.UtcNow;
+                    newAccount.UpdatedAt = DateTime.UtcNow;
+                    newAccount.Status = true;
+                    newAccount.Role = "Member";
+
+                    await accountRepository.AddAsync(newAccount);
+                    await _unitOfWork.SaveChangesAsync(); 
+
+                    _logger.LogInformation($"Account created with ID: {newAccount.AccountId}");
+
+                    // Tạo Member record
+                    var memberRepository = _unitOfWork.GetRepository<Member>();
+                    var newMember = new Member
+                    {
+                        AccountId = newAccount.AccountId,
+                        FullName = request.FullName,
+                        PhoneNumber = request.Phone,
+                        Address = request.Address,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await memberRepository.AddAsync(newMember);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    _logger.LogInformation($"Member record created with ID: {newMember.MemberId}");
+
+                    await transaction.CommitAsync();
+
+                    var response = _mapper.Map<UserResponseDTO>(newAccount);
+                    response.FullName = request.FullName;
+                    response.Phone = request.Phone;
+                    response.Address = request.Address;
+                    response.Token = _jwtService.GenerateToken(newAccount);
+
+                    _logger.LogInformation($"User {newAccount.AccountName} registered successfully with role {newAccount.Role}");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Complete registration failed: {ex.Message}");
+                throw;
             }
         }
     }

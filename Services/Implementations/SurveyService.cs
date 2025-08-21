@@ -126,6 +126,9 @@ public class SurveyService : ISurveyService
     {
         try
         {
+            // Validate Doctor role trước khi submit survey
+            await ValidateDoctorAccess(accountId);
+
             var appointmentRepository = _unitOfWork.GetRepository<VaccinationAppointment>();
             var appointment = await appointmentRepository.GetAsync(a => a.AppointmentId == appointmentId, includeProperties: "Schedule.Facility");
             if (appointment == null)
@@ -145,7 +148,7 @@ public class SurveyService : ISurveyService
             }
 
             await _unitOfWork.SaveChangesAsync();
-            _logger.LogInformation($"Submitted survey for appointment ID {appointmentId} by AccountId {accountId}");
+            _logger.LogInformation($"Submitted survey for appointment ID {appointmentId} by Doctor AccountId {accountId}");
         }
         catch (Exception ex)
         {

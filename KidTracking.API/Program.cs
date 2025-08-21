@@ -193,6 +193,8 @@ namespace KidTracking.API
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
             builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
+            builder.Services.AddScoped<IEmailService, EmailService>();
+            builder.Services.AddSingleton<IOtpCacheService, OtpCacheService>();
             builder.Services.AddScoped<IChildService, ChildService>();
             builder.Services.AddScoped<IGrowthStandardService, GrowthStandardService>();
             builder.Services.AddScoped<IGrowthRecordService, GrowthRecordService>();
