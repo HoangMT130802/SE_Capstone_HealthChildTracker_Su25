@@ -343,8 +343,8 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
                 (int)amount,
                 TruncateDescription(description),
                 new List<ItemData>(),
-                $"{GetBaseUrl()}/payment/cancel?orderId={orderCode}",
-                $"{GetBaseUrl()}/payment/success?orderId={orderCode}",
+                $"{GetFrontendUrl()}/payment/cancel?orderId={orderCode}",
+                $"{GetFrontendUrl()}/staff/appointments/{request.AppointmentId}/step-3?orderId={orderCode}&status=success",
                 null
             );
 
@@ -684,6 +684,11 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
     private string GetBaseUrl()
     {
         return _configuration["BaseUrl"] ?? "https://localhost:7000";
+    }
+
+    private string GetFrontendUrl()
+    {
+        return _configuration["FrontendUrl"] ?? "http://localhost:5173";
     }
 
     #endregion
