@@ -633,7 +633,7 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
 
         var description = $"Vaccine le: {string.Join(", ", vaccineNames)}";
 
-        return (totalAmount, description, "INDIVIDUAL_VACCINE", null);
+        return (totalAmount, description, "INDIVIDUAL", null);
     }
 
     /// <summary>
