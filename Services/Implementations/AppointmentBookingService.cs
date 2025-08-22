@@ -805,8 +805,86 @@ namespace Services.Implementations
         {
             try
             {
-                _logger.LogInformation("Tính chi phí cho cơ sở {FacilityId}", facilityId);
+                // ===== LOGIC MỚI: GIỮ NGUYÊN GIÁ KHÔNG TĂNG KHÔNG GIẢM =====
+                _logger.LogInformation("Tính chi phí cho cơ sở {FacilityId} - Logic mới: giữ nguyên giá gốc", facilityId);
 
+                decimal totalCost = 0;
+                var items = new List<CostItemDTO>();
+
+                if (orderId.HasValue)
+                {
+                    // Order chưa thanh toán → trả đúng giá order
+                    var orderRepo = _unitOfWork.GetRepository<Order>();
+                    var order = await orderRepo.GetAsync(o => o.OrderId == orderId.Value, "Package");
+                    if (order != null)
+                    {
+                        totalCost = order.TotalAmount;
+                        items.Add(new CostItemDTO
+                        {
+                            Name = order.Package?.Name ?? "Order Package",
+                            Type = "Existing Order",
+                            Quantity = 1,
+                            UnitPrice = order.TotalAmount,
+                            TotalPrice = order.TotalAmount
+                        });
+                    }
+                }
+                else if (packageId.HasValue)
+                {
+                    // Package mới → giá gốc của package
+                    var packageRepo = _unitOfWork.GetRepository<VaccinePackage>();
+                    var package = await packageRepo.GetAsync(p => p.PackageId == packageId.Value);
+                    if (package != null)
+                    {
+                        totalCost = package.Price;
+                        items.Add(new CostItemDTO
+                        {
+                            Name = package.Name,
+                            Type = "Package",
+                            Quantity = 1,
+                            UnitPrice = package.Price,
+                            TotalPrice = package.Price
+                        });
+                    }
+                }
+                else if (facilityVaccineIds != null && facilityVaccineIds.Any())
+                {
+                    // Vaccine lẻ → đúng giá vaccine lẻ được book
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    foreach (var vaccineId in facilityVaccineIds)
+                    {
+                        var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                            fv => fv.FacilityVaccineId == vaccineId,
+                            includeProperties: "Vaccine");
+                        if (facilityVaccine != null)
+                        {
+                            totalCost += facilityVaccine.Price;
+                            items.Add(new CostItemDTO
+                            {
+                                Name = facilityVaccine.Vaccine?.Name ?? "Unknown Vaccine",
+                                Type = "Individual Vaccine",
+                                Quantity = 1,
+                                UnitPrice = facilityVaccine.Price,
+                                TotalPrice = facilityVaccine.Price
+                            });
+                        }
+                    }
+                }
+
+                // Trả về đúng giá gốc, không tính thêm phí
+                return new CostBreakdownDTO
+                {
+                    VaccineCost = totalCost,
+                    ServiceFee = 0,    // Không tính phí dịch vụ
+                    BookingFee = 0,    // Không tính phí đặt lịch
+                    Tax = 0,           // Không tính thuế
+                    Discount = 0,
+                    TotalCost = totalCost,  // Tổng = giá gốc
+                    Items = items
+                };
+
+                #region LOGIC CŨ - COMMENTED
+                /*
                 decimal vaccineCost = 0;
                 var items = new List<CostItemDTO>();
 
@@ -894,6 +972,8 @@ namespace Services.Implementations
                     TotalCost = totalCost,
                     Items = items
                 };
+                */
+                #endregion
             }
             catch (Exception ex)
             {
