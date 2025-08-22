@@ -3117,11 +3117,11 @@ namespace Services.Implementations
                     return CreateErrorResponse<CancelAndRebookResponseDTO>("Bạn không có quyền thực hiện thao tác này");
                 }
 
-                // 2. Get current appointment
+                // 2. Get current appointment với VaccinationAppointmentDetails
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var currentAppointment = await appointmentRepo.GetAsync(
                     a => a.AppointmentId == request.CurrentAppointmentId,
-                    includeProperties: "Schedule,Schedule.Slot,Schedule.Facility,Child");
+                    includeProperties: "Schedule,Schedule.Slot,Schedule.Facility,Child,VaccinationAppointmentDetails,VaccinationAppointmentDetails.Vaccine");
 
                 if (currentAppointment == null)
                 {
@@ -3208,6 +3208,31 @@ namespace Services.Implementations
 
                 await appointmentRepo.AddAsync(newAppointment);
                 await _unitOfWork.SaveChangesAsync();
+
+                // 11.1. Copy VaccinationAppointmentDetails từ appointment cũ sang mới
+                if (currentAppointment.VaccinationAppointmentDetails != null && currentAppointment.VaccinationAppointmentDetails.Any())
+                {
+                    var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
+                    foreach (var oldDetail in currentAppointment.VaccinationAppointmentDetails)
+                    {
+                        var newDetail = new VaccinationAppointmentDetail
+                        {
+                            AppointmentId = newAppointment.AppointmentId,
+                            VaccineId = oldDetail.VaccineId,
+                            VaccinationDate = oldDetail.VaccinationDate,
+                            DoseNumber = oldDetail.DoseNumber,
+                            Notes = oldDetail.Notes ?? "Rebooked appointment detail",
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        await appointmentDetailRepo.AddAsync(newDetail);
+                    }
+                    await _unitOfWork.SaveChangesAsync();
+                    _logger.LogInformation("Đã copy {Count} VaccinationAppointmentDetails từ appointment {OldId} sang {NewId}", 
+                        currentAppointment.VaccinationAppointmentDetails.Count, 
+                        currentAppointment.AppointmentId, 
+                        newAppointment.AppointmentId);
+                }
 
                 // 12. Update ChildVaccineProfile
                 childVaccineProfile.AppointmentId = newAppointment.AppointmentId;
