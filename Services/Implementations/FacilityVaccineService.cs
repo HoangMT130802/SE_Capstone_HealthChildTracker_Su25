@@ -30,13 +30,21 @@ namespace Services.Implementations
         private async Task ValidateManagerAccess(int accountId, int facilityId)
         {
             var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.FacilityId == facilityId && s.Position == "Manager,Staff,Doctor");
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.FacilityId == facilityId && s.Position == "Manager");
+            if (staff == null)
+            {
+                throw new UnauthorizedAccessException($"Người dùng với AccountId {accountId} không phải Manager hoặc không thuộc FacilityId {facilityId}");
+            }
+        }
+        private async Task ValidateFacilityStaffAccess(int accountId, int facilityId)
+        {
+            var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.FacilityId == facilityId && (s.Position == "Manager" || s.Position == "Doctor" || s.Position == "Staff"));
             if (staff == null)
             {
                 throw new UnauthorizedAccessException($"Người dùng với AccountId {accountId} không phải FacilityStaff hoặc không thuộc FacilityId {facilityId}");
             }
         }
-
         public async Task<FacilityVaccineDTO> CreateFacilityVaccineAsync(CreateFacilityVaccineDTO facilityVaccineDto, int accountId)
         {
             try
