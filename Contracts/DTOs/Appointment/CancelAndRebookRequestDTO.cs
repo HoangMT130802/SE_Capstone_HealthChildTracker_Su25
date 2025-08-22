@@ -13,9 +13,7 @@ namespace Contracts.DTOs.Appointment
         [Required]
         public int ChildVaccineProfileId { get; set; }
 
-        [Required]
-        [MaxLength(500)]
-        public string CancelReason { get; set; }
+
 
         [MaxLength(500)]
         public string? Note { get; set; }

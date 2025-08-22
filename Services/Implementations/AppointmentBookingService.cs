@@ -3041,7 +3041,7 @@ namespace Services.Implementations
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
                 var currentAppointment = await appointmentRepo.GetAsync(
                     a => a.AppointmentId == request.CurrentAppointmentId,
-                    includeProperties: "Schedule,Schedule.Slot,Schedule.VaccinationFacility,Child");
+                    includeProperties: "Schedule,Schedule.Slot,Schedule.Facility,Child");
 
                 if (currentAppointment == null)
                 {
@@ -3111,7 +3111,7 @@ namespace Services.Implementations
 
                 // 10. Cancel current appointment
                 currentAppointment.Status = "Cancelled";
-                currentAppointment.Note = $"Cancelled by staff. Reason: {request.CancelReason}";
+                currentAppointment.Note = "Cancelled by staff for rebooking";
                 currentAppointment.UpdatedAt = DateTime.UtcNow;
 
                 // 11. Create new appointment
@@ -3144,7 +3144,6 @@ namespace Services.Implementations
                     CancelledAppointmentId = currentAppointment.AppointmentId,
                     NewAppointmentId = newAppointment.AppointmentId,
                     Status = "Success",
-                    CancelReason = request.CancelReason,
                     CancelledAt = currentAppointment.UpdatedAt,
                     NewAppointmentDate = newSchedule.Date.ToDateTime(newSchedule.Slot.StartTime ?? TimeOnly.MinValue),
                     FacilityName = newSchedule.Facility.FacilityName,
