@@ -406,6 +406,96 @@ public class VaccinationFacilityPaymentAccountService : IVaccinationFacilityPaym
     }
 
     /// <summary>
+    /// Tạo payment link dựa trên AppointmentId - sử dụng deploy URLs
+    /// </summary>
+    public async Task<FacilityPaymentResponseDTO> CreateFacilityPaymentForDeployAsync(CreateFacilityPaymentDTO request, int accountId)
+    {
+        using var dbTransaction = await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            _logger.LogInformation("Bắt đầu tạo facility payment cho Deploy - AppointmentId: {AppointmentId}", request.AppointmentId);
+
+            // Lấy thông tin appointment và validate
+            var appointmentInfo = await GetAppointmentInfoAsync(request.AppointmentId);
+            
+            // Validate quyền truy cập facility
+            await ValidateFacilityAccess(accountId, appointmentInfo.FacilityId);
+
+            // Tính toán amount và description dựa trên appointment
+            var (amount, description, paymentType, orderId) = await CalculatePaymentFromAppointment(appointmentInfo);
+
+            // Tạo PayOS payment link với config của facility
+            var payOS = await GetFacilityPayOSInstanceAsync(appointmentInfo.FacilityId);
+            var orderCode = GenerateOrderCode(appointmentInfo.FacilityId, request.AppointmentId, orderId);
+
+            var paymentData = new PaymentData(
+                long.Parse(orderCode.Split('_')[0]), // timestamp part
+                (int)amount,
+                TruncateDescription(description),
+                new List<ItemData>(),
+                $"https://se-su-25-child-growth-tracking.vercel.app/staff/appointments/{request.AppointmentId}/step-3?orderId={orderCode}&status=cancel",
+                $"https://se-su-25-child-growth-tracking.vercel.app/staff/appointments/{request.AppointmentId}/payment-complete?orderId={orderCode}&status=success",
+                null
+            );
+
+            _logger.LogInformation("Creating PayOS payment link cho Deploy - OrderCode: {OrderCode}, Amount: {Amount}, Description: {Description}", 
+                orderCode, amount, description);
+
+            CreatePaymentResult createPayment;
+            try
+            {
+                createPayment = await payOS.createPaymentLink(paymentData);
+                _logger.LogInformation("✅ PayOS payment link cho Deploy created successfully: {CheckoutUrl}", createPayment.checkoutUrl);
+            }
+            catch (Exception payOSException)
+            {
+                _logger.LogError(payOSException, "❌ PayOS createPaymentLink failed cho Deploy - FacilityId {FacilityId}. Error: {ErrorMessage}", 
+                    appointmentInfo.FacilityId, payOSException.Message);
+                throw;
+            }
+
+            // Tạo Transaction record
+            var transaction = new Transaction
+            {
+                TransactionType = paymentType,
+                Amount = amount,
+                PaymentMethod = "PAYOS",
+                TransactionCode = orderCode,
+                Description = description,
+                Status = "PENDING",
+                CreatedAt = DateOnly.FromDateTime(DateTime.UtcNow)
+            };
+
+            var transactionRepo = _unitOfWork.GetRepository<Transaction>();
+            await transactionRepo.AddAsync(transaction);
+            await _unitOfWork.SaveChangesAsync();
+            await dbTransaction.CommitAsync();
+
+            _logger.LogInformation("✅ Tạo facility payment cho Deploy thành công. OrderCode: {OrderCode}, PaymentType: {PaymentType}, PaymentUrl: {PaymentUrl}", 
+                orderCode, paymentType, createPayment.checkoutUrl);
+
+            return new FacilityPaymentResponseDTO
+            {
+                PaymentUrl = createPayment.checkoutUrl,
+                OrderCode = orderCode,
+                Amount = amount,
+                Status = "PENDING",
+                AppointmentId = request.AppointmentId,
+                PaymentType = paymentType,
+                Description = description,
+                OrderId = orderId,
+                TransactionId = transaction.TransactionId
+            };
+        }
+        catch (Exception ex)
+        {
+            await dbTransaction.RollbackAsync();
+            _logger.LogError(ex, "Lỗi khi tạo facility payment cho Deploy - AppointmentId: {AppointmentId}", request.AppointmentId);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Kiểm tra trạng thái thanh toán và cập nhật
     /// </summary>
     public async Task<PaymentStatusDTO> CheckFacilityPaymentStatusAsync(string orderCodeOrTimestamp)

@@ -221,6 +221,51 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
+        /// Tạo payment link dựa trên AppointmentId - sử dụng deploy URLs
+        /// Hỗ trợ: ORDER (nếu appointment có OrderId) hoặc INDIVIDUAL_VACCINE (tiêm lẻ)
+        /// </summary>
+        [HttpPost("payment-deploy")]
+        public async Task<IActionResult> CreateFacilityPaymentForDeploy([FromBody] CreateFacilityPaymentDTO request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var accountId = GetAccountId();
+                var result = await _paymentAccountService.CreateFacilityPaymentForDeployAsync(request, accountId);
+                
+                return Ok(new 
+                { 
+                    success = true,
+                    data = result
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to create facility payment for deploy");
+                return StatusCode(403, new { success = false, message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid argument for facility payment for deploy");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation for facility payment for deploy");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating facility payment for deploy");
+                return StatusCode(500, new { success = false, message = "Có lỗi xảy ra khi tạo payment cho deploy" });
+            }
+        }
+
+        /// <summary>
         /// Kiểm tra trạng thái thanh toán - chấp nhận timestamp hoặc full orderCode
         /// Input có thể là:
         /// - Chỉ timestamp: 1755787333854
