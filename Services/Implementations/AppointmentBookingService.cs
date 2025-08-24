@@ -2948,18 +2948,25 @@ namespace Services.Implementations
                     return;
                 }
 
-                // ✅ Kiểm tra xem đã có CVP Pending cho dose này chưa (tránh duplicate booking)
-                var existingPendingForDose = await childVaccineProfileRepo.GetAsync(
+                // ✅ Kiểm tra xem đã có CVP cho dose này chưa (bao gồm cả "Pending" và "Scheduled")
+                var existingProfileForDose = await childVaccineProfileRepo.GetAsync(
                     p => p.ChildId == childId &&
                          p.VaccineId == vaccineId &&
                          p.DiseaseId == diseaseId &&
                          p.DoseNum == nextDoseNum &&
-                         p.Status == "Pending");
+                         (p.Status == "Pending" || p.Status == "Scheduled"));
 
-                if (existingPendingForDose != null)
+                if (existingProfileForDose != null)
                 {
-                    _logger.LogWarning("Đã có CVP Pending cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum}. Không tạo thêm.",
-                        childId, vaccineId, diseaseId, nextDoseNum);
+                    // ✅ Cập nhật CVP đã tồn tại với AppointmentId mới và status "Pending"
+                    existingProfileForDose.AppointmentId = appointmentId;
+                    existingProfileForDose.Status = "Pending";
+                    existingProfileForDose.ExpectedDate = expectedDate;
+                    existingProfileForDose.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    childVaccineProfileRepo.Update(existingProfileForDose);
+                    
+                    _logger.LogInformation("✅ Đã cập nhật CVP existing (ID: {ProfileId}) từ '{OldStatus}' thành 'Pending' cho Child {ChildId}, Vaccine {VaccineId}, Dose {DoseNum}",
+                        existingProfileForDose.VaccineProfileId, existingProfileForDose.Status, childId, vaccineId, nextDoseNum);
                     return;
                 }
 
@@ -3236,7 +3243,7 @@ namespace Services.Implementations
 
                 // 12. Update ChildVaccineProfile
                 childVaccineProfile.AppointmentId = newAppointment.AppointmentId;
-                childVaccineProfile.Status = "Scheduled"; // Change from Pending to Scheduled
+                childVaccineProfile.Status = "Pending"; // ✅ Đặt thành "Pending" để nhất quán với rebook API
                 childVaccineProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
                 await _unitOfWork.SaveChangesAsync();
