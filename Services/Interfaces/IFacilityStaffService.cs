@@ -14,5 +14,6 @@ namespace Services.Interfaces
         Task<FacilityStaffDTO> GetFacilityStaffByIdAsync(int staffId);
         Task<QueryResultModel<IEnumerable<FacilityStaffDTO>>> GetAllFacilityStaffAsync(int? facilityId = null, string position = null, int? pageIndex = null, int? pageSize = null);
         Task<StaffCountsDTO> GetStaffCountsByFacilityAsync(int facilityId);
+        Task<FacilityStaffDTO> UpdateFacilityStaffAsync(int staffId, UpdateFacilityStaffDTO staffDto);
     }
 }

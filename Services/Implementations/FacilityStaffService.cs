@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.Dashboard;
 using Contracts.DTOs.FacilityStaff;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -8,6 +9,7 @@ using Repositories.Models.QueryModels;
 using Services.Interfaces;
 using System;
 using System.Linq.Expressions;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace Services.Implementations
@@ -17,14 +19,29 @@ namespace Services.Implementations
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ILogger<FacilityStaffService> _logger;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public FacilityStaffService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<FacilityStaffService> logger)
+        public FacilityStaffService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<FacilityStaffService> logger, IHttpContextAccessor httpContextAccessor)
         {
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
+            _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
 
+        }
+        private int GetCurrentAccountId()
+        {
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var accountIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(accountIdClaim, out int accountId))
+                {
+                    return accountId;
+                }
+            }
+            return 0;
+        }
         private async Task ValidateManagerAccess(int currentUserId)
         {
             var accountRepository = _unitOfWork.GetRepository<Account>();
@@ -50,6 +67,62 @@ namespace Services.Implementations
             }
 
             throw new UnauthorizedAccessException("Chỉ Admin hoặc Manager mới có quyền thực hiện hành động này");
+        }
+        public async Task<FacilityStaffDTO> UpdateFacilityStaffAsync(int staffId, UpdateFacilityStaffDTO staffDto)
+        {
+            _logger.LogInformation($"Updating facility staff with ID: {staffId}");
+
+            if (staffDto == null)
+            {
+                throw new ArgumentNullException(nameof(staffDto), "Dữ liệu nhân viên cơ sở là bắt buộc");
+            }
+
+            var repository = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await repository.GetAsync(s => s.StaffId == staffId, includeProperties: "Account,Facility");
+            if (staff == null)
+            {
+                throw new KeyNotFoundException($"Nhân viên cơ sở với ID {staffId} không tồn tại");
+            }
+
+            var currentUserId = GetCurrentAccountId();
+            if (currentUserId == 0)
+            {
+                throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại từ token");
+            }
+
+            // Kiểm tra quyền: Manager, Admin, hoặc chính nhân viên đó
+            if (staff.AccountId != currentUserId)
+            {
+                await ValidateManagerAccess(currentUserId);
+            }
+
+            try
+            {
+                // Lưu các giá trị gốc cần bảo vệ
+                var originalCreatedAt = staff.CreatedAt;
+                var originalAccountId = staff.AccountId;
+                var originalFacilityId = staff.FacilityId;
+
+                // Ánh xạ DTO sang entity
+                _mapper.Map(staffDto, staff);
+
+                // Khôi phục các giá trị gốc
+                staff.CreatedAt = originalCreatedAt;
+                staff.AccountId = originalAccountId;
+                staff.FacilityId = originalFacilityId;
+                staff.UpdatedAt = DateTime.UtcNow; // Cập nhật UpdatedAt
+
+                repository.Update(staff);
+                await _unitOfWork.SaveChangesAsync();
+
+                var updatedStaff = await repository.GetAsync(s => s.StaffId == staffId, includeProperties: "Account,Facility");
+                return _mapper.Map<FacilityStaffDTO>(updatedStaff);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Lỗi khi cập nhật nhân viên cơ sở với ID {staffId}");
+                throw;
+            }
         }
 
         public async Task<FacilityStaffDTO> GetFacilityStaffByIdAsync(int staffId)
