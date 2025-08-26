@@ -38,7 +38,7 @@ namespace KidTracking.API.Controllers
             }
 
             var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager,Doctor,Staff");
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
             return staff != null;
         }
 
