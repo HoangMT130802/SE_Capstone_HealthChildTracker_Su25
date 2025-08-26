@@ -634,6 +634,8 @@ namespace Services.Implementations
                     }
 
                     // 2) Anti-spam: nếu vừa tạo CVP Pending/Scheduled cho cùng bệnh trong 5 phút gần đây
+                    // ⏸️ COMMENTED FOR TESTING - Uncomment sau khi test xong
+                    /*
                     if (validation.CanBook)
                     {
                         var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -655,6 +657,7 @@ namespace Services.Implementations
                             });
                         }
                     }
+                    */
 
                     // 3) Giữ số lượng gói theo kiểm tra reserved (không trừ thật) khi dùng OrderId
                     if (validation.CanBook && hasOrderId)
