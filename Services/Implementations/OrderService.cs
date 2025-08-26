@@ -46,6 +46,15 @@ namespace Services.Implementations
             }
             return 0;
         }
+        private async Task ValidateDoctorAccess(int accountId, int facilityId)
+        {
+            var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.FacilityId == facilityId && s.Position == "Doctor");
+            if (staff == null)
+            {
+                throw new UnauthorizedAccessException($"Người dùng với AccountId {accountId} không phải là bác sĩ hoặc không thuộc FacilityId {facilityId}");
+            }
+        }
         public async Task<OrderDTO> CreatePackageOrderAsync(CreatePackageOrderDTO orderDto)
         {
             try
@@ -363,38 +372,6 @@ namespace Services.Implementations
                 throw;
             }
         }
-
-        public async Task<OrderDTO> UpdateOrderAsync(int orderId, UpdateOrderDTO orderDto)
-        {
-            try
-            {
-                _logger.LogInformation($"Updating order with ID: {orderId}");
-                var orderRepository = _unitOfWork.GetRepository<Order>();
-                var order = await orderRepository.GetAsync(o => o.OrderId == orderId);
-                if (order == null)
-                {
-                    throw new KeyNotFoundException($"Order with ID {orderId} not found");
-                }
-
-                order.OrderDate = orderDto.OrderDate != default ? orderDto.OrderDate : order.OrderDate;
-                order.Status = orderDto.Status ?? order.Status;
-                order.UpdatedAt = DateTime.UtcNow;
-
-                orderRepository.Update(order);
-                await _unitOfWork.SaveChangesAsync();
-
-                var updatedOrder = await orderRepository.GetAsync(
-                    o => o.OrderId == orderId,
-                    includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
-                );
-                return _mapper.Map<OrderDTO>(updatedOrder);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error updating order with ID {orderId}");
-                throw;
-            }
-        }
         public async Task<QueryResultModel<IEnumerable<OrderDTO>>> GetMyOrdersAsync(string status = null, int accountId = 0, int? pageIndex = null, int? pageSize = null)
         {
             try
@@ -482,7 +459,7 @@ namespace Services.Implementations
         public async Task<int> GetCountByFacilityAsync(int facilityId)
         {
             var repository = _unitOfWork.GetRepository<Order>();
-            return await repository.CountAsync(o => o.Package.FacilityId == facilityId); 
+            return await repository.CountAsync(o => o.Package.FacilityId == facilityId);
         }
 
         public async Task<RevenueStatsDTO> GetRevenueStatsByFacilityAsync(int facilityId)
@@ -513,6 +490,137 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error calculating revenue stats for FacilityId {facilityId}");
+                throw;
+            }
+        }
+        public async Task<OrderDTO> UpdateOrderAsync(int orderId, UpdateOrderDTO orderDto)
+        {
+            try
+            {
+                _logger.LogInformation($"Updating order with ID: {orderId}");
+                var orderRepository = _unitOfWork.GetRepository<Order>();
+                var order = await orderRepository.GetAsync(
+                    o => o.OrderId == orderId,
+                    includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.FacilityVaccine.Vaccine.VaccineDiseases,Package,Package.PackageVaccines"
+                );
+                if (order == null)
+                {
+                    throw new KeyNotFoundException($"Order with ID {orderId} not found");
+                }
+
+                if (order.Status == "Paid")
+                {
+                    throw new InvalidOperationException("Không thể cập nhật đơn hàng đã thanh toán");
+                }
+
+                var accountId = GetCurrentAccountId();
+                if (accountId == 0)
+                {
+                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại từ token");
+                }
+
+                await ValidateDoctorAccess(accountId, order.Package.FacilityId);
+
+                using (var transaction = await _unitOfWork.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        var currentTime = DateTime.UtcNow;
+                        if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
+                        {
+                            throw new InvalidOperationException($"Invalid DateTime value for UpdatedAt: {currentTime}");
+                        }
+
+                        // Restore quantities of existing vaccines
+                        var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+                        var orderDetailRepository = _unitOfWork.GetRepository<OrderDetail>();
+                        foreach (var orderDetail in order.OrderDetails)
+                        {
+                            var facilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == orderDetail.FacilityVaccineId);
+                            if (facilityVaccine != null)
+                            {
+                                facilityVaccine.AvailableQuantity += orderDetail.RemainingQuantity;
+                                facilityVaccineRepository.Update(facilityVaccine);
+                            }
+                            orderDetailRepository.Delete(orderDetail);
+                        }
+                        order.OrderDetails.Clear();
+
+                        // Reset TotalAmount
+                        order.TotalAmount = 0;
+                        order.UpdatedAt = currentTime;
+
+                        // Process new selected vaccines if provided
+                        if (orderDto.SelectedVaccines != null && orderDto.SelectedVaccines.Any())
+                        {
+                            var packageDiseaseIds = order.Package.PackageVaccines.Select(pv => pv.DiseaseId).Distinct().ToList();
+                            var selectedDiseaseIds = orderDto.SelectedVaccines.Select(v => v.DiseaseId).Distinct().ToList();
+
+                            if (selectedDiseaseIds.Except(packageDiseaseIds).Any())
+                            {
+                                throw new InvalidOperationException("Một hoặc nhiều DiseaseId không thuộc gói vaccine này");
+                            }
+
+                            foreach (var selectedVaccine in orderDto.SelectedVaccines)
+                            {
+                                var facilityVaccine = await facilityVaccineRepository.GetAsync(
+                                    fv => fv.FacilityVaccineId == selectedVaccine.FacilityVaccineId,
+                                    includeProperties: "Vaccine.VaccineDiseases"
+                                );
+                                if (facilityVaccine == null)
+                                {
+                                    throw new InvalidOperationException($"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không tồn tại");
+                                }
+                                if (facilityVaccine.AvailableQuantity < selectedVaccine.Quantity)
+                                {
+                                    throw new InvalidOperationException($"Số lượng vaccine {selectedVaccine.FacilityVaccineId} không đủ, chỉ còn {facilityVaccine.AvailableQuantity}");
+                                }
+                                if (selectedVaccine.Quantity <= 0)
+                                {
+                                    throw new InvalidOperationException($"Số lượng vaccine {selectedVaccine.FacilityVaccineId} phải lớn hơn 0");
+                                }
+
+                                var diseaseMatch = facilityVaccine.Vaccine?.VaccineDiseases?.Any(vd => vd.DiseaseId == selectedVaccine.DiseaseId);
+                                if (diseaseMatch == null || !diseaseMatch.Value)
+                                {
+                                    throw new InvalidOperationException($"FacilityVaccine với ID {selectedVaccine.FacilityVaccineId} không phù hợp với DiseaseId {selectedVaccine.DiseaseId}");
+                                }
+
+                                var orderDetail = _mapper.Map<OrderDetail>(selectedVaccine);
+                                orderDetail.OrderId = order.OrderId;
+                                orderDetail.Price = facilityVaccine.Price * selectedVaccine.Quantity;
+                                orderDetail.RemainingQuantity = selectedVaccine.Quantity;
+                                orderDetail.CreatedAt = currentTime;
+                                orderDetail.UpdatedAt = currentTime;
+                                order.OrderDetails.Add(orderDetail);
+
+                                order.TotalAmount += orderDetail.Price;
+                                facilityVaccine.AvailableQuantity -= selectedVaccine.Quantity;
+                                facilityVaccineRepository.Update(facilityVaccine);
+                            }
+                        }
+
+                        orderRepository.Update(order);
+                        await _unitOfWork.SaveChangesAsync();
+                        await transaction.CommitAsync();
+
+                        var updatedOrder = await orderRepository.GetAsync(
+                            o => o.OrderId == orderId,
+                            includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
+                        );
+                        return _mapper.Map<OrderDTO>(updatedOrder);
+                    }
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        _logger.LogError(ex, $"Error updating order with ID {orderId}");
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating order with ID {orderId}");
                 throw;
             }
         }

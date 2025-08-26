@@ -48,5 +48,35 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, $"Lỗi khi lấy danh sách nhân viên: {ex.Message}");
             }
         }
+        [HttpPut("{staffId}")]
+        public async Task<IActionResult> UpdateFacilityStaff(int staffId, [FromBody] UpdateFacilityStaffDTO staffDto)
+        {
+            try
+            {
+                if (staffDto == null)
+                {
+                    return BadRequest("Dữ liệu nhân viên cơ sở là bắt buộc");
+                }
+
+                var result = await _facilityStaffService.UpdateFacilityStaffAsync(staffId, staffDto);
+                return Ok(result);
+            }
+            catch (ArgumentNullException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Lỗi hệ thống khi cập nhật nhân viên cơ sở: {ex.Message}");
+            }
+        }
     }
 }

@@ -8,7 +8,6 @@ namespace Contracts.DTOs.Order
 {
     public class UpdateOrderDTO
     {
-        public DateTime OrderDate { get; set; }
-        public string Status { get; set; }
+        public List<SelectedVaccineDTO> SelectedVaccines { get; set; }
     }
 }
