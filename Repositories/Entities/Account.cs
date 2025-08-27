@@ -25,6 +25,8 @@ public partial class Account
 
     public DateTime UpdatedAt { get; set; }
 
+    public virtual ICollection<DeviceToken> DeviceTokens { get; set; } = new List<DeviceToken>();
+
     public virtual ICollection<FacilityStaff> FacilityStaffs { get; set; } = new List<FacilityStaff>();
 
     public virtual ICollection<Member> Members { get; set; } = new List<Member>();

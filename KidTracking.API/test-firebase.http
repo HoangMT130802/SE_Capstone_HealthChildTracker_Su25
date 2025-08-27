@@ -1,0 +1,72 @@
+### Test Firebase Push Notification Setup
+
+### 1. Test đăng ký device token
+POST https://localhost:7000/api/devicetoken/register
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "token": "test-device-token-12345",
+  "deviceType": "android",
+  "deviceInfo": "{\"model\":\"Samsung Galaxy S21\",\"os\":\"Android 12\",\"appVersion\":\"1.0.0\"}"
+}
+
+### 2. Test push notification (Admin only)
+POST https://localhost:7000/api/pushnotification/test
+Authorization: Bearer YOUR_ADMIN_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "deviceToken": "test-device-token-12345",
+  "title": "Test Push Notification",
+  "body": "This is a test message from Health Child Tracker",
+  "data": {
+    "type": "test",
+    "timestamp": "2024-01-15T10:00:00Z"
+  }
+}
+
+### 3. Test vaccine reminder push
+POST https://localhost:7000/api/pushnotification/test-vaccine-reminder
+Authorization: Bearer YOUR_ADMIN_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "deviceToken": "test-device-token-12345",
+  "childName": "Nguyễn Văn A",
+  "vaccineName": "Vaccine BCG",
+  "doseNumber": 1,
+  "expectedDate": "15/01/2024",
+  "facilityName": "Bệnh viện Nhi Đồng 1"
+}
+
+### 4. Kiểm tra device tokens của user
+GET https://localhost:7000/api/devicetoken/my-tokens
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+
+### 5. Check token conflict
+POST https://localhost:7000/api/devicetoken/check-conflict
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "token": "test-device-token-12345"
+}
+
+### 6. Manual trigger daily vaccine reminders (Admin)
+POST https://localhost:7000/api/vaccinereminder/trigger-daily-reminders
+Authorization: Bearer YOUR_ADMIN_JWT_TOKEN_HERE
+
+### 7. Test gửi push cho tất cả devices của user
+POST https://localhost:7000/api/pushnotification/send-to-user
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "title": "Thông báo quan trọng",
+  "body": "Đây là thông báo gửi đến tất cả thiết bị của bạn",
+  "data": {
+    "type": "general",
+    "priority": "high"
+  }
+}

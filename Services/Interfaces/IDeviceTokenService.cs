@@ -40,5 +40,15 @@ namespace Services.Interfaces
         /// Cập nhật last used time cho device token
         /// </summary>
         Task UpdateTokenLastUsedAsync(string token);
+
+        /// <summary>
+        /// Kiểm tra xem device token có thuộc về account khác không
+        /// </summary>
+        Task<List<int>> GetAccountIdsUsingTokenAsync(string token);
+
+        /// <summary>
+        /// Chuyển ownership của device token sang account mới
+        /// </summary>
+        Task<bool> TransferDeviceTokenAsync(string token, int fromAccountId, int toAccountId);
     }
 }

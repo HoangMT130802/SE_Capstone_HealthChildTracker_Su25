@@ -108,6 +108,61 @@ namespace KidTracking.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Kiểm tra device token có bị conflict với account khác không
+        /// </summary>
+        [HttpPost("check-conflict")]
+        public async Task<IActionResult> CheckTokenConflict([FromBody] CheckTokenConflictRequest request)
+        {
+            try
+            {
+                var accountId = GetCurrentAccountId();
+                var accountIds = await _deviceTokenService.GetAccountIdsUsingTokenAsync(request.Token);
+                
+                var hasConflict = accountIds.Any(id => id != accountId);
+                var conflictAccountIds = accountIds.Where(id => id != accountId).ToList();
+                
+                return Ok(new { 
+                    hasConflict = hasConflict,
+                    conflictAccountIds = conflictAccountIds,
+                    message = hasConflict 
+                        ? $"Device token is being used by {conflictAccountIds.Count} other account(s)"
+                        : "No conflict detected"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Failed to check token conflict", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Transfer device token từ account khác về account hiện tại
+        /// </summary>
+        [HttpPost("transfer")]
+        public async Task<IActionResult> TransferDeviceToken([FromBody] TransferTokenRequest request)
+        {
+            try
+            {
+                var toAccountId = GetCurrentAccountId();
+                var success = await _deviceTokenService.TransferDeviceTokenAsync(
+                    request.Token, request.FromAccountId, toAccountId);
+                
+                if (success)
+                {
+                    return Ok(new { message = "Device token transferred successfully" });
+                }
+                else
+                {
+                    return NotFound(new { message = "Device token not found or transfer failed" });
+                }
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Failed to transfer device token", error = ex.Message });
+            }
+        }
+
         private int GetCurrentAccountId()
         {
             var accountIdClaim = User.FindFirst("AccountId")?.Value;
@@ -117,5 +172,16 @@ namespace KidTracking.API.Controllers
             }
             return accountId;
         }
+    }
+
+    public class CheckTokenConflictRequest
+    {
+        public string Token { get; set; }
+    }
+
+    public class TransferTokenRequest
+    {
+        public string Token { get; set; }
+        public int FromAccountId { get; set; }
     }
 }

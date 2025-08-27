@@ -33,7 +33,22 @@ namespace Services.Implementations
             {
                 var deviceTokenRepo = _unitOfWork.GetRepository<DeviceToken>();
 
-                // Kiểm tra xem token đã tồn tại chưa
+                // BƯỚC 1: Kiểm tra token đã được account khác sử dụng chưa
+                var existingTokensForOtherAccounts = await deviceTokenRepo.FindAsync(
+                    dt => dt.Token == deviceTokenDto.Token && dt.AccountId != accountId);
+
+                if (existingTokensForOtherAccounts.Any())
+                {
+                    // Xóa token khỏi các account khác (1 device = 1 account)
+                    foreach (var oldToken in existingTokensForOtherAccounts)
+                    {
+                        deviceTokenRepo.Delete(oldToken);
+                        _logger.LogWarning("Removed device token from account {OldAccountId} - device now belongs to account {NewAccountId}", 
+                            oldToken.AccountId, accountId);
+                    }
+                }
+
+                // BƯỚC 2: Kiểm tra token đã tồn tại cho account hiện tại chưa
                 var existingToken = await deviceTokenRepo.GetAsync(
                     dt => dt.Token == deviceTokenDto.Token && dt.AccountId == accountId);
 
@@ -47,7 +62,7 @@ namespace Services.Implementations
                     existingToken.LastUsedAt = DateTime.UtcNow;
 
                     deviceTokenRepo.Update(existingToken);
-                    await _unitOfWork.SaveAsync();
+                    await _unitOfWork.SaveChangesAsync();
 
                     _logger.LogInformation("Updated existing device token for account {AccountId}", accountId);
                     return _mapper.Map<DeviceTokenResponseDto>(existingToken);
@@ -67,7 +82,7 @@ namespace Services.Implementations
                 };
 
                 await deviceTokenRepo.AddAsync(newDeviceToken);
-                await _unitOfWork.SaveAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Registered new device token for account {AccountId}, device type: {DeviceType}", 
                     accountId, deviceTokenDto.DeviceType);
@@ -96,7 +111,7 @@ namespace Services.Implementations
                 }
 
                 deviceTokenRepo.Delete(deviceToken);
-                await _unitOfWork.SaveAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Removed device token for account {AccountId}", accountId);
                 return true;
@@ -159,7 +174,7 @@ namespace Services.Implementations
                 deviceToken.UpdatedAt = DateTime.UtcNow;
 
                 deviceTokenRepo.Update(deviceToken);
-                await _unitOfWork.SaveAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Deactivated device token for account {AccountId}", deviceToken.AccountId);
                 return true;
@@ -188,7 +203,7 @@ namespace Services.Implementations
                         deviceTokenRepo.Delete(token);
                     }
 
-                    await _unitOfWork.SaveAsync();
+                    await _unitOfWork.SaveChangesAsync();
                     _logger.LogInformation("Cleaned up {Count} inactive device tokens", inactiveTokens.Count());
                     return inactiveTokens.Count();
                 }
@@ -213,13 +228,63 @@ namespace Services.Implementations
                 {
                     deviceToken.LastUsedAt = DateTime.UtcNow;
                     deviceTokenRepo.Update(deviceToken);
-                    await _unitOfWork.SaveAsync();
+                    await _unitOfWork.SaveChangesAsync();
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating last used time for token {Token}", MaskToken(token));
                 // Không throw exception để không ảnh hưởng đến luồng chính
+            }
+        }
+
+        public async Task<List<int>> GetAccountIdsUsingTokenAsync(string token)
+        {
+            try
+            {
+                var deviceTokenRepo = _unitOfWork.GetRepository<DeviceToken>();
+                var tokens = await deviceTokenRepo.FindAsync(dt => dt.Token == token && dt.IsActive);
+                
+                return tokens.Select(dt => dt.AccountId).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting account IDs for token {Token}", MaskToken(token));
+                throw;
+            }
+        }
+
+        public async Task<bool> TransferDeviceTokenAsync(string token, int fromAccountId, int toAccountId)
+        {
+            try
+            {
+                var deviceTokenRepo = _unitOfWork.GetRepository<DeviceToken>();
+                var deviceToken = await deviceTokenRepo.GetAsync(
+                    dt => dt.Token == token && dt.AccountId == fromAccountId);
+
+                if (deviceToken == null)
+                {
+                    _logger.LogWarning("Device token not found for transfer from account {FromAccountId} to {ToAccountId}", 
+                        fromAccountId, toAccountId);
+                    return false;
+                }
+
+                deviceToken.AccountId = toAccountId;
+                deviceToken.UpdatedAt = DateTime.UtcNow;
+                deviceToken.LastUsedAt = DateTime.UtcNow;
+
+                deviceTokenRepo.Update(deviceToken);
+                await _unitOfWork.SaveChangesAsync();
+
+                _logger.LogInformation("Transferred device token from account {FromAccountId} to account {ToAccountId}", 
+                    fromAccountId, toAccountId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error transferring device token from account {FromAccountId} to {ToAccountId}", 
+                    fromAccountId, toAccountId);
+                throw;
             }
         }
 

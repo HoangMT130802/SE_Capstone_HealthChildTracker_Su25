@@ -156,6 +156,7 @@ namespace Services.Implementations
                     {
                         if (!appointment.ReminderSent)
                         {
+                            // Gửi email reminder
                             await _emailService.SendAppointmentReminderEmailAsync(
                                 appointment.ParentEmail,
                                 appointment.ParentName,
@@ -167,8 +168,11 @@ namespace Services.Implementations
                                 appointment.VaccineName
                             );
 
+                            // Gửi push notification
+                            await SendPushNotificationForAppointmentAsync(appointment);
+
                             processedCount++;
-                            _logger.LogInformation("Appointment reminder sent for child {ChildName} on {AppointmentDate}", 
+                            _logger.LogInformation("Appointment reminder sent (email + push) for child {ChildName} on {AppointmentDate}", 
                                 appointment.ChildName, appointment.AppointmentDate);
                         }
                     }
@@ -281,6 +285,7 @@ namespace Services.Implementations
 
                 DateOnly? nextDoseDate = nextProfile?.ExpectedDate;
 
+                // Gửi email completion notification
                 await _emailService.SendVaccinationCompletionEmailAsync(
                     parentAccount.Email,
                     profile.Child.Member.FullName, // Lấy FullName từ Member
@@ -291,7 +296,10 @@ namespace Services.Implementations
                     nextDoseDate
                 );
 
-                _logger.LogInformation("Vaccination completion notification sent for child {ChildName}", profile.Child.FullName);
+                // Gửi push notification completion
+                await SendPushNotificationForVaccinationCompletionAsync(profile, nextDoseDate);
+
+                _logger.LogInformation("Vaccination completion notification sent (email + push) for child {ChildName}", profile.Child.FullName);
             }
             catch (Exception ex)
             {
@@ -521,7 +529,7 @@ namespace Services.Implementations
                             token,
                             appointment.ChildName,
                             appointment.AppointmentDate.ToString("dd/MM/yyyy"),
-                            appointment.AppointmentTime,
+                            appointment.TimeSlot,
                             appointment.FacilityName,
                             appointment.FacilityAddress
                         );
@@ -542,6 +550,61 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending push notification for appointment reminder");
+            }
+        }
+
+        /// <summary>
+        /// Gửi push notification cho vaccination completion
+        /// </summary>
+        private async Task SendPushNotificationForVaccinationCompletionAsync(ChildVaccineProfile profile, DateOnly? nextDoseDate)
+        {
+            try
+            {
+                var accountRepo = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepo.GetAsync(a => a.AccountId == profile.Child.Member.AccountId);
+                
+                if (account == null)
+                {
+                    _logger.LogWarning("Account not found for child {ChildId}", profile.ChildId);
+                    return;
+                }
+
+                var deviceTokens = await _deviceTokenService.GetUserActiveTokensAsync(account.AccountId);
+                
+                if (!deviceTokens.Any())
+                {
+                    _logger.LogDebug("No active device tokens found for account {AccountId}", account.AccountId);
+                    return;
+                }
+
+                foreach (var token in deviceTokens)
+                {
+                    try
+                    {
+                        await _pushNotificationService.SendVaccinationCompletionPushAsync(
+                            token,
+                            profile.Child.FullName,
+                            profile.Vaccine.Name,
+                            profile.DoseNum,
+                            nextDoseDate?.ToString("dd/MM/yyyy")
+                        );
+
+                        await _deviceTokenService.UpdateTokenLastUsedAsync(token);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send push notification to token for account {AccountId}", account.AccountId);
+                        
+                        if (ex.Message.Contains("invalid") || ex.Message.Contains("not-registered"))
+                        {
+                            await _deviceTokenService.DeactivateDeviceTokenAsync(token);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending push notification for vaccination completion");
             }
         }
     }
