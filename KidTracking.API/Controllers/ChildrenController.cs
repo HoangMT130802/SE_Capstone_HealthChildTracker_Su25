@@ -164,7 +164,7 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPost("with-growth-record")]
-        public async Task<IActionResult> CreateChildWithGrowthRecord([FromBody] CreateChildWithGrowthRecordDTO createDTO)
+        public async Task<IActionResult> CreateChildWithGrowthRecord([FromForm] CreateChildWithGrowthRecordDTO createDTO)
         {
             try
             {

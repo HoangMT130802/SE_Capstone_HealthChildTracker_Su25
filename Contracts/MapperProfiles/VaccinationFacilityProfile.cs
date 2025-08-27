@@ -16,6 +16,7 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.LicenseNumber, opt => opt.MapFrom(src => src.LicenseNumber))
                 .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
                 .ForMember(dest => dest.Phone, opt => opt.MapFrom(src => src.Phone))
+                .ForMember(dest => dest.LicenseFile, opt => opt.MapFrom(src => src.LicenseFile))
                 .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
@@ -49,6 +50,7 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => 1)) // Active by default
+                .ForMember(dest => dest.LicenseFile, opt => opt.MapFrom(src => src.LicenseFile))
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
                 .ForMember(dest => dest.FacilityId, opt => opt.Ignore())
@@ -68,6 +70,7 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.LicenseFile, opt => opt.MapFrom(src => src.LicenseFile))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
                 .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.AppointmentSchedules, opt => opt.Ignore())

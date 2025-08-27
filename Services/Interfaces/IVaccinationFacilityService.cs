@@ -9,7 +9,7 @@ namespace Services.Interfaces
         Task<VaccinationFacilityDTO?> GetFacilityByIdAsync(int facilityId);
         Task<VaccinationFacilityDTO?> GetFacilityByManagerIdAsync(int accountId);
         Task<VaccinationFacilityDTO> CreateFacilityAsync(CreateVaccinationFacilityDTO createDto, int managerAccountId);
-        Task<VaccinationFacilityDTO?> UpdateFacilityAsync(UpdateVaccinationFacilityDTO updateDto, int managerAccountId);
+        Task<VaccinationFacilityDTO> UpdateFacilityInfoAsync(UpdateVaccinationFacilityDTO updateDto, int managerAccountId);
         Task<bool> DeleteFacilityAsync(int facilityId, int managerAccountId);
         Task<bool> CheckManagerHasFacilityAsync(int managerAccountId);
         Task<int> GetTotalCountAsync();

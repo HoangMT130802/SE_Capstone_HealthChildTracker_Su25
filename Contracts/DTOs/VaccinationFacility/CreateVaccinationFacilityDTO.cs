@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using System.ComponentModel.DataAnnotations;
 
 namespace Contracts.DTOs.VaccinationFacility
@@ -27,6 +28,8 @@ namespace Contracts.DTOs.VaccinationFacility
 
         [StringLength(1000, ErrorMessage = "Mô tả không được vượt quá 1000 ký tự")]
         public string Description { get; set; }
+        [Required(ErrorMessage = "File giấy phép là bắt buộc")]
+        public IFormFile LicenseFile { get; set; }
 
         // Status sẽ được set tự động trong service = 1 (Active)
     }

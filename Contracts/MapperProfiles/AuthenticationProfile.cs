@@ -93,6 +93,7 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
                 .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Account.Role))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Account.Status))
+                 .ForMember(dest => dest.ImageUrl, opt => opt.MapFrom(src => src.Account.ImageUrl))
                 .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdatedAt));
 
             // Mapper cho FacilityStaffInfoResponseDTO

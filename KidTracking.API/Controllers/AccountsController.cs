@@ -1,4 +1,5 @@
 ﻿using Contracts.DTOs.Account;
+using Contracts.DTOs.Member;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
@@ -88,6 +89,42 @@ namespace KidTracking.API.Controllers
             {
                 _logger.LogError(ex, "Error updating account");
                 return StatusCode(500, new { message = "Lỗi hệ thống khi cập nhật thông tin tài khoản" });
+            }
+        }
+        [HttpPut("update-member-info")]
+        [Authorize(Roles = "Member")]
+        public async Task<IActionResult> UpdateMemberInfo([FromForm] UpdateMemberInfoDTO request)
+        {
+            try
+            {
+                var currentUserId = GetCurrentAccountId();
+                if (currentUserId == 0)
+                {
+                    return Unauthorized(new { message = "Không thể xác định AccountId từ token" });
+                }
+
+                var response = await _accountService.UpdateMemberInfoAsync(request, currentUserId);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"Update member info unauthorized: {ex.Message}");
+                return Forbid(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning($"Update member info validation failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning($"Update member info failed: {ex.Message}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Update member info error: {ex.Message}");
+                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi cập nhật thông tin Member" });
             }
         }
     }
