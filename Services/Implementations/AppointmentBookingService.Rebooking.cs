@@ -21,23 +21,23 @@ namespace Services.Implementations
             var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
             var orderRepo = _unitOfWork.GetRepository<Order>();
-            var applicableOrder = await orderRepo.GetAsync(
+            var applicableOrder = member != null ? await orderRepo.GetAsync(
                 o => o.MemberId == member.MemberId 
                   && o.Status == "Paid" 
-                  && o.OrderDetails.Any(od => od.FacilityVaccine.VaccineId == profile.VaccineId 
+                  && o.OrderDetails.Any(od => od.FacilityVaccine != null && od.FacilityVaccine.VaccineId == profile.VaccineId 
                                             && od.DiseaseId == profile.DiseaseId 
                                             && od.RemainingQuantity > 0),
                 includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
-            );
+            ) : null;
 
             bool hasApplicableOrder = applicableOrder != null;
             int availableQuantity = 0;
             decimal estimatedCost = 0;
 
-            if (hasApplicableOrder)
+            if (hasApplicableOrder && applicableOrder != null)
             {
-                var relevantOrderDetail = applicableOrder.OrderDetails
-                    .FirstOrDefault(od => od.FacilityVaccine.VaccineId == profile.VaccineId 
+                var relevantOrderDetail = applicableOrder.OrderDetails?
+                    .FirstOrDefault(od => od.FacilityVaccine != null && od.FacilityVaccine.VaccineId == profile.VaccineId 
                                        && od.DiseaseId == profile.DiseaseId);
                 
                 if (relevantOrderDetail != null)
@@ -218,7 +218,7 @@ namespace Services.Implementations
                     var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
                     var facilityVaccine = await facilityVaccineRepo.GetAsync(
                         fv => fv.FacilityId == schedule.FacilityId 
-                           && fv.Vaccine.VaccineId == profile.VaccineId
+                           && fv.Vaccine != null && fv.Vaccine.VaccineId == profile.VaccineId
                            && fv.Status == "active"
                            && fv.AvailableQuantity > 0
                     );
@@ -227,7 +227,7 @@ namespace Services.Implementations
                     {
                         // Tìm tất cả cơ sở có vaccine này để gợi ý
                         var allFacilityVaccines = await facilityVaccineRepo.FindAsync(
-                            fv => fv.Vaccine.VaccineId == profile.VaccineId
+                            fv => fv.Vaccine != null && fv.Vaccine.VaccineId == profile.VaccineId
                                && fv.Status == "active"
                                && fv.AvailableQuantity > 0,
                             includeProperties: "Facility"
@@ -235,18 +235,18 @@ namespace Services.Implementations
 
                         if (allFacilityVaccines.Any())
                         {
-                            var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
-                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
+                            var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility?.FacilityName ?? "Unknown"));
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Cơ sở {schedule.Facility?.FacilityName} không có vaccine {profile.Vaccine?.Name} cho bệnh {profile.Disease?.Name}. Các cơ sở có vaccine này: {availableFacilities}");
                         }
                         else
                         {
-                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine?.Name} cho bệnh {profile.Disease?.Name}");
                         }
                     }
                 }
 
                 // 4. Xử lý Order (ưu tiên OrderId từ request, nếu không có thì dùng validation)
-                Order usedOrder = null;
+                Order? usedOrder = null;
                 int? remainingVaccines = null;
                 
                 // ✅ Ưu tiên OrderId từ request nếu có
@@ -260,8 +260,8 @@ namespace Services.Implementations
 
                     if (usedOrder != null)
                     {
-                        var relevantOrderDetail = usedOrder.OrderDetails
-                            .FirstOrDefault(od => od.FacilityVaccine.VaccineId == profile.VaccineId 
+                        var relevantOrderDetail = usedOrder.OrderDetails?
+                            .FirstOrDefault(od => od.FacilityVaccine != null && od.FacilityVaccine.VaccineId == profile.VaccineId 
                                                && od.DiseaseId == profile.DiseaseId);
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
@@ -288,8 +288,8 @@ namespace Services.Implementations
 
                     if (usedOrder != null)
                     {
-                        var relevantOrderDetail = usedOrder.OrderDetails
-                            .FirstOrDefault(od => od.FacilityVaccine.VaccineId == profile.VaccineId 
+                        var relevantOrderDetail = usedOrder.OrderDetails?
+                            .FirstOrDefault(od => od.FacilityVaccine != null && od.FacilityVaccine.VaccineId == profile.VaccineId 
                                                && od.DiseaseId == profile.DiseaseId);
                         
                         if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
@@ -309,7 +309,7 @@ namespace Services.Implementations
                     OrderId = usedOrder?.OrderId,
                     ScheduleId = request.ScheduleId,
                     Status = "Pending",
-                    Note = request.Note,
+                    Note = request.Note ?? string.Empty,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -326,57 +326,8 @@ namespace Services.Implementations
                 schedule.BookedCount = (schedule.BookedCount ?? 0) + 1;
                 scheduleRepo.Update(schedule);
 
-                // 8. Tạo VaccinationAppointmentDetail nếu không dùng gói
-                if (usedOrder == null)
-                {
-                    // Tìm FacilityVaccine tại cơ sở này
-                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
-                    var facilityVaccine = await facilityVaccineRepo.GetAsync(
-                        fv => fv.FacilityId == schedule.FacilityId 
-                           && fv.Vaccine.VaccineId == profile.VaccineId
-                           && fv.Status == "active"
-                           && fv.AvailableQuantity > 0,
-                        includeProperties: "Vaccine"
-                    );
-
-                    if (facilityVaccine == null)
-                    {
-                        // Nếu không tìm thấy vaccine tại cơ sở này, tìm tất cả cơ sở có vaccine này
-                        var allFacilityVaccines = await facilityVaccineRepo.FindAsync(
-                            fv => fv.Vaccine.VaccineId == profile.VaccineId
-                               && fv.Status == "active"
-                               && fv.AvailableQuantity > 0,
-                            includeProperties: "Facility,Vaccine"
-                        );
-
-                        if (allFacilityVaccines.Any())
-                        {
-                            var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
-                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Cơ sở {schedule.Facility.FacilityName} không có vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}. Các cơ sở có vaccine này: {availableFacilities}");
-                        }
-                        else
-                        {
-                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Hiện tại không có cơ sở nào cung cấp vaccine {profile.Vaccine.Name} cho bệnh {profile.Disease.Name}");
-                        }
-                    }
-
-                    var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
-                    var appointmentDetail = new VaccinationAppointmentDetail
-                    {
-                        AppointmentId = newAppointment.AppointmentId,
-                        VaccineId = profile.VaccineId,
-                        DoseNumber = profile.DoseNum.ToString(),
-                        VaccinationDate = DateOnly.FromDateTime(DateTime.UtcNow), // Ngày tiêm dự kiến
-                        Notes = request.Note,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    await appointmentDetailRepo.AddAsync(appointmentDetail);
-                    
-                    _logger.LogInformation("Tạo appointment detail cho vaccine {VaccineId} tại cơ sở {FacilityId}", 
-                        profile.VaccineId, schedule.FacilityId);
-                }
+                // 8. Tạo VaccinationAppointmentDetail cho TẤT CẢ trường hợp (có Order hoặc không)
+                await CreateVaccinationAppointmentDetailForRebookingAsync(newAppointment, profile, schedule, usedOrder, request.Note);
 
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -412,6 +363,92 @@ namespace Services.Implementations
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Lỗi khi rebooking cho ChildVaccineProfile {ProfileId}", request.ChildVaccineProfileId);
                 return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Có lỗi xảy ra khi đặt lại lịch: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Tạo VaccinationAppointmentDetail cho rebooking - hỗ trợ TẤT CẢ trường hợp (có Order hoặc không)
+        /// </summary>
+        private async Task CreateVaccinationAppointmentDetailForRebookingAsync(
+            VaccinationAppointment newAppointment, 
+            ChildVaccineProfile profile, 
+            AppointmentSchedule schedule, 
+            Order? usedOrder, 
+            string? note)
+        {
+            try
+            {
+                _logger.LogInformation("🎯 Tạo VaccinationAppointmentDetail cho rebooking - Appointment {AppointmentId}, Vaccine {VaccineId}", 
+                    newAppointment.AppointmentId, profile.VaccineId);
+
+                var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
+
+                // Luôn tạo VaccinationAppointmentDetail cho vaccine từ ChildVaccineProfile
+                var appointmentDetail = new VaccinationAppointmentDetail
+                {
+                    AppointmentId = newAppointment.AppointmentId,
+                    VaccineId = profile.VaccineId,
+                    DoseNumber = profile.DoseNum.ToString(),
+                    VaccinationDate = schedule.Date, // Ngày tiêm dự kiến từ schedule
+                    Notes = note ?? "Rebooked appointment",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await appointmentDetailRepo.AddAsync(appointmentDetail);
+                
+                _logger.LogInformation("✅ Đã tạo VaccinationAppointmentDetail - AppointmentId {AppointmentId}, VaccineId {VaccineId}, DoseNumber {DoseNumber}, UsedOrder: {HasOrder}", 
+                    newAppointment.AppointmentId, profile.VaccineId, profile.DoseNum, usedOrder != null);
+
+                // Nếu không dùng Order, cần kiểm tra cơ sở có vaccine này không
+                if (usedOrder == null)
+                {
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                        fv => fv.FacilityId == schedule.FacilityId 
+                           && fv.Vaccine.VaccineId == profile.VaccineId
+                           && fv.Status == "active"
+                           && fv.AvailableQuantity > 0,
+                        includeProperties: "Vaccine"
+                    );
+
+                    if (facilityVaccine == null)
+                    {
+                        _logger.LogWarning("⚠️ Cơ sở {FacilityId} không có vaccine {VaccineId} khả dụng cho rebooking", 
+                            schedule.FacilityId, profile.VaccineId);
+                        
+                        // Tìm tất cả cơ sở có vaccine này để log thông tin
+                        var allFacilityVaccines = await facilityVaccineRepo.FindAsync(
+                            fv => fv.Vaccine.VaccineId == profile.VaccineId
+                               && fv.Status == "active"
+                               && fv.AvailableQuantity > 0,
+                            includeProperties: "Facility,Vaccine"
+                        );
+
+                        if (allFacilityVaccines.Any())
+                        {
+                            var availableFacilities = string.Join(", ", allFacilityVaccines.Select(fv => fv.Facility.FacilityName));
+                            _logger.LogInformation("📍 Các cơ sở có vaccine {VaccineId}: {Facilities}", 
+                                profile.VaccineId, availableFacilities);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Cơ sở {FacilityId} có vaccine {VaccineId} khả dụng (Quantity: {Quantity})", 
+                            schedule.FacilityId, profile.VaccineId, facilityVaccine.AvailableQuantity);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("📋 Sử dụng Order {OrderId} cho vaccine {VaccineId}", 
+                        usedOrder.OrderId, profile.VaccineId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Lỗi khi tạo VaccinationAppointmentDetail cho rebooking - Appointment {AppointmentId}, Vaccine {VaccineId}", 
+                    newAppointment.AppointmentId, profile.VaccineId);
+                throw;
             }
         }
     }

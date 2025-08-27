@@ -1,7 +1,7 @@
 ### Test Firebase Push Notification Setup
 
 ### 1. Test đăng ký device token
-POST https://localhost:7000/api/devicetoken/register
+POST https://localhost:7008/api/devicetoken/register
 Authorization: Bearer YOUR_JWT_TOKEN_HERE
 Content-Type: application/json
 
@@ -12,7 +12,7 @@ Content-Type: application/json
 }
 
 ### 2. Test push notification (Admin only)
-POST https://localhost:7000/api/pushnotification/test
+POST https://localhost:7008/api/pushnotification/test
 Authorization: Bearer YOUR_ADMIN_JWT_TOKEN_HERE
 Content-Type: application/json
 
@@ -27,7 +27,7 @@ Content-Type: application/json
 }
 
 ### 3. Test vaccine reminder push
-POST https://localhost:7000/api/pushnotification/test-vaccine-reminder
+POST https://localhost:7008/api/pushnotification/test-vaccine-reminder
 Authorization: Bearer YOUR_ADMIN_JWT_TOKEN_HERE
 Content-Type: application/json
 
@@ -41,11 +41,29 @@ Content-Type: application/json
 }
 
 ### 4. Kiểm tra device tokens của user
-GET https://localhost:7000/api/devicetoken/my-tokens
+GET https://localhost:7008/api/devicetoken/user-tokens
 Authorization: Bearer YOUR_JWT_TOKEN_HERE
 
-### 5. Check token conflict
-POST https://localhost:7000/api/devicetoken/check-conflict
+### 5. Xóa device token
+DELETE https://localhost:7008/api/devicetoken/remove
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "token": "test-device-token-12345"
+}
+
+### 6. Check token conflict
+POST https://localhost:7008/api/devicetoken/check-conflict
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "token": "test-device-token-12345"
+}
+
+### 7. Transfer device token
+POST https://localhost:7008/api/devicetoken/transfer
 Authorization: Bearer YOUR_JWT_TOKEN_HERE
 Content-Type: application/json
 
@@ -54,11 +72,11 @@ Content-Type: application/json
 }
 
 ### 6. Manual trigger daily vaccine reminders (Admin)
-POST https://localhost:7000/api/vaccinereminder/trigger-daily-reminders
+POST https://localhost:7008/api/vaccinereminder/trigger-daily-reminders
 Authorization: Bearer YOUR_ADMIN_JWT_TOKEN_HERE
 
 ### 7. Test gửi push cho tất cả devices của user
-POST https://localhost:7000/api/pushnotification/send-to-user
+POST https://localhost:7008/api/pushnotification/send-to-user
 Authorization: Bearer YOUR_JWT_TOKEN_HERE
 Content-Type: application/json
 
