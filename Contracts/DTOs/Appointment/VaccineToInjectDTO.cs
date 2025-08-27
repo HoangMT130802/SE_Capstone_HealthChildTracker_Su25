@@ -17,3 +17,4 @@ namespace Contracts.DTOs.Appointment
         public string? Contraindications { get; set; }
     }
 }
+
