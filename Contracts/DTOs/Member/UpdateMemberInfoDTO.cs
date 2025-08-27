@@ -16,5 +16,6 @@ namespace Contracts.DTOs.Member
         [Required(ErrorMessage = "Địa chỉ là bắt buộc")]
         [StringLength(200, ErrorMessage = "Địa chỉ không được vượt quá 200 ký tự")]
         public string Address { get; set; } = string.Empty;
+        public IFormFile? ImageUrl { get; set; }
     }
 } 

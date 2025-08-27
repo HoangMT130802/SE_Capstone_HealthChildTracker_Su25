@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using System.ComponentModel.DataAnnotations;
 
 namespace Contracts.DTOs.VaccinationFacility
@@ -33,5 +34,6 @@ namespace Contracts.DTOs.VaccinationFacility
 
         [Range(0, 1, ErrorMessage = "Status phải là 0 (Inactive) hoặc 1 (Active)")]
         public long Status { get; set; }
+        public IFormFile? LicenseFile { get; set; }
     }
 } 

@@ -317,7 +317,6 @@ namespace Services.Implementations
         {
             try
             {
-               
                 ValidateCreateChildWithGrowthRecordData(createDTO);
 
                 var memberRepo = _unitOfWork.GetRepository<Member>();
@@ -329,11 +328,11 @@ namespace Services.Implementations
                 }
 
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                
+
                 // Basic limit check - tối đa 10 trẻ per member
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                int maxChildren = 10; 
-                
+                int maxChildren = 10;
+
                 if (currentChildrenCount >= maxChildren)
                 {
                     throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({maxChildren})");
@@ -354,12 +353,17 @@ namespace Services.Implementations
                     UpdateAt = DateTime.UtcNow
                 };
 
+                // Handle ImageUrl upload if provided
+                if (createDTO.Image != null)
+                {
+                    child.ImageUrl = await UploadImageToCloudinary(createDTO.Image);
+                }
+
                 await childRepository.AddAsync(child);
                 await _unitOfWork.SaveChangesAsync();
 
-               
                 var growthRecordRepository = _unitOfWork.GetRepository<GrowthRecord>();
-                
+
                 // Tính BMI
                 decimal heightInMeters = createDTO.Height / 100;
                 decimal bmi = Math.Round(createDTO.Weight / (heightInMeters * heightInMeters), 2);
@@ -379,14 +383,12 @@ namespace Services.Implementations
                 await growthRecordRepository.AddAsync(growthRecord);
                 await _unitOfWork.SaveChangesAsync();
 
-               
                 var savedChild = await childRepository.GetAsync(c => c.ChildId == child.ChildId);
                 var savedGrowthRecord = await growthRecordRepository.GetAsync(
                     r => r.RecordId == growthRecord.RecordId,
                     includeProperties: "Child"
                 );
 
-              
                 var childDTO = _mapper.Map<ChildDTO>(savedChild);
                 var growthRecordDTO = _mapper.Map<GrowthRecordDTO>(savedGrowthRecord);
 

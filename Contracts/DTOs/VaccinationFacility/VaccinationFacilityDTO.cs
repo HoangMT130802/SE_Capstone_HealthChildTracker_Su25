@@ -14,5 +14,6 @@ namespace Contracts.DTOs.VaccinationFacility
         public long Status { get; set; }
         public long CreatedAt { get; set; }
         public long UpdatedAt { get; set; }
+        public string LicenseFile { get; set; }
     }
 } 

@@ -16,6 +16,19 @@ namespace KidTracking.API.Controllers
         {
             _facilityService = facilityService ?? throw new ArgumentNullException(nameof(facilityService));
         }
+        private int GetCurrentAccountId()
+        {
+            var user = HttpContext.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var accountIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(accountIdClaim, out int accountId))
+                {
+                    return accountId;
+                }
+            }
+            return 0;
+        }
 
         [HttpGet]
         public async Task<IActionResult> GetAllFacilities([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
@@ -76,7 +89,6 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpGet("my-facility")]
-        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> GetMyFacility()
         {
             try
@@ -120,7 +132,7 @@ namespace KidTracking.API.Controllers
 
         [HttpPost]
         // Manager có role FacilityStaff
-        public async Task<IActionResult> CreateFacility([FromBody] CreateVaccinationFacilityDTO createDto)
+        public async Task<IActionResult> CreateFacility([FromForm] CreateVaccinationFacilityDTO createDto)
         {
             if (!ModelState.IsValid)
             {
@@ -134,8 +146,8 @@ namespace KidTracking.API.Controllers
 
             try
             {
-                var accountIdClaim = User.FindFirst("AccountId")?.Value;
-                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+                var accountId = GetCurrentAccountId();
+                if (accountId == 0)
                 {
                     return Unauthorized(new
                     {
@@ -179,55 +191,42 @@ namespace KidTracking.API.Controllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "Manager")]
-        public async Task<IActionResult> UpdateFacility(int id, [FromBody] UpdateVaccinationFacilityDTO updateDto)
+        public async Task<IActionResult> UpdateFacilityInfo([FromForm] UpdateVaccinationFacilityDTO request)
         {
-            if (id != updateDto.FacilityId)
-            {
-                return BadRequest(new
-                {
-                    Success = false,
-                    Message = "ID trong URL không khớp với ID trong dữ liệu"
-                });
-            }
-
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new
-                {
-                    Success = false,
-                    Message = "Dữ liệu không hợp lệ",
-                    Errors = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage))
-                });
-            }
-
             try
             {
-                var accountIdClaim = User.FindFirst("AccountId")?.Value;
-                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int accountId))
+                var accountId = GetCurrentAccountId();
+                if (accountId == 0)
                 {
                     return Unauthorized(new
                     {
                         Success = false,
-                        Message = "Không thể xác thực người dùng"
+                        Message = "Không thể xác định AccountId từ token"
                     });
                 }
 
-                var facility = await _facilityService.UpdateFacilityAsync(updateDto, accountId);
-                if (facility == null)
-                {
-                    return NotFound(new
-                    {
-                        Success = false,
-                        Message = "Không tìm thấy cơ sở"
-                    });
-                }
-
+                var response = await _facilityService.UpdateFacilityInfoAsync(request, accountId);
                 return Ok(new
                 {
                     Success = true,
-                    Message = "Cập nhật cơ sở thành công",
-                    Data = facility
+                    Message = "Cập nhật thông tin cơ sở thành công",
+                    Data = response
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new
+                {
+                    Success = false,
+                    Message = ex.Message
                 });
             }
             catch (KeyNotFoundException ex)
@@ -238,17 +237,9 @@ namespace KidTracking.API.Controllers
                     Message = ex.Message
                 });
             }
-            catch (UnauthorizedAccessException ex)
-            {
-                return StatusCode(403, new
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
-            }
             catch (InvalidOperationException ex)
             {
-                return Conflict(new
+                return BadRequest(new
                 {
                     Success = false,
                     Message = ex.Message
@@ -256,10 +247,10 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(new
+                return StatusCode(500, new
                 {
                     Success = false,
-                    Message = ex.Message
+                    Message = "Lỗi hệ thống khi cập nhật thông tin cơ sở"
                 });
             }
         }

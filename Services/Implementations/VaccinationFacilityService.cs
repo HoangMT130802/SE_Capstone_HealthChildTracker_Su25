@@ -1,10 +1,18 @@
 using AutoMapper;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using Contracts.DTOs.VaccinationFacility;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.Identity.Client;
 using Repositories.Common;
 using Repositories.Entities;
 using Repositories.Interfaces;
+using Repositories.Models;
 using Repositories.Models.QueryModels;
 using Services.Interfaces;
+using System.Linq;
 
 namespace Services.Implementations
 {
@@ -12,13 +20,106 @@ namespace Services.Implementations
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
-
-        public VaccinationFacilityService(IUnitOfWork unitOfWork, IMapper mapper)
+        private readonly ILogger _logger;
+        private readonly Cloudinary _cloudinary;
+        public VaccinationFacilityService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<VaccinationFacilityService> logger, IOptions<CloudinarySettings> cloudinaryConfig)
         {
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            var config = cloudinaryConfig.Value;
+            if (string.IsNullOrEmpty(config.CloudName) || string.IsNullOrEmpty(config.ApiKey) || string.IsNullOrEmpty(config.ApiSecret))
+            {
+                throw new ArgumentException("Cloudinary configuration is incomplete or invalid.");
+            }
+            _cloudinary = new Cloudinary(new CloudinaryDotNet.Account(
+                config.CloudName,
+                config.ApiKey,
+                config.ApiSecret
+            ));
+        }
+        private async Task ValidateManagerAccess(int accountId)
+        {
+            var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
+            if (staff == null)
+            {
+                throw new UnauthorizedAccessException($"User with AccountId {accountId} is not a Manager or does not belong to Facility");
+            }
+        }
+        private async Task<string> UploadFileToCloudinary(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                throw new ArgumentException("File is required");
+
+            // Giới hạn dung lượng 5MB
+            if (file.Length > 5 * 1024 * 1024)
+                throw new ArgumentException("File size must not exceed 5MB");
+
+            // Chỉ cho phép pdf, jpg, jpeg, png
+            var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(fileExtension))
+                throw new ArgumentException("File must be a PDF or image (jpg, jpeg, png)");
+
+            using var stream = file.OpenReadStream();
+
+            UploadResult uploadResult;
+
+            if (fileExtension == ".pdf")
+            {
+                // PDF => dùng RawUploadParams
+                var uploadParams = new RawUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "facility_licenses",
+                    UseFilename = true,
+                    UniqueFilename = false
+                };
+
+                uploadResult = await _cloudinary.UploadAsync(uploadParams);
+            }
+            else
+            {
+                // Ảnh => dùng ImageUploadParams
+                var uploadParams = new ImageUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "facility_licenses",
+                    UseFilename = true,
+                    UniqueFilename = false
+                };
+
+                uploadResult = await _cloudinary.UploadAsync(uploadParams);
+            }
+
+            if (uploadResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                _logger.LogError($"Cloudinary upload failed: Status={uploadResult.StatusCode}, Error={uploadResult.Error?.Message}");
+                throw new InvalidOperationException($"Failed to upload file to Cloudinary: {uploadResult.Error?.Message}");
+            }
+
+            _logger.LogInformation($"Uploaded file: {uploadResult.SecureUrl}");
+            return uploadResult.SecureUrl.AbsoluteUri;
         }
 
+
+
+        private string ExtractPublicIdFromUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return null;
+
+            var uri = new Uri(url);
+            var path = uri.AbsolutePath;
+            var segments = path.Split('/');
+            var index = Array.IndexOf(segments, "facility_licenses");
+            if (index != -1 && index + 1 < segments.Length)
+            {
+                return $"facility_licenses/{segments[index + 1]}";
+            }
+            return null;
+        }
         public async Task<QueryResultModel<List<VaccinationFacilityDTO>>> GetAllFacilitiesAsync(int pageIndex = 1, int pageSize = 10)
         {
             try
@@ -41,6 +142,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error retrieving all facilities");
                 throw new Exception($"Lỗi khi lấy danh sách cơ sở: {ex.Message}");
             }
         }
@@ -56,6 +158,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, $"Error retrieving facility {facilityId}");
                 throw new Exception($"Lỗi khi lấy thông tin cơ sở: {ex.Message}");
             }
         }
@@ -67,7 +170,7 @@ namespace Services.Implementations
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var facilityStaff = await facilityStaffRepository.GetAsync(
                     fs => fs.AccountId == accountId && fs.Status && fs.FacilityId > 0,
-                    "Facility"
+                    includeProperties: "Facility"
                 );
 
                 if (facilityStaff?.Facility != null && facilityStaff.Facility.Status > 0)
@@ -79,6 +182,7 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, $"Error retrieving facility for manager {accountId}");
                 throw new Exception($"Lỗi khi lấy cơ sở của manager: {ex.Message}");
             }
         }
@@ -87,21 +191,18 @@ namespace Services.Implementations
         {
             try
             {
-                // Kiểm tra manager đã có facility hoạt động chưa
                 if (await CheckManagerHasFacilityAsync(managerAccountId))
                 {
                     throw new InvalidOperationException("Manager này đã có cơ sở tiêm chủng hoạt động. Mỗi manager chỉ được tạo 1 cơ sở.");
                 }
 
-                // Kiểm tra account có tồn tại và có role FacilityStaff không
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(a => a.AccountId == managerAccountId && a.Status && a.Role == "FacilityStaff");
                 if (account == null)
                 {
                     throw new UnauthorizedAccessException("Account không tồn tại hoặc không có quyền FacilityStaff.");
                 }
 
-                // Kiểm tra số giấy phép đã tồn tại chưa
                 var facilityRepository = _unitOfWork.GetRepository<VaccinationFacility>();
                 var existingFacility = await facilityRepository.GetAsync(f => f.LicenseNumber == createDto.LicenseNumber && f.Status > 0);
                 if (existingFacility != null)
@@ -109,60 +210,71 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Số giấy phép này đã được sử dụng bởi cơ sở khác.");
                 }
 
-                // Tạo facility mới
-                var facility = _mapper.Map<VaccinationFacility>(createDto);
-                await facilityRepository.AddAsync(facility);
-                await _unitOfWork.SaveChangesAsync();
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
 
-                // Tạo FacilityStaff record cho Manager
-                var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                
-                // Kiểm tra xem Manager đã có FacilityStaff record chưa
-                var existingManagerStaff = await facilityStaffRepository.GetAsync(
-                    fs => fs.AccountId == managerAccountId && fs.Position == "Manager"
-                );
+                try
+                {
+                    var facility = _mapper.Map<VaccinationFacility>(createDto);
+                    facility.Status = 1;
+                    facility.CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    facility.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    facility.LicenseFile = await UploadFileToCloudinary(createDto.LicenseFile);
 
-                if (existingManagerStaff != null)
-                {
-                    // Update FacilityId cho Manager đã tồn tại
-                    existingManagerStaff.FacilityId = facility.FacilityId;
-                    existingManagerStaff.Status = true;
-                    existingManagerStaff.UpdatedAt = DateTime.UtcNow;
-                    facilityStaffRepository.Update(existingManagerStaff);
-                }
-                else
-                {
-                    // Tạo FacilityStaff record mới cho Manager
-                    var facilityStaff = new FacilityStaff
+                    await facilityRepository.AddAsync(facility);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var existingManagerStaff = await facilityStaffRepository.GetAsync(
+                        fs => fs.AccountId == managerAccountId && fs.Position == "Manager"
+                    );
+
+                    if (existingManagerStaff != null)
                     {
-                        AccountId = managerAccountId,
-                        FacilityId = facility.FacilityId,
-                        FullName = account.AccountName,
-                        Email = account.Email,
-                        Position = "Manager",
-                        Description = "Quản lý cơ sở",
-                        Status = true,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
+                        existingManagerStaff.FacilityId = facility.FacilityId;
+                        existingManagerStaff.Status = true;
+                        existingManagerStaff.UpdatedAt = DateTime.UtcNow;
+                        facilityStaffRepository.Update(existingManagerStaff);
+                    }
+                    else
+                    {
+                        var facilityStaff = new FacilityStaff
+                        {
+                            AccountId = managerAccountId,
+                            FacilityId = facility.FacilityId,
+                            FullName = account.AccountName,
+                            Email = account.Email,
+                            Position = "Manager",
+                            Description = "Quản lý cơ sở",
+                            Status = true,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        await facilityStaffRepository.AddAsync(facilityStaff);
+                    }
 
-                    await facilityStaffRepository.AddAsync(facilityStaff);
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return _mapper.Map<VaccinationFacilityDTO>(facility);
                 }
-                
-                await _unitOfWork.SaveChangesAsync();
-
-                return _mapper.Map<VaccinationFacilityDTO>(facility);
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, $"Error creating facility for manager {managerAccountId}");
                 throw new Exception($"Lỗi khi tạo cơ sở: {ex.Message}");
             }
         }
 
-        public async Task<VaccinationFacilityDTO?> UpdateFacilityAsync(UpdateVaccinationFacilityDTO updateDto, int managerAccountId)
+        public async Task<VaccinationFacilityDTO> UpdateFacilityInfoAsync(UpdateVaccinationFacilityDTO updateDto, int managerAccountId)
         {
             try
             {
+                await ValidateManagerAccess(managerAccountId);
                 var facilityRepository = _unitOfWork.GetRepository<VaccinationFacility>();
                 var facility = await facilityRepository.GetAsync(f => f.FacilityId == updateDto.FacilityId && f.Status > 0);
 
@@ -171,7 +283,6 @@ namespace Services.Implementations
                     throw new KeyNotFoundException("Không tìm thấy cơ sở.");
                 }
 
-                // Kiểm tra manager có quyền chỉnh sửa facility này không
                 var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var facilityStaff = await facilityStaffRepository.GetAsync(
                     fs => fs.AccountId == managerAccountId && fs.FacilityId == updateDto.FacilityId && fs.Status && fs.FacilityId > 0
@@ -182,7 +293,6 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Bạn không có quyền chỉnh sửa cơ sở này.");
                 }
 
-                // Kiểm tra số giấy phép có bị trùng với facility khác không
                 if (facility.LicenseNumber != updateDto.LicenseNumber)
                 {
                     var existingFacility = await facilityRepository.GetAsync(
@@ -194,16 +304,53 @@ namespace Services.Implementations
                     }
                 }
 
-                // Cập nhật facility
-                _mapper.Map(updateDto, facility);
-                facilityRepository.Update(facility);
-                await _unitOfWork.SaveChangesAsync();
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
 
-                return _mapper.Map<VaccinationFacilityDTO>(facility);
+                try
+                {
+                    // Lưu CreatedAt gốc
+                    var originalCreatedAt = facility.CreatedAt;
+
+                    // Xóa file cũ trên Cloudinary nếu có file mới
+                    if (updateDto.LicenseFile != null && !string.IsNullOrEmpty(facility.LicenseFile))
+                    {
+                        var publicId = ExtractPublicIdFromUrl(facility.LicenseFile);
+                        if (!string.IsNullOrEmpty(publicId))
+                        {
+                            await _cloudinary.DestroyAsync(new DeletionParams(publicId));
+                        }
+                    }
+
+                    // Cập nhật facility
+                    _mapper.Map(updateDto, facility);
+                    facility.CreatedAt = originalCreatedAt;
+                    facility.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                    // Tải lên file mới nếu có
+                    if (updateDto.LicenseFile != null)
+                    {
+                        facility.LicenseFile = await UploadFileToCloudinary(updateDto.LicenseFile);
+                    }
+
+                    facilityRepository.Update(facility);
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var response = _mapper.Map<VaccinationFacilityDTO>(facility);
+
+                    _logger.LogInformation($"Facility {facility.FacilityName} updated successfully");
+                    return response;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
-                throw new Exception($"Lỗi khi cập nhật cơ sở: {ex.Message}");
+                _logger.LogError(ex, $"Error updating facility {updateDto.FacilityId}");
+                throw new Exception($"Lỗi khi cập nhật thông tin cơ sở: {ex.Message}");
             }
         }
 

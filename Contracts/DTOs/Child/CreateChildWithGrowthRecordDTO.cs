@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -44,5 +45,6 @@ namespace Contracts.DTOs.Child
         public decimal? HeadCircumference { get; set; }
 
         public string? GrowthNote { get; set; }
+        public IFormFile? Image { get; set; }
     }
 } 
