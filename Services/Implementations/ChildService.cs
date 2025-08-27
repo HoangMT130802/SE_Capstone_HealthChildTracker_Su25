@@ -10,6 +10,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Http;
+using Repositories.Models;
+using Microsoft.Extensions.Options;
 
 namespace Services.Implementations
 {
@@ -18,14 +23,37 @@ namespace Services.Implementations
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ILogger<ChildService> _logger;
-
-        public ChildService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<ChildService> logger)
+        private readonly Cloudinary _cloudinary;
+        public ChildService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<ChildService> logger, IOptions<CloudinarySettings> cloudinaryConfig)
         {
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            var config = cloudinaryConfig.Value;
+            if (string.IsNullOrEmpty(config.CloudName) || string.IsNullOrEmpty(config.ApiKey) || string.IsNullOrEmpty(config.ApiSecret))
+            {
+                throw new ArgumentException("Cloudinary configuration is incomplete or invalid.");
+            }
+            _cloudinary = new Cloudinary(new CloudinaryDotNet.Account(
+                config.CloudName,
+                config.ApiKey,
+                config.ApiSecret
+            ));
         }
+        private async Task<string> UploadImageToCloudinary(IFormFile image)
+        {
+            if (image == null || image.Length == 0)
+                throw new ArgumentException("Image is required");
 
+            using var stream = image.OpenReadStream();
+            var uploadParams = new ImageUploadParams
+            {
+                File = new FileDescription(image.FileName, stream),
+                Folder = "child_images"
+            };
+            var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+            return uploadResult.SecureUrl.AbsoluteUri;
+        }
         public async Task<IEnumerable<ChildDTO>> GetAllChildrenByAccountIdAsync(int accountId)
         {
             try
@@ -167,7 +195,6 @@ namespace Services.Implementations
         {
             try
             {
-               
                 ValidateUpdateChildData(childDTO);
 
                 var memberRepo = _unitOfWork.GetRepository<Member>();
@@ -178,7 +205,6 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-            
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -187,12 +213,19 @@ namespace Services.Implementations
                     throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
 
+                var originalCreatedAt = child.CreatedAt;
+
                 _mapper.Map(childDTO, child);
-                
-             
+
+                child.CreatedAt = originalCreatedAt;
                 child.Gender = NormalizeGender(childDTO.Gender);
                 child.BloodType = NormalizeBloodType(childDTO.BloodType);
                 child.UpdateAt = DateTime.UtcNow;
+
+                if (childDTO.Image != null)
+                {
+                    child.ImageUrl = await UploadImageToCloudinary(childDTO.Image);
+                }
 
                 childRepository.Update(child);
                 await _unitOfWork.SaveChangesAsync();

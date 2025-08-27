@@ -27,6 +27,8 @@ public partial class VaccinationFacility
 
     public long UpdatedAt { get; set; }
 
+    public string LicenseFile { get; set; }
+
     public virtual ICollection<AppointmentSchedule> AppointmentSchedules { get; set; } = new List<AppointmentSchedule>();
 
     public virtual ICollection<FacilityMembershipSubscription> FacilityMembershipSubscriptions { get; set; } = new List<FacilityMembershipSubscription>();

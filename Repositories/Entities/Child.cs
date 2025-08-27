@@ -31,6 +31,8 @@ public partial class Child
 
     public DateTime UpdateAt { get; set; }
 
+    public string ImageUrl { get; set; }
+
     public virtual ICollection<ChildVaccineProfile> ChildVaccineProfiles { get; set; } = new List<ChildVaccineProfile>();
 
     public virtual ICollection<DailyRecord> DailyRecords { get; set; } = new List<DailyRecord>();

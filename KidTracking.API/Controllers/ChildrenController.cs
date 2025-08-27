@@ -195,15 +195,23 @@ namespace KidTracking.API.Controllers
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
-
         [HttpPut("{childId}")]
-        public async Task<IActionResult> UpdateChild(int childId, [FromBody] UpdateChildDTO childDTO)
+        public async Task<IActionResult> UpdateChild(int childId, [FromForm] UpdateChildDTO childDTO)
         {
             try
             {
                 var accountId = GetCurrentAccountId();
+                if (accountId == 0)
+                {
+                    return Unauthorized(new { message = "Không thể xác định AccountId từ token" });
+                }
+
                 var child = await _childService.UpdateChildAsync(childId, accountId, childDTO);
                 return Ok(child);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (KeyNotFoundException ex)
             {
@@ -216,7 +224,7 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error updating child {childId}");
-                return StatusCode(500, new { message = "Internal server error" });
+                return StatusCode(500, new { message = "Lỗi hệ thống khi cập nhật thông tin trẻ" });
             }
         }
 

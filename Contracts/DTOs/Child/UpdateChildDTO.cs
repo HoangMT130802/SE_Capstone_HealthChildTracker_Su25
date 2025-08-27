@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Http;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -29,7 +30,7 @@ namespace Contracts.DTOs.Child
         public string? AllergiesNotes { get; set; }
 
         public string? MedicalHistory { get; set; }
-
+        public IFormFile? Image { get; set; }
         public bool Status { get; set; }
     }
 }
