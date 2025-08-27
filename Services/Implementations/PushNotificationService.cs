@@ -27,10 +27,18 @@ namespace Services.Implementations
                     var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
                     if (!string.IsNullOrEmpty(firebaseCredentialsPath))
                     {
-                        FirebaseApp.Create(new AppOptions()
+                        if (System.IO.File.Exists(firebaseCredentialsPath))
                         {
-                            Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
-                        });
+                            FirebaseApp.Create(new AppOptions()
+                            {
+                                Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
+                            });
+                            _logger.LogInformation("Firebase initialized with credentials file: {Path}", firebaseCredentialsPath);
+                        }
+                        else
+                        {
+                            _logger.LogError("Firebase credentials file not found at: {Path}", firebaseCredentialsPath);
+                        }
                     }
                     else
                     {
