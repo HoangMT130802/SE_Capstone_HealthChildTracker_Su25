@@ -30,6 +30,9 @@ namespace Contracts.DTOs.Appointment
 
         // Danh sách FacilityVaccines (vaccines của cơ sở)
         public List<FacilityVaccineDTO> FacilityVaccines { get; set; } = new List<FacilityVaccineDTO>();
+        
+        // ✅ Danh sách vaccine cần tiêm trong appointment này
+        public List<VaccineToInjectDTO> VaccinesToInject { get; set; } = new List<VaccineToInjectDTO>();
 
         // Thông tin lịch hẹn
         public DateOnly AppointmentDate { get; set; }
