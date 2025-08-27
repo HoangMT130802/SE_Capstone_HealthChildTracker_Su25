@@ -231,7 +231,11 @@ namespace KidTracking.API
             
             // ✅ Đăng ký Vaccine Reminder Services
             builder.Services.AddScoped<IVaccineReminderService, VaccineReminderService>();
-            builder.Services.AddHostedService<VaccineReminderBackgroundService>();
+builder.Services.AddHostedService<VaccineReminderBackgroundService>();
+
+// Push notification services
+builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
+builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
             
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);

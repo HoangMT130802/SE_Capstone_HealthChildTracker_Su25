@@ -15,17 +15,23 @@ namespace Services.Implementations
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IEmailService _emailService;
+        private readonly IPushNotificationService _pushNotificationService;
+        private readonly IDeviceTokenService _deviceTokenService;
         private readonly IMapper _mapper;
         private readonly ILogger<VaccineReminderService> _logger;
 
         public VaccineReminderService(
             IUnitOfWork unitOfWork,
             IEmailService emailService,
+            IPushNotificationService pushNotificationService,
+            IDeviceTokenService deviceTokenService,
             IMapper mapper,
             ILogger<VaccineReminderService> logger)
         {
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            _pushNotificationService = pushNotificationService ?? throw new ArgumentNullException(nameof(pushNotificationService));
+            _deviceTokenService = deviceTokenService ?? throw new ArgumentNullException(nameof(deviceTokenService));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -46,6 +52,7 @@ namespace Services.Implementations
                     {
                         if (!vaccine.ReminderSent)
                         {
+                            // Gửi email reminder
                             await _emailService.SendVaccineReminderEmailAsync(
                                 vaccine.ParentEmail,
                                 vaccine.ParentName,
@@ -56,9 +63,12 @@ namespace Services.Implementations
                                 vaccine.FacilityName
                             );
 
+                            // Gửi push notification
+                            await SendPushNotificationForVaccineAsync(vaccine);
+
                             // Cập nhật flag reminder đã gửi (có thể thêm bảng EmailHistory sau)
                             processedCount++;
-                            _logger.LogInformation("Vaccine reminder sent for child {ChildName}, vaccine {VaccineName}", 
+                            _logger.LogInformation("Vaccine reminder sent (email + push) for child {ChildName}, vaccine {VaccineName}", 
                                 vaccine.ChildName, vaccine.VaccineName);
                         }
                     }
@@ -414,6 +424,124 @@ namespace Services.Implementations
             {
                 _logger.LogError(ex, "Error getting upcoming appointment reminders");
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Gửi push notification cho vaccine reminder
+        /// </summary>
+        private async Task SendPushNotificationForVaccineAsync(VaccineReminderInfo vaccine)
+        {
+            try
+            {
+                // Lấy account ID từ email (có thể cần optimize bằng cách lưu trong VaccineReminderInfo)
+                var accountRepo = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepo.GetAsync(a => a.Email == vaccine.ParentEmail);
+                
+                if (account == null)
+                {
+                    _logger.LogWarning("Account not found for email {Email}", vaccine.ParentEmail);
+                    return;
+                }
+
+                // Lấy tất cả device tokens của user
+                var deviceTokens = await _deviceTokenService.GetUserActiveTokensAsync(account.AccountId);
+                
+                if (!deviceTokens.Any())
+                {
+                    _logger.LogDebug("No active device tokens found for account {AccountId}", account.AccountId);
+                    return;
+                }
+
+                // Gửi push notification đến tất cả devices
+                foreach (var token in deviceTokens)
+                {
+                    try
+                    {
+                        await _pushNotificationService.SendVaccineReminderPushAsync(
+                            token,
+                            vaccine.ChildName,
+                            vaccine.VaccineName,
+                            vaccine.DoseNum,
+                            vaccine.ExpectedDate.ToString("dd/MM/yyyy"),
+                            vaccine.FacilityName
+                        );
+
+                        // Cập nhật last used time cho token
+                        await _deviceTokenService.UpdateTokenLastUsedAsync(token);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send push notification to token for account {AccountId}", account.AccountId);
+                        
+                        // Nếu token invalid, deactivate nó
+                        if (ex.Message.Contains("invalid") || ex.Message.Contains("not-registered"))
+                        {
+                            await _deviceTokenService.DeactivateDeviceTokenAsync(token);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending push notification for vaccine reminder");
+                // Không throw để không ảnh hưởng đến email sending
+            }
+        }
+
+        /// <summary>
+        /// Gửi push notification cho appointment reminder
+        /// </summary>
+        private async Task SendPushNotificationForAppointmentAsync(AppointmentReminderInfo appointment)
+        {
+            try
+            {
+                var accountRepo = _unitOfWork.GetRepository<Account>();
+                var account = await accountRepo.GetAsync(a => a.Email == appointment.ParentEmail);
+                
+                if (account == null)
+                {
+                    _logger.LogWarning("Account not found for email {Email}", appointment.ParentEmail);
+                    return;
+                }
+
+                var deviceTokens = await _deviceTokenService.GetUserActiveTokensAsync(account.AccountId);
+                
+                if (!deviceTokens.Any())
+                {
+                    _logger.LogDebug("No active device tokens found for account {AccountId}", account.AccountId);
+                    return;
+                }
+
+                foreach (var token in deviceTokens)
+                {
+                    try
+                    {
+                        await _pushNotificationService.SendAppointmentReminderPushAsync(
+                            token,
+                            appointment.ChildName,
+                            appointment.AppointmentDate.ToString("dd/MM/yyyy"),
+                            appointment.AppointmentTime,
+                            appointment.FacilityName,
+                            appointment.FacilityAddress
+                        );
+
+                        await _deviceTokenService.UpdateTokenLastUsedAsync(token);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send push notification to token for account {AccountId}", account.AccountId);
+                        
+                        if (ex.Message.Contains("invalid") || ex.Message.Contains("not-registered"))
+                        {
+                            await _deviceTokenService.DeactivateDeviceTokenAsync(token);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending push notification for appointment reminder");
             }
         }
     }
