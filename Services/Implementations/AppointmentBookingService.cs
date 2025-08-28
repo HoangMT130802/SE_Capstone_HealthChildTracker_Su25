@@ -2121,10 +2121,23 @@ namespace Services.Implementations
                 packageName = package?.Name;
             }
 
-            // Calculate estimated cost - sử dụng VaccineId từ details
-            var facilityVaccineIds = details.Any() ?
-                details.Select(d => d.VaccineId).ToList() :
-                null;
+            // Calculate estimated cost - map từ VaccineId -> FacilityVaccineId theo cơ sở
+            List<int>? facilityVaccineIds = null;
+            if (details.Any())
+            {
+                var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                var tmpIds = new List<int>();
+                foreach (var d in details)
+                {
+                    var fv = await facilityVaccineRepo.GetAsync(
+                        f => f.FacilityId == appointment.Schedule.FacilityId && f.VaccineId == d.VaccineId);
+                    if (fv != null)
+                    {
+                        tmpIds.Add(fv.FacilityVaccineId);
+                    }
+                }
+                facilityVaccineIds = tmpIds.Any() ? tmpIds : null;
+            }
 
             var estimatedCost = await CalculateEstimatedCostAsync(
                 appointment.Schedule.FacilityId,

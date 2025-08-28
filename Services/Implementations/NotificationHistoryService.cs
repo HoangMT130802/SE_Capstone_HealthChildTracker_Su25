@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Repositories.Common;
 using Repositories.Entities;
+using Repositories.Interfaces;
 using Services.Interfaces;
 
 namespace Services.Implementations;
@@ -125,19 +126,20 @@ public class NotificationHistoryService : INotificationHistoryService
         {
             var notificationRepo = _unitOfWork.GetRepository<NotificationHistory>();
 
-            var query = notificationRepo.GetQueryable()
-                .Where(n => n.AccountId == accountId)
-                .Include(n => n.Child)
-                .Include(n => n.Vaccine)
-                .Include(n => n.DeliveryStatuses)
-                    .ThenInclude(ds => ds.DeviceToken);
+            var baseQuery = notificationRepo.GetAllQueryable()
+                .Where(n => n.AccountId == accountId);
 
             if (!string.IsNullOrEmpty(notificationType))
             {
-                query = query.Where(n => n.NotificationType == notificationType);
+                baseQuery = baseQuery.Where(n => n.NotificationType == notificationType);
             }
 
-            var totalCount = await query.CountAsync();
+            var totalCount = await baseQuery.CountAsync();
+
+            var query = baseQuery.Include(n => n.Child)
+                .Include(n => n.Vaccine)
+                .Include(n => n.NotificationDeliveryStatuses)
+                    .ThenInclude(ds => ds.DeviceToken);
 
             var notifications = await query
                 .OrderByDescending(n => n.SentAt)
@@ -168,12 +170,12 @@ public class NotificationHistoryService : INotificationHistoryService
         {
             var notificationRepo = _unitOfWork.GetRepository<NotificationHistory>();
 
-            var notification = await notificationRepo.GetQueryable()
+            var notification = await notificationRepo.GetAllQueryable()
                 .Where(n => n.NotificationHistoryId == notificationHistoryId && n.AccountId == accountId)
                 .Include(n => n.Child)
                 .Include(n => n.Vaccine)
                 .Include(n => n.Appointment)
-                .Include(n => n.DeliveryStatuses)
+                .Include(n => n.NotificationDeliveryStatuses)
                     .ThenInclude(ds => ds.DeviceToken)
                 .FirstOrDefaultAsync();
 
@@ -194,7 +196,7 @@ public class NotificationHistoryService : INotificationHistoryService
             var cutoffDate = DateTime.UtcNow.AddDays(-daysToKeep);
             var notificationRepo = _unitOfWork.GetRepository<NotificationHistory>();
 
-            var oldNotifications = await notificationRepo.GetQueryable()
+            var oldNotifications = await notificationRepo.GetAllQueryable()
                 .Where(n => n.CreatedAt < cutoffDate)
                 .ToListAsync();
 
@@ -227,7 +229,7 @@ public class NotificationHistoryService : INotificationHistoryService
             fromDate ??= DateTime.UtcNow.AddDays(-30);
             toDate ??= DateTime.UtcNow;
 
-            var notificationIds = await notificationRepo.GetQueryable()
+            var notificationIds = await notificationRepo.GetAllQueryable()
                 .Where(n => n.AccountId == accountId && n.SentAt >= fromDate && n.SentAt <= toDate)
                 .Select(n => n.NotificationHistoryId)
                 .ToListAsync();
@@ -245,7 +247,7 @@ public class NotificationHistoryService : INotificationHistoryService
                 };
             }
 
-            var deliveryStats = await deliveryRepo.GetQueryable()
+            var deliveryStats = await deliveryRepo.GetAllQueryable()
                 .Where(ds => notificationIds.Contains(ds.NotificationHistoryId))
                 .GroupBy(ds => ds.Status)
                 .Select(g => new { Status = g.Key, Count = g.Count() })

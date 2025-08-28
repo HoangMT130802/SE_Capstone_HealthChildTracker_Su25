@@ -19,7 +19,7 @@ public partial class NotificationHistory
 
     public string Data { get; set; }
 
-    public string SentAt { get; set; }
+    public DateTime SentAt { get; set; }
 
     public string Status { get; set; }
 
@@ -36,6 +36,8 @@ public partial class NotificationHistory
     public DateTime UpdatedAt { get; set; }
 
     public virtual Account Account { get; set; }
+
+    public virtual VaccinationAppointment Appointment { get; set; }
 
     public virtual Child Child { get; set; }
 

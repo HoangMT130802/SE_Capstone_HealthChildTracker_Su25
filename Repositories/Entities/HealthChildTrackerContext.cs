@@ -13,7 +13,7 @@ public partial class HealthChildTrackerContext : DbContext
         : base(options)
     {
     }
-    public HealthChildTrackerContext() { }
+    public HealthChildTrackerContext() {  }
     public virtual DbSet<Account> Accounts { get; set; }
 
     public virtual DbSet<AppointmentSchedule> AppointmentSchedules { get; set; }
@@ -685,10 +685,7 @@ public partial class HealthChildTrackerContext : DbContext
             entity.Property(e => e.NotificationType)
                 .IsRequired()
                 .HasMaxLength(50);
-            entity.Property(e => e.SentAt)
-                .IsRequired()
-                .HasMaxLength(10)
-                .IsFixedLength();
+            entity.Property(e => e.SentAt).HasColumnType("datetime");
             entity.Property(e => e.Status)
                 .IsRequired()
                 .HasMaxLength(50);
@@ -701,6 +698,10 @@ public partial class HealthChildTrackerContext : DbContext
                 .HasForeignKey(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_NotificationHistory_Account");
+
+            entity.HasOne(d => d.Appointment).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.AppointmentId)
+                .HasConstraintName("FK_NotificationHistory_VaccinationAppointment");
 
             entity.HasOne(d => d.Child).WithMany(p => p.NotificationHistories)
                 .HasForeignKey(d => d.ChildId)
