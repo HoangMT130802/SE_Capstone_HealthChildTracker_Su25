@@ -2510,6 +2510,27 @@ namespace Services.Implementations
                         // Lấy disease name từ ChildVaccineProfile hoặc fallback
                         var diseaseName = childVaccineProfile?.Disease?.Name ?? "Unknown Disease";
                         
+                        // Tìm FacilityVaccineId từ VaccinationAppointmentDetail
+                        int? facilityVaccineId = null;
+                        
+                        // Cách 1: Tìm từ Order.OrderDetails nếu có
+                        if (appointment.Order?.OrderDetails != null)
+                        {
+                            var matchingOrderDetail = appointment.Order.OrderDetails
+                                .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == vaccinationDetail.VaccineId);
+                            facilityVaccineId = matchingOrderDetail?.FacilityVaccineId;
+                        }
+                        
+                        // Cách 2: Nếu không tìm được, query trực tiếp từ DB
+                        if (!facilityVaccineId.HasValue)
+                        {
+                            var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                            var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                                fv => fv.VaccineId == vaccinationDetail.VaccineId 
+                                   && fv.FacilityId == appointment.Schedule.FacilityId);
+                            facilityVaccineId = facilityVaccine?.FacilityVaccineId;
+                        }
+
                         var vaccineToInject = new VaccineToInjectDTO
                         {
                             VaccineId = vaccinationDetail.VaccineId,
@@ -2517,6 +2538,7 @@ namespace Services.Implementations
                             DiseaseName = diseaseName,
                             DoseNumber = doseNumber,
                             Notes = vaccinationDetail.Notes,
+                            FacilityVaccineId = facilityVaccineId,
                             Manufacturer = vaccinationDetail.Vaccine.Manufacturer,
                             SideEffects = vaccinationDetail.Vaccine.SideEffects,
                             Contraindications = vaccinationDetail.Vaccine.Contraindications
@@ -2524,8 +2546,8 @@ namespace Services.Implementations
                         
                         dto.VaccinesToInject.Add(vaccineToInject);
                         
-                        _logger.LogInformation("✅ Found vaccine to inject: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}", 
-                            vaccinationDetail.Vaccine.Name, diseaseName, doseNumber);
+                        _logger.LogInformation("✅ Found vaccine to inject: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}, FacilityVaccineId: {FacilityVaccineId}", 
+                            vaccinationDetail.Vaccine.Name, diseaseName, doseNumber, facilityVaccineId);
                     }
                     else
                     {
@@ -2553,6 +2575,27 @@ namespace Services.Implementations
                     {
                         if (profile.Vaccine != null && profile.Disease != null)
                         {
+                            // Tìm FacilityVaccineId từ ChildVaccineProfile
+                            int? facilityVaccineId = null;
+                            
+                            // Cách 1: Tìm từ Order.OrderDetails nếu có
+                            if (appointment.Order?.OrderDetails != null)
+                            {
+                                var matchingOrderDetail = appointment.Order.OrderDetails
+                                    .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == profile.VaccineId);
+                                facilityVaccineId = matchingOrderDetail?.FacilityVaccineId;
+                            }
+                            
+                            // Cách 2: Nếu không tìm được, query trực tiếp từ DB
+                            if (!facilityVaccineId.HasValue)
+                            {
+                                var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                                var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                                    fv => fv.VaccineId == profile.VaccineId 
+                                       && fv.FacilityId == appointment.Schedule.FacilityId);
+                                facilityVaccineId = facilityVaccine?.FacilityVaccineId;
+                            }
+
                             var vaccineToInject = new VaccineToInjectDTO
                             {
                                 VaccineId = profile.VaccineId,
@@ -2560,6 +2603,7 @@ namespace Services.Implementations
                                 DiseaseName = profile.Disease.Name,
                                 DoseNumber = profile.DoseNum.ToString(),
                                 Notes = profile.Note,
+                                FacilityVaccineId = facilityVaccineId,
                                 Manufacturer = profile.Vaccine.Manufacturer,
                                 SideEffects = profile.Vaccine.SideEffects,
                                 Contraindications = profile.Vaccine.Contraindications
@@ -2567,8 +2611,8 @@ namespace Services.Implementations
                             
                             dto.VaccinesToInject.Add(vaccineToInject);
                             
-                            _logger.LogInformation("✅ Found vaccine from ChildVaccineProfile: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}", 
-                                profile.Vaccine.Name, profile.Disease.Name, profile.DoseNum);
+                            _logger.LogInformation("✅ Found vaccine from ChildVaccineProfile: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}, FacilityVaccineId: {FacilityVaccineId}", 
+                                profile.Vaccine.Name, profile.Disease.Name, profile.DoseNum, facilityVaccineId);
                         }
                     }
                 }
