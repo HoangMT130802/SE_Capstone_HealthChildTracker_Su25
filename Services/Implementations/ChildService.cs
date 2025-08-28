@@ -377,7 +377,7 @@ namespace Services.Implementations
                     Bmi = bmi,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
-                    Note = createDTO.GrowthNote?.Trim()
+                    Note = createDTO.GrowthNote?.Trim() ?? ""
                 };
 
                 await growthRecordRepository.AddAsync(growthRecord);
