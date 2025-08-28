@@ -23,7 +23,7 @@ public partial class DeviceToken
 
     public DateTime UpdatedAt { get; set; }
 
-    public DateTime? LastUsedAt { get; set; }
+    public DateTime LastUsedAt { get; set; }
 
     public virtual Account Account { get; set; }
 }

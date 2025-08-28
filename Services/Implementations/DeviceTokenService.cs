@@ -75,7 +75,7 @@ namespace Services.Implementations
                     Token = deviceTokenDto.Token,
                     DeviceType = deviceTokenDto.DeviceType,
                     DeviceInfo = deviceTokenDto.DeviceInfo,
-                    IsActive = true,
+                    IsActive = true, // Explicit set to fix NULL issue
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
                     LastUsedAt = DateTime.UtcNow
