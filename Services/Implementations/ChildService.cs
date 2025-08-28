@@ -162,7 +162,7 @@ namespace Services.Implementations
                 
               
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                int maxChildren = 10; 
+                int maxChildren = 5; 
                 
                 if (currentChildrenCount >= maxChildren)
                 {
@@ -329,9 +329,9 @@ namespace Services.Implementations
 
                 var childRepository = _unitOfWork.GetRepository<Child>();
 
-                // Basic limit check - tối đa 10 trẻ per member
+                // Basic limit check - tối đa 5 trẻ per member
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                int maxChildren = 10;
+                int maxChildren = 5;
 
                 if (currentChildrenCount >= maxChildren)
                 {
@@ -368,19 +368,44 @@ namespace Services.Implementations
                 decimal heightInMeters = createDTO.Height / 100;
                 decimal bmi = Math.Round(createDTO.Weight / (heightInMeters * heightInMeters), 2);
 
-                var growthRecord = new GrowthRecord
-                {
-                    ChildId = child.ChildId,
-                    Height = createDTO.Height,
-                    Weight = createDTO.Weight,
-                    HeadCircumference = createDTO.HeadCircumference ?? 0,
-                    Bmi = bmi,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                    Note = createDTO.GrowthNote?.Trim()
-                };
+                // Kiểm tra bản ghi growth record đã tồn tại cho cùng ngày
+                var createdAtDate = createDTO.CreatedAt.Date;
+                var existingGrowthRecord = await growthRecordRepository.GetAsync(
+                    r => r.ChildId == child.ChildId && r.CreatedAt.Date == createdAtDate
+                );
 
-                await growthRecordRepository.AddAsync(growthRecord);
+                GrowthRecord growthRecord;
+                if (existingGrowthRecord != null)
+                {
+                    // Ghi đè bản ghi đã có
+                    existingGrowthRecord.Height = createDTO.Height;
+                    existingGrowthRecord.Weight = createDTO.Weight;
+                    existingGrowthRecord.HeadCircumference = createDTO.HeadCircumference ?? 0;
+                    existingGrowthRecord.Bmi = bmi;
+                    existingGrowthRecord.UpdatedAt = DateTime.UtcNow;
+                    existingGrowthRecord.Note = createDTO.GrowthNote?.Trim();
+
+                    growthRecordRepository.Update(existingGrowthRecord);
+                    growthRecord = existingGrowthRecord;
+                }
+                else
+                {
+                    // Tạo bản ghi mới
+                    growthRecord = new GrowthRecord
+                    {
+                        ChildId = child.ChildId,
+                        Height = createDTO.Height,
+                        Weight = createDTO.Weight,
+                        HeadCircumference = createDTO.HeadCircumference ?? 0,
+                        Bmi = bmi,
+                        CreatedAt = createDTO.CreatedAt.Date,
+                        UpdatedAt = DateTime.UtcNow,
+                        Note = createDTO.GrowthNote?.Trim()
+                    };
+
+                    await growthRecordRepository.AddAsync(growthRecord);
+                }
+
                 await _unitOfWork.SaveChangesAsync();
 
                 var savedChild = await childRepository.GetAsync(c => c.ChildId == child.ChildId);
@@ -392,11 +417,15 @@ namespace Services.Implementations
                 var childDTO = _mapper.Map<ChildDTO>(savedChild);
                 var growthRecordDTO = _mapper.Map<GrowthRecordDTO>(savedGrowthRecord);
 
+                var message = existingGrowthRecord != null 
+                    ? "Trẻ em đã được tạo thành công và bản ghi tăng trưởng đã được cập nhật"
+                    : "Trẻ em và bản ghi tăng trưởng đã được tạo thành công";
+
                 return new ChildWithGrowthRecordResponseDTO
                 {
                     Child = childDTO,
                     GrowthRecord = growthRecordDTO,
-                    Message = "Trẻ em và bản ghi tăng trưởng đã được tạo thành công"
+                    Message = message
                 };
             }
             catch (Exception ex)
@@ -460,6 +489,21 @@ namespace Services.Implementations
                 (createDTO.HeadCircumference.Value < 20 || createDTO.HeadCircumference.Value > 80))
             {
                 errors.Add("Vòng đầu phải từ 20-80 cm");
+            }
+
+            // Validate CreatedAt
+            var createdAtDate = createDTO.CreatedAt.Date;
+            var currentDate = DateTime.UtcNow.Date;
+            var birthDate = createDTO.BirthDate.Date;
+
+            if (createdAtDate < birthDate)
+            {
+                errors.Add($"Không thể tạo record trước ngày sinh của trẻ. Ngày sinh: {createDTO.BirthDate:dd/MM/yyyy}");
+            }
+
+            if (createdAtDate > currentDate)
+            {
+                errors.Add($"Không thể tạo record trong tương lai. Ngày tạo: {createdAtDate:dd/MM/yyyy}");
             }
 
             if (errors.Any())

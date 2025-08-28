@@ -44,6 +44,9 @@ namespace Contracts.DTOs.Child
         [Range(20, 80, ErrorMessage = "Vòng đầu phải từ 20-80 cm")]
         public decimal? HeadCircumference { get; set; }
 
+        [Required]
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow.Date;
+
         public string? GrowthNote { get; set; }
         public IFormFile? Image { get; set; }
     }
