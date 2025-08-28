@@ -1,5 +1,6 @@
 using AutoMapper;
 using Contracts.DTOs.DeviceToken;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -284,6 +285,27 @@ namespace Services.Implementations
             {
                 _logger.LogError(ex, "Error transferring device token from account {FromAccountId} to {ToAccountId}", 
                     fromAccountId, toAccountId);
+                throw;
+            }
+        }
+
+        public async Task<int?> GetDeviceTokenIdByTokenAsync(string token)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(token))
+                    return null;
+
+                var deviceTokenRepo = _unitOfWork.GetRepository<DeviceToken>();
+                var deviceToken = await deviceTokenRepo.GetAllQueryable()
+                    .Where(dt => dt.Token == token && dt.IsActive)
+                    .FirstOrDefaultAsync();
+
+                return deviceToken?.DeviceTokenId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting device token ID for token {Token}", MaskToken(token));
                 throw;
             }
         }

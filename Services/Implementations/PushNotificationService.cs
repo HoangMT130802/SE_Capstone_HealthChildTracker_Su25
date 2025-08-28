@@ -14,14 +14,16 @@ namespace Services.Implementations
     public class PushNotificationService : IPushNotificationService
     {
         private readonly ILogger<PushNotificationService> _logger;
-        private readonly FirebaseMessaging _messaging;
+        private readonly FirebaseMessaging? _messaging;
         private readonly INotificationHistoryService _notificationHistoryService;
+        private readonly IDeviceTokenService _deviceTokenService;
 
         public PushNotificationService(ILogger<PushNotificationService> logger, IConfiguration configuration, 
-            INotificationHistoryService notificationHistoryService)
+            INotificationHistoryService notificationHistoryService, IDeviceTokenService deviceTokenService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _notificationHistoryService = notificationHistoryService ?? throw new ArgumentNullException(nameof(notificationHistoryService));
+            _deviceTokenService = deviceTokenService ?? throw new ArgumentNullException(nameof(deviceTokenService));
             
             try
             {
@@ -33,6 +35,14 @@ namespace Services.Implementations
                     {
                         if (System.IO.File.Exists(firebaseCredentialsPath))
                         {
+                            // Kiểm tra nội dung file trước khi sử dụng
+                            var credentialsContent = System.IO.File.ReadAllText(firebaseCredentialsPath);
+                            if (credentialsContent.Contains("REPLACE_WITH_NEW"))
+                            {
+                                _logger.LogWarning("Firebase credentials file contains placeholder values. Please update with real credentials from Firebase Console.");
+                                return;
+                            }
+
                             FirebaseApp.Create(new AppOptions()
                             {
                                 Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
@@ -42,6 +52,7 @@ namespace Services.Implementations
                         else
                         {
                             _logger.LogError("Firebase credentials file not found at: {Path}", firebaseCredentialsPath);
+                            return;
                         }
                     }
                     else
@@ -59,21 +70,35 @@ namespace Services.Implementations
                         else
                         {
                             _logger.LogWarning("No Firebase credentials found in configuration");
+                            return;
                         }
                     }
                 }
 
                 _messaging = FirebaseMessaging.DefaultInstance;
                 _logger.LogInformation("Firebase messaging initialized successfully");
+                
+                // Log thêm thông tin để debug
+                var projectId = configuration["Firebase:ProjectId"] ?? "kidtrack-78a49";
+                _logger.LogInformation("Firebase project ID: {ProjectId}", projectId);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to initialize Firebase messaging");
+                _messaging = null;
             }
         }
 
+        // Backward compatibility method
         public async Task<string?> SendVaccineReminderPushAsync(string deviceToken, string childName, string vaccineName, 
-            int doseNumber, string expectedDate, string facilityName = null)
+            int doseNumber, string expectedDate, string? facilityName = null)
+        {
+            return await SendVaccineReminderPushAsync(deviceToken, childName, vaccineName, doseNumber, expectedDate, facilityName, null, null, null);
+        }
+
+        // Full method with notification history support
+        public async Task<string?> SendVaccineReminderPushAsync(string deviceToken, string childName, string vaccineName, 
+            int doseNumber, string expectedDate, string? facilityName = null, int? accountId = null, int? childId = null, int? vaccineId = null)
         {
             try
             {
@@ -101,7 +126,53 @@ namespace Services.Implementations
                     {"facilityName", facilityName ?? ""}
                 };
 
+                // Lưu notification history nếu có accountId
+                int? notificationHistoryId = null;
+                if (accountId.HasValue)
+                {
+                    try
+                    {
+                        notificationHistoryId = await _notificationHistoryService.SaveNotificationHistoryAsync(
+                            accountId.Value,
+                            "vaccine_reminder",
+                            title,
+                            body,
+                            System.Text.Json.JsonSerializer.Serialize(data),
+                            childId,
+                            vaccineId
+                        );
+                        _logger.LogDebug("Saved notification history {NotificationId} for vaccine reminder", notificationHistoryId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to save notification history for vaccine reminder");
+                    }
+                }
+
                 var messageId = await SendPushNotificationAsync(deviceToken, title, body, data);
+                
+                // Lưu delivery status nếu có notification history và device token info
+                if (notificationHistoryId.HasValue && !string.IsNullOrEmpty(messageId))
+                {
+                    try
+                    {
+                        // Tìm device token ID từ token string (cần implement helper method)
+                        var deviceTokenId = await GetDeviceTokenIdAsync(deviceToken);
+                        if (deviceTokenId.HasValue)
+                        {
+                            await _notificationHistoryService.SaveDeliveryStatusAsync(
+                                notificationHistoryId.Value,
+                                deviceTokenId.Value,
+                                "Sent",
+                                messageId
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to save delivery status for notification {NotificationId}", notificationHistoryId);
+                    }
+                }
                 
                 _logger.LogInformation("Vaccine reminder push sent to device {DeviceToken} for child {ChildName}, MessageId: {MessageId}", 
                     MaskDeviceToken(deviceToken), childName, messageId);
@@ -247,66 +318,33 @@ namespace Services.Implementations
                     return messageIds;
                 }
 
-                var message = new MulticastMessage()
-                {
-                    Tokens = validTokens,
-                    Notification = new Notification()
-                    {
-                        Title = title,
-                        Body = body
-                    },
-                    Data = data ?? new Dictionary<string, string>(),
-                    Android = new AndroidConfig()
-                    {
-                        Priority = Priority.High,
-                        Notification = new AndroidNotification()
-                        {
-                            Icon = "ic_notification",
-                            Color = "#2196F3",
-                            Sound = "default",
-                            ChannelId = "vaccine_reminders"
-                        }
-                    },
-                    Apns = new ApnsConfig()
-                    {
-                        Aps = new Aps()
-                        {
-                            Alert = new ApsAlert()
-                            {
-                                Title = title,
-                                Body = body
-                            },
-                            Sound = "default",
-                            Badge = 1
-                        }
-                    }
-                };
-
                 if (_messaging == null)
                 {
                     _logger.LogWarning("Firebase messaging not initialized, cannot send multicast push notification");
                     return messageIds;
                 }
 
-                var response = await _messaging.SendMulticastAsync(message);
+                // Thay vì multicast, gửi từng message riêng lẻ để tránh lỗi 404
+                _logger.LogInformation("Sending {TokenCount} individual messages instead of multicast to avoid 404 error", validTokens.Count);
                 
-                _logger.LogInformation("Multicast push sent to {TokenCount} devices. Success: {SuccessCount}, Failed: {FailureCount}", 
-                    validTokens.Count, response.SuccessCount, response.FailureCount);
-
-                // Extract message IDs từ response
-                for (int i = 0; i < response.Responses.Count; i++)
+                foreach (var token in validTokens)
                 {
-                    var sendResponse = response.Responses[i];
-                    if (sendResponse.IsSuccess)
+                    try
                     {
-                        messageIds.Add(sendResponse.MessageId);
+                        var messageId = await SendPushNotificationAsync(token, title, body, data ?? new Dictionary<string, string>());
+                        if (!string.IsNullOrEmpty(messageId))
+                        {
+                            messageIds.Add(messageId);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogWarning("Failed to send push to device {DeviceToken}: {Error}", 
-                            MaskDeviceToken(validTokens[i]), sendResponse.Exception?.Message);
+                        _logger.LogWarning(ex, "Failed to send push to device {DeviceToken}", MaskDeviceToken(token));
                     }
                 }
+
+                _logger.LogInformation("Individual push sent to {TokenCount} devices. Success: {SuccessCount}", 
+                    validTokens.Count, messageIds.Count);
 
                 return messageIds;
             }
@@ -373,7 +411,21 @@ namespace Services.Implementations
             
             return $"{token.Substring(0, 6)}...{token.Substring(token.Length - 4)}";
         }
+
+        private async Task<int?> GetDeviceTokenIdAsync(string token)
+        {
+            try
+            {
+                return await _deviceTokenService.GetDeviceTokenIdByTokenAsync(token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to get device token ID for token {Token}", MaskDeviceToken(token));
+                return null;
+            }
+        }
     }
 }
+
 
 

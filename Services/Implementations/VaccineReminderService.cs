@@ -472,7 +472,10 @@ namespace Services.Implementations
                             vaccine.VaccineName,
                             vaccine.DoseNum,
                             vaccine.ExpectedDate.ToString("dd/MM/yyyy"),
-                            vaccine.FacilityName
+                            vaccine.FacilityName,
+                            account.AccountId,
+                            vaccine.ChildId,
+                            vaccine.VaccineId
                         );
 
                         // Cập nhật last used time cho token

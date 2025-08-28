@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Services.Interfaces
@@ -8,7 +9,7 @@ namespace Services.Interfaces
         /// Gửi push notification về vaccine reminder
         /// </summary>
         Task<string?> SendVaccineReminderPushAsync(string deviceToken, string childName, string vaccineName, 
-            int doseNumber, string expectedDate, string facilityName = null);
+            int doseNumber, string expectedDate, string facilityName = null, int? accountId = null, int? childId = null, int? vaccineId = null);
 
         /// <summary>
         /// Gửi push notification về appointment reminder

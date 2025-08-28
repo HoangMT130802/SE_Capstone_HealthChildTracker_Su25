@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "793705427879",
+    "project_id": "kidtrack-78a49",
+    "storage_bucket": "kidtrack-78a49.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:793705427879:android:a94a7c4d66de2487a93c82",
+        "android_client_info": {
+          "package_name": "com.childgrowth.vaccinationtracking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHKl7WJvVxPL-CsL-chBHK7rcOVsFIzlQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
