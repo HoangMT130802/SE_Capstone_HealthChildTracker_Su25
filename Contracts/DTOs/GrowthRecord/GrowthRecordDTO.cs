@@ -16,7 +16,7 @@ namespace Contracts.DTOs.GrowthRecord
         public decimal Bmi { get; set; }  
         public decimal HeadCircumference { get; set; }
         public int AgeInDays { get; set; }
-        public string Note { get; set; }
+        public string? Note { get; set; }
         public DateTime CreatedAt { get; set; }  
         public DateTime UpdatedAt { get; set; }  
     }

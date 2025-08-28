@@ -1,5 +1,6 @@
 using AutoMapper;
 using Contracts.DTOs.Child;
+using Contracts.DTOs.GrowthRecord;
 using Repositories.Entities;
 
 namespace Contracts.MapperProfiles
@@ -21,7 +22,8 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.UpdateAt, opt => opt.MapFrom(src => src.UpdateAt));
-
+            CreateMap<GrowthRecord, GrowthRecordDTO>()
+            .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note));
             CreateMap<CreateChildDTO, Child>()
                 .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
                 .ForMember(dest => dest.BirthDate, opt => opt.MapFrom(src => src.BirthDate))
