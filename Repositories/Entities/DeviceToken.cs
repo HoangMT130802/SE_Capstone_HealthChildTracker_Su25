@@ -26,4 +26,6 @@ public partial class DeviceToken
     public DateTime LastUsedAt { get; set; }
 
     public virtual Account Account { get; set; }
+
+    public virtual ICollection<NotificationDeliveryStatus> NotificationDeliveryStatuses { get; set; } = new List<NotificationDeliveryStatus>();
 }

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Services.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Services.Implementations
@@ -14,10 +15,13 @@ namespace Services.Implementations
     {
         private readonly ILogger<PushNotificationService> _logger;
         private readonly FirebaseMessaging _messaging;
+        private readonly INotificationHistoryService _notificationHistoryService;
 
-        public PushNotificationService(ILogger<PushNotificationService> logger, IConfiguration configuration)
+        public PushNotificationService(ILogger<PushNotificationService> logger, IConfiguration configuration, 
+            INotificationHistoryService notificationHistoryService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _notificationHistoryService = notificationHistoryService ?? throw new ArgumentNullException(nameof(notificationHistoryService));
             
             try
             {
@@ -50,10 +54,11 @@ namespace Services.Implementations
                             {
                                 Credential = GoogleCredential.FromJson(serviceAccountJson)
                             });
+                            _logger.LogInformation("Firebase initialized with service account JSON");
                         }
                         else
                         {
-                            _logger.LogWarning("Firebase credentials not configured. Push notifications will not work.");
+                            _logger.LogWarning("No Firebase credentials found in configuration");
                         }
                     }
                 }
@@ -67,7 +72,7 @@ namespace Services.Implementations
             }
         }
 
-        public async Task SendVaccineReminderPushAsync(string deviceToken, string childName, string vaccineName, 
+        public async Task<string?> SendVaccineReminderPushAsync(string deviceToken, string childName, string vaccineName, 
             int doseNumber, string expectedDate, string facilityName = null)
         {
             try
@@ -75,7 +80,7 @@ namespace Services.Implementations
                 if (string.IsNullOrEmpty(deviceToken))
                 {
                     _logger.LogWarning("Device token is empty, skipping push notification");
-                    return;
+                    return null;
                 }
 
                 var title = "🩺 Nhắc nhở tiêm vaccine";
@@ -96,10 +101,12 @@ namespace Services.Implementations
                     {"facilityName", facilityName ?? ""}
                 };
 
-                await SendPushNotificationAsync(deviceToken, title, body, data);
+                var messageId = await SendPushNotificationAsync(deviceToken, title, body, data);
                 
-                _logger.LogInformation("Vaccine reminder push sent to device {DeviceToken} for child {ChildName}", 
-                    MaskDeviceToken(deviceToken), childName);
+                _logger.LogInformation("Vaccine reminder push sent to device {DeviceToken} for child {ChildName}, MessageId: {MessageId}", 
+                    MaskDeviceToken(deviceToken), childName, messageId);
+                    
+                return messageId;
             }
             catch (Exception ex)
             {
@@ -108,7 +115,7 @@ namespace Services.Implementations
             }
         }
 
-        public async Task SendAppointmentReminderPushAsync(string deviceToken, string childName, string appointmentDate,
+        public async Task<string?> SendAppointmentReminderPushAsync(string deviceToken, string childName, string appointmentDate,
             string appointmentTime, string facilityName, string facilityAddress = null)
         {
             try
@@ -116,11 +123,16 @@ namespace Services.Implementations
                 if (string.IsNullOrEmpty(deviceToken))
                 {
                     _logger.LogWarning("Device token is empty, skipping push notification");
-                    return;
+                    return null;
                 }
 
                 var title = "📅 Nhắc nhở lịch hẹn";
-                var body = $"{childName} có lịch hẹn tiêm vaccine vào {appointmentTime} ngày {appointmentDate} tại {facilityName}";
+                var body = $"{childName} có lịch hẹn vào ngày {appointmentDate} lúc {appointmentTime} tại {facilityName}";
+                
+                if (!string.IsNullOrEmpty(facilityAddress))
+                {
+                    body += $", {facilityAddress}";
+                }
 
                 var data = new Dictionary<string, string>
                 {
@@ -132,10 +144,12 @@ namespace Services.Implementations
                     {"facilityAddress", facilityAddress ?? ""}
                 };
 
-                await SendPushNotificationAsync(deviceToken, title, body, data);
+                var messageId = await SendPushNotificationAsync(deviceToken, title, body, data);
                 
-                _logger.LogInformation("Appointment reminder push sent to device {DeviceToken} for child {ChildName}", 
-                    MaskDeviceToken(deviceToken), childName);
+                _logger.LogInformation("Appointment reminder push sent to device {DeviceToken} for child {ChildName}, MessageId: {MessageId}", 
+                    MaskDeviceToken(deviceToken), childName, messageId);
+                    
+                return messageId;
             }
             catch (Exception ex)
             {
@@ -144,7 +158,7 @@ namespace Services.Implementations
             }
         }
 
-        public async Task SendVaccinationCompletionPushAsync(string deviceToken, string childName, string vaccineName,
+        public async Task<string?> SendVaccinationCompletionPushAsync(string deviceToken, string childName, string vaccineName,
             int doseNumber, string nextVaccineDate = null)
         {
             try
@@ -152,11 +166,11 @@ namespace Services.Implementations
                 if (string.IsNullOrEmpty(deviceToken))
                 {
                     _logger.LogWarning("Device token is empty, skipping push notification");
-                    return;
+                    return null;
                 }
 
-                var title = "✅ Hoàn thành tiêm vaccine";
-                var body = $"{childName} đã hoàn thành tiêm {vaccineName} mũi {doseNumber}";
+                var title = "✅ Tiêm vaccine thành công";
+                var body = $"{childName} đã tiêm {vaccineName} mũi {doseNumber} thành công";
                 
                 if (!string.IsNullOrEmpty(nextVaccineDate))
                 {
@@ -172,10 +186,12 @@ namespace Services.Implementations
                     {"nextVaccineDate", nextVaccineDate ?? ""}
                 };
 
-                await SendPushNotificationAsync(deviceToken, title, body, data);
+                var messageId = await SendPushNotificationAsync(deviceToken, title, body, data);
                 
-                _logger.LogInformation("Vaccination completion push sent to device {DeviceToken} for child {ChildName}", 
-                    MaskDeviceToken(deviceToken), childName);
+                _logger.LogInformation("Vaccination completion push sent to device {DeviceToken} for child {ChildName}, MessageId: {MessageId}", 
+                    MaskDeviceToken(deviceToken), childName, messageId);
+                    
+                return messageId;
             }
             catch (Exception ex)
             {
@@ -184,7 +200,7 @@ namespace Services.Implementations
             }
         }
 
-        public async Task SendCustomPushAsync(string deviceToken, string title, string body, 
+        public async Task<string?> SendCustomPushAsync(string deviceToken, string title, string body, 
             Dictionary<string, string> data = null)
         {
             try
@@ -192,12 +208,15 @@ namespace Services.Implementations
                 if (string.IsNullOrEmpty(deviceToken))
                 {
                     _logger.LogWarning("Device token is empty, skipping push notification");
-                    return;
+                    return null;
                 }
 
-                await SendPushNotificationAsync(deviceToken, title, body, data ?? new Dictionary<string, string>());
+                var messageId = await SendPushNotificationAsync(deviceToken, title, body, data ?? new Dictionary<string, string>());
                 
-                _logger.LogInformation("Custom push sent to device {DeviceToken}", MaskDeviceToken(deviceToken));
+                _logger.LogInformation("Custom push sent to device {DeviceToken}, MessageId: {MessageId}", 
+                    MaskDeviceToken(deviceToken), messageId);
+                    
+                return messageId;
             }
             catch (Exception ex)
             {
@@ -206,22 +225,26 @@ namespace Services.Implementations
             }
         }
 
-        public async Task SendMulticastPushAsync(List<string> deviceTokens, string title, string body,
+        public async Task<List<string>> SendMulticastPushAsync(List<string> deviceTokens, string title, string body,
             Dictionary<string, string> data = null)
         {
+            var messageIds = new List<string>();
+            
             try
             {
-                if (deviceTokens == null || deviceTokens.Count == 0)
+                if (deviceTokens == null || !deviceTokens.Any())
                 {
-                    _logger.LogWarning("Device tokens list is empty, skipping multicast push");
-                    return;
+                    _logger.LogWarning("Device tokens list is empty, skipping multicast push notification");
+                    return messageIds;
                 }
 
+                // Lọc bỏ tokens rỗng
                 var validTokens = deviceTokens.Where(token => !string.IsNullOrEmpty(token)).ToList();
-                if (validTokens.Count == 0)
+                
+                if (!validTokens.Any())
                 {
-                    _logger.LogWarning("No valid device tokens found, skipping multicast push");
-                    return;
+                    _logger.LogWarning("No valid device tokens found, skipping multicast push notification");
+                    return messageIds;
                 }
 
                 var message = new MulticastMessage()
@@ -240,7 +263,8 @@ namespace Services.Implementations
                         {
                             Icon = "ic_notification",
                             Color = "#2196F3",
-                            Sound = "default"
+                            Sound = "default",
+                            ChannelId = "vaccine_reminders"
                         }
                     },
                     Apns = new ApnsConfig()
@@ -260,27 +284,31 @@ namespace Services.Implementations
 
                 if (_messaging == null)
                 {
-                    _logger.LogWarning("Firebase messaging not initialized, cannot send push notification");
-                    return;
+                    _logger.LogWarning("Firebase messaging not initialized, cannot send multicast push notification");
+                    return messageIds;
                 }
 
-                var response = await _messaging.SendEachForMulticastAsync(message);
+                var response = await _messaging.SendMulticastAsync(message);
                 
-                _logger.LogInformation("Multicast push sent to {TotalTokens} devices. Success: {SuccessCount}, Failed: {FailureCount}", 
+                _logger.LogInformation("Multicast push sent to {TokenCount} devices. Success: {SuccessCount}, Failed: {FailureCount}", 
                     validTokens.Count, response.SuccessCount, response.FailureCount);
 
-                // Log failed tokens để có thể cleanup
-                if (response.FailureCount > 0)
+                // Extract message IDs từ response
+                for (int i = 0; i < response.Responses.Count; i++)
                 {
-                    for (int i = 0; i < response.Responses.Count; i++)
+                    var sendResponse = response.Responses[i];
+                    if (sendResponse.IsSuccess)
                     {
-                        if (!response.Responses[i].IsSuccess)
-                        {
-                            _logger.LogWarning("Failed to send push to token {Token}: {Error}", 
-                                MaskDeviceToken(validTokens[i]), response.Responses[i].Exception?.Message);
-                        }
+                        messageIds.Add(sendResponse.MessageId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to send push to device {DeviceToken}: {Error}", 
+                            MaskDeviceToken(validTokens[i]), sendResponse.Exception?.Message);
                     }
                 }
+
+                return messageIds;
             }
             catch (Exception ex)
             {
@@ -289,7 +317,7 @@ namespace Services.Implementations
             }
         }
 
-        private async Task SendPushNotificationAsync(string deviceToken, string title, string body, 
+        private async Task<string?> SendPushNotificationAsync(string deviceToken, string title, string body, 
             Dictionary<string, string> data)
         {
             var message = new Message()
@@ -330,11 +358,12 @@ namespace Services.Implementations
             if (_messaging == null)
             {
                 _logger.LogWarning("Firebase messaging not initialized, cannot send push notification");
-                return;
+                return null;
             }
 
             var response = await _messaging.SendAsync(message);
             _logger.LogDebug("Push notification sent successfully. Message ID: {MessageId}", response);
+            return response;
         }
 
         private string MaskDeviceToken(string token)

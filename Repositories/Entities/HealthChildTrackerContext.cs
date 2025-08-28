@@ -56,6 +56,10 @@ public partial class HealthChildTrackerContext : DbContext
 
     public virtual DbSet<Nationality> Nationalities { get; set; }
 
+    public virtual DbSet<NotificationDeliveryStatus> NotificationDeliveryStatuses { get; set; }
+
+    public virtual DbSet<NotificationHistory> NotificationHistories { get; set; }
+
     public virtual DbSet<Order> Orders { get; set; }
 
     public virtual DbSet<OrderDetail> OrderDetails { get; set; }
@@ -640,6 +644,71 @@ public partial class HealthChildTrackerContext : DbContext
                 .IsRequired()
                 .HasMaxLength(50)
                 .IsFixedLength();
+        });
+
+        modelBuilder.Entity<NotificationDeliveryStatus>(entity =>
+        {
+            entity.ToTable("NotificationDeliveryStatus");
+
+            entity.Property(e => e.ClickedAt).HasColumnType("datetime");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.DeliveredAt).HasColumnType("datetime");
+            entity.Property(e => e.ErrorCode).HasMaxLength(150);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.FirebaseMessageId).HasMaxLength(500);
+            entity.Property(e => e.SentAt).HasColumnType("datetime");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.DeviceToken).WithMany(p => p.NotificationDeliveryStatuses)
+                .HasForeignKey(d => d.DeviceTokenId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_NotificationDeliveryStatus_DeviceToken");
+
+            entity.HasOne(d => d.NotificationHistory).WithMany(p => p.NotificationDeliveryStatuses)
+                .HasForeignKey(d => d.NotificationHistoryId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_NotificationDeliveryStatus_NotificationHistory");
+        });
+
+        modelBuilder.Entity<NotificationHistory>(entity =>
+        {
+            entity.ToTable("NotificationHistory");
+
+            entity.Property(e => e.Body)
+                .IsRequired()
+                .HasMaxLength(2000);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.NotificationType)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.SentAt)
+                .IsRequired()
+                .HasMaxLength(10)
+                .IsFixedLength();
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.Title)
+                .IsRequired()
+                .HasMaxLength(500);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_NotificationHistory_Account");
+
+            entity.HasOne(d => d.Child).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.ChildId)
+                .HasConstraintName("FK_NotificationHistory_Child");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.VaccineId)
+                .HasConstraintName("FK_NotificationHistory_Vaccine");
         });
 
         modelBuilder.Entity<Order>(entity =>

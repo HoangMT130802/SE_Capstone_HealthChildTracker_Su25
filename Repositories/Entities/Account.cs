@@ -31,5 +31,7 @@ public partial class Account
 
     public virtual ICollection<Member> Members { get; set; } = new List<Member>();
 
+    public virtual ICollection<NotificationHistory> NotificationHistories { get; set; } = new List<NotificationHistory>();
+
     public virtual ICollection<UserMembership> UserMemberships { get; set; } = new List<UserMembership>();
 }
