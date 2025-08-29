@@ -1,6 +1,9 @@
 ﻿using Contracts.DTOs.Order;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Repositories.Common;
+using Repositories.Entities;
+using Repositories.Interfaces;
 using Services.Interfaces;
 using System.Security.Claims;
 
@@ -11,10 +14,23 @@ namespace KidTracking.API.Controllers
     public class OrderController : ControllerBase
     {
         private readonly IOrderService _orderService;
-
-        public OrderController(IOrderService orderService)
+        private readonly IUnitOfWork _unitOfWork;
+        public OrderController(IOrderService orderService, IUnitOfWork unitOfWork)
         {
             _orderService = orderService ?? throw new ArgumentNullException(nameof(orderService));
+            _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+        }
+        private async Task<bool> IsManager()
+        {
+            var accountIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out var accountId))
+            {
+                return false;
+            }
+
+            var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Staff");
+            return staff != null;
         }
 
         [HttpPost("package")]
@@ -129,7 +145,7 @@ namespace KidTracking.API.Controllers
             }
         }
 
-        [HttpDelete("{id}")]
+        [HttpDelete("{id}")]    
         public async Task<IActionResult> DeleteOrder(int id)
         {
             try
@@ -144,6 +160,36 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, "An error occurred while deleting the order");
+            }
+        }
+        [HttpPut("{id}/cancel")]
+        [Authorize]
+        public async Task<IActionResult> CancelOrder(int id)
+        {
+            try
+            {
+                if (!await IsManager())
+                {
+                    return StatusCode(403, new { message = "Chỉ Staff mới có quyền thực hiện hành động này" });
+                }
+                var order = await _orderService.CancelOrderAsync(id);
+                return Ok(order);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Đã xảy ra lỗi khi hủy đơn hàng" });
             }
         }
     }

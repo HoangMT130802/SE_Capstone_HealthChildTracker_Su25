@@ -468,5 +468,86 @@ namespace Services.Implementations
                 throw;
             }
         }
+        public async Task<OrderDTO> CancelOrderAsync(int orderId)
+        {
+            try
+            {
+                _logger.LogInformation($"Cancelling order with ID: {orderId}");
+                var orderRepository = _unitOfWork.GetRepository<Order>();
+                var order = await orderRepository.GetAsync(
+                    o => o.OrderId == orderId,
+                    includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,Package"
+                );
+                if (order == null)
+                {
+                    throw new KeyNotFoundException($"Đơn hàng với ID {orderId} không tồn tại");
+                }
+
+                //if (order.Status == "Paid")
+                //{
+                //    throw new InvalidOperationException("Không thể hủy đơn hàng đã thanh toán");
+                //}
+
+                if (order.Status == "Cancelled")
+                {
+                    throw new InvalidOperationException("Đơn hàng đã được hủy trước đó");
+                }
+
+                var accountId = GetCurrentAccountId();
+                if (accountId == 0)
+                {
+                    throw new UnauthorizedAccessException("Không thể xác định AccountId của người dùng hiện tại từ token");
+                }
+
+                using (var transaction = await _unitOfWork.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        var currentTime = DateTime.UtcNow;
+                        if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
+                        {
+                            throw new InvalidOperationException($"Invalid DateTime value for UpdatedAt: {currentTime}");
+                        }
+
+                        // Cập nhật trạng thái đơn hàng
+                        order.Status = "Cancelled";
+                        order.UpdatedAt = currentTime;
+
+                        // Hoàn lại số lượng vaccine
+                        var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+                        foreach (var orderDetail in order.OrderDetails)
+                        {
+                            var facilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == orderDetail.FacilityVaccineId);
+                            if (facilityVaccine != null)
+                            {
+                                facilityVaccine.AvailableQuantity += orderDetail.RemainingQuantity;
+                                facilityVaccineRepository.Update(facilityVaccine);
+                            }
+                        }
+
+                        orderRepository.Update(order);
+                        await _unitOfWork.SaveChangesAsync();
+                        await transaction.CommitAsync();
+
+                        var updatedOrder = await orderRepository.GetAsync(
+                            o => o.OrderId == orderId,
+                            includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
+                        );
+                        return _mapper.Map<OrderDTO>(updatedOrder);
+                    }
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        _logger.LogError(ex, $"Error cancelling order with ID {orderId}");
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error cancelling order with ID {orderId}");
+                throw;
+            }
+        }
     }
 }

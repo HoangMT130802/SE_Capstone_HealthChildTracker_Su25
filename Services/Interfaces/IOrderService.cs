@@ -23,5 +23,6 @@ namespace Services.Interfaces
         Task<int> GetCountByFacilityAsync(int facilityId);
         Task<RevenueStatsDTO> GetRevenueStatsByFacilityAsync(int facilityId);
         Task<decimal> GetTotalRevenueAsync();
+        Task<OrderDTO> CancelOrderAsync(int orderId);
     }
 }
