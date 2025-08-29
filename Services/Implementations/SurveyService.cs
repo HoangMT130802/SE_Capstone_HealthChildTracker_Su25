@@ -28,6 +28,15 @@ public class SurveyService : ISurveyService
             throw new UnauthorizedAccessException($"User with AccountId {accountId} is not a Doctor or does not belong to Facility");
         }
     }
+    private async Task ValidateManagerAccess(int accountId)
+    {
+        var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+        var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
+        if (staff == null)
+        {
+            throw new UnauthorizedAccessException($"User with AccountId {accountId} is not a Manager or does not belong to Facility");
+        }
+    }
     public async Task<int> CreateSurveyQuestionAsync(int surveyId, CreateSurveyQuestionDto questionDto, int accountId)
     {
         try
@@ -250,7 +259,7 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateDoctorAccess(accountId);
+            await ValidateManagerAccess(accountId);
 
             surveyRepository.Delete(survey);
             await _unitOfWork.SaveChangesAsync();
