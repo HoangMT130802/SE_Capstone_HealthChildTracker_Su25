@@ -46,3 +46,4 @@ namespace Contracts.DTOs.Appointment
         public bool IsPriority { get; set; }
     }
 }
+
