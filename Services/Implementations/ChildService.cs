@@ -400,7 +400,7 @@ namespace Services.Implementations
                         Bmi = bmi,
                         CreatedAt = createDTO.CreatedAt.Date,
                         UpdatedAt = DateTime.UtcNow,
-                        Note = createDTO.GrowthNote?.Trim()
+                        Note = createDTO.GrowthNote?.Trim() ?? ""
                     };
 
                     await growthRecordRepository.AddAsync(growthRecord);

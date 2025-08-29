@@ -248,8 +248,8 @@ namespace KidTracking.API.Controllers
                 }
 
                 var accountId = GetAccountId();
-                var updatedPackage = await _vaccinePackageService.UpdateVaccinePackageAsync(packageId, vaccinePackageDto, accountId);
-                return Ok(updatedPackage);
+                var vaccinePackage = await _vaccinePackageService.UpdateVaccinePackageAsync(packageId, vaccinePackageDto, accountId);
+                return Ok(vaccinePackage);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -265,13 +265,13 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error updating vaccine package with PackageId {packageId}");
+                _logger.LogError(ex, $"Error updating vaccine package with ID {packageId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpPut("{packageId}/vaccines")]
-        public async Task<IActionResult> UpdateVaccinesInPackage(int packageId, [FromBody] UpdatePackageVaccineDTO packageVaccineDto)
+        [HttpPut("{packageId}/vaccines/{vaccineId}")]
+        public async Task<IActionResult> UpdateVaccineInPackage(int packageId, int vaccineId, [FromBody] UpdatePackageVaccineDTO packageVaccineDto)
         {
             try
             {
@@ -281,8 +281,8 @@ namespace KidTracking.API.Controllers
                 }
 
                 var accountId = GetAccountId();
-                var updatedPackage = await _vaccinePackageService.UpdateVaccineInPackageAsync(packageId, packageVaccineDto, accountId);
-                return Ok(updatedPackage);
+                var packageVaccine = await _vaccinePackageService.UpdateVaccineInPackageAsync(packageId, vaccineId, packageVaccineDto, accountId);
+                return Ok(packageVaccine);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -298,7 +298,7 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error updating vaccines in package with PackageId {packageId}");
+                _logger.LogError(ex, $"Error updating vaccine in package with PackageId {packageId} and VaccineId {vaccineId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }

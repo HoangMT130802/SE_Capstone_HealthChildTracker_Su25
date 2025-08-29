@@ -10,7 +10,8 @@ namespace Contracts.DTOs.VaccinePackage
 {
     public class UpdatePackageVaccineDTO
     {
-        [Required(ErrorMessage = "Vaccine updates are required")]
-        public List<SelectedVaccineDTO> SelectedVaccines { get; set; }
+        [Required(ErrorMessage = "Quantity is required")]
+        [Range(1, int.MaxValue, ErrorMessage = "Quantity must be greater than 0")]
+        public int Quantity { get; set; }
     }
 }
