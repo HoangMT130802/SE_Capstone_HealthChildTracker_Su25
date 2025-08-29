@@ -3260,7 +3260,29 @@ namespace Services.Implementations
                         profile.VaccineProfileId, profile.DoseNum, profile.Status, profile.AppointmentId);
                 }
 
-                // 1. Tìm CVP "Scheduled" để dùng lại (ưu tiên cao nhất)
+                // 1. Tìm CVP "Pending" không có appointmentId để dùng lại (ưu tiên cao nhất - từ cancel appointment)
+                var pendingProfile = existingProfiles
+                    .Where(p => p.Status == "Pending" && p.AppointmentId == null)
+                    .OrderBy(p => p.DoseNum)
+                    .FirstOrDefault();
+
+                if (pendingProfile != null)
+                {
+                    _logger.LogInformation("🎯 DEBUG: Tìm thấy CVP Pending (không có appointmentId) để dùng lại - ID {ProfileId}, Dose {DoseNum}", 
+                        pendingProfile.VaccineProfileId, pendingProfile.DoseNum);
+                    
+                    // ✅ Dùng lại CVP "Pending" - gắn appointment mới
+                    pendingProfile.AppointmentId = appointmentId;
+                    pendingProfile.ExpectedDate = expectedDate;
+                    pendingProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    childVaccineProfileRepo.Update(pendingProfile);
+                    
+                    _logger.LogInformation("✅ Đã dùng lại CVP Pending (ID: {ProfileId}, Dose: {DoseNum}) và gắn appointment {AppointmentId} cho Child {ChildId}, Vaccine {VaccineId}",
+                        pendingProfile.VaccineProfileId, pendingProfile.DoseNum, appointmentId, childId, vaccineId);
+                    return;
+                }
+
+                // 2. Tìm CVP "Scheduled" để dùng lại (ưu tiên thứ hai)
                 var scheduledProfile = existingProfiles
                     .Where(p => p.Status == "Scheduled")
                     .OrderBy(p => p.DoseNum)
@@ -3284,11 +3306,11 @@ namespace Services.Implementations
                 }
                 else
                 {
-                    _logger.LogInformation("⚠️ DEBUG: KHÔNG tìm thấy CVP nào có status 'Scheduled' cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}", 
+                    _logger.LogInformation("⚠️ DEBUG: KHÔNG tìm thấy CVP nào có status 'Pending' hoặc 'Scheduled' để dùng lại cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}", 
                         childId, vaccineId, diseaseId);
                 }
 
-                // 2. Nếu không có CVP "Scheduled", tính dose number mới
+                // 3. Nếu không có CVP "Pending" hoặc "Scheduled", tính dose number mới
                 var nextDoseNum = 1;
                 if (existingProfiles.Any())
                 {
@@ -3299,7 +3321,7 @@ namespace Services.Implementations
                         childId, existingProfiles.Count(), vaccineId, diseaseId, nextDoseNum);
                 }
 
-                // 3. Kiểm tra không vượt quá số liều tối đa
+                // 4. Kiểm tra không vượt quá số liều tối đa
                 if (nextDoseNum > totalDoses)
                 {
                     _logger.LogWarning("Dose {DoseNum} vượt quá số liều tối đa {TotalDoses} cho vaccine {VaccineId}, không tạo CVP",
@@ -3307,7 +3329,7 @@ namespace Services.Implementations
                     return;
                 }
 
-                // 4. Kiểm tra xem đã có CVP "Pending" cho dose này chưa (tránh duplicate)
+                // 5. Kiểm tra xem đã có CVP "Pending" cho dose này chưa (tránh duplicate)
                 var existingPendingForDose = await childVaccineProfileRepo.GetAsync(
                     p => p.ChildId == childId &&
                          p.VaccineId == vaccineId &&
