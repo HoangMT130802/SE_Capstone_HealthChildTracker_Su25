@@ -41,7 +41,7 @@ namespace KidTracking.API.Controllers
             }
 
             var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager,Doctor,Staff");
+            var staff = await staffRepository.GetAsync(s => s.AccountId == accountId && s.Position == "Manager");
             return staff != null;
         }
 
@@ -248,8 +248,8 @@ namespace KidTracking.API.Controllers
                 }
 
                 var accountId = GetAccountId();
-                var vaccinePackage = await _vaccinePackageService.UpdateVaccinePackageAsync(packageId, vaccinePackageDto, accountId);
-                return Ok(vaccinePackage);
+                var updatedPackage = await _vaccinePackageService.UpdateVaccinePackageAsync(packageId, vaccinePackageDto, accountId);
+                return Ok(updatedPackage);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -265,13 +265,13 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error updating vaccine package with ID {packageId}");
+                _logger.LogError(ex, $"Error updating vaccine package with PackageId {packageId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
 
-        [HttpPut("{packageId}/vaccines/{vaccineId}")]
-        public async Task<IActionResult> UpdateVaccineInPackage(int packageId, int vaccineId, [FromBody] UpdatePackageVaccineDTO packageVaccineDto)
+        [HttpPut("{packageId}/vaccines")]
+        public async Task<IActionResult> UpdateVaccinesInPackage(int packageId, [FromBody] UpdatePackageVaccineDTO packageVaccineDto)
         {
             try
             {
@@ -281,8 +281,8 @@ namespace KidTracking.API.Controllers
                 }
 
                 var accountId = GetAccountId();
-                var packageVaccine = await _vaccinePackageService.UpdateVaccineInPackageAsync(packageId, vaccineId, packageVaccineDto, accountId);
-                return Ok(packageVaccine);
+                var updatedPackage = await _vaccinePackageService.UpdateVaccineInPackageAsync(packageId, packageVaccineDto, accountId);
+                return Ok(updatedPackage);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -298,7 +298,7 @@ namespace KidTracking.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error updating vaccine in package with PackageId {packageId} and VaccineId {vaccineId}");
+                _logger.LogError(ex, $"Error updating vaccines in package with PackageId {packageId}");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }

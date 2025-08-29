@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Contracts.DTOs.Order;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -9,8 +10,7 @@ namespace Contracts.DTOs.VaccinePackage
 {
     public class UpdatePackageVaccineDTO
     {
-        [Required(ErrorMessage = "Quantity is required")]
-        [Range(1, int.MaxValue, ErrorMessage = "Quantity must be greater than 0")]
-        public int Quantity { get; set; }
+        [Required(ErrorMessage = "Vaccine updates are required")]
+        public List<SelectedVaccineDTO> SelectedVaccines { get; set; }
     }
 }

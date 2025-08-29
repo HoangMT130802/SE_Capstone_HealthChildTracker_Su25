@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.ChildVaccineProfile;
+using Contracts.DTOs.Order;
 using Contracts.DTOs.VaccinePackage;
 using Repositories.Entities;
 
@@ -31,19 +32,18 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.PackageVaccines, opt => opt.Ignore());
 
             CreateMap<UpdateVaccinePackageDTO, VaccinePackage>()
-                .ForMember(dest => dest.PackageId, opt => opt.Ignore())
-                .ForMember(dest => dest.Price, opt => opt.Ignore())
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.Facility, opt => opt.Ignore())
-                .ForMember(dest => dest.Orders, opt => opt.Ignore())
-                .ForMember(dest => dest.PackageVaccines, opt => opt.Ignore());
-
+           .ForMember(dest => dest.PackageId, opt => opt.Ignore())
+           .ForMember(dest => dest.Price, opt => opt.Ignore())
+           .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+           .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+           .ForMember(dest => dest.Facility, opt => opt.Ignore())
+           .ForMember(dest => dest.Orders, opt => opt.Ignore())
+           .ForMember(dest => dest.PackageVaccines, opt => opt.Ignore());
             CreateMap<PackageVaccine, PackageVaccineDTO>()
-                .ForMember(dest => dest.FacilityVaccineId, opt => opt.MapFrom(src => src.FacilityVaccineId))
-                .ForMember(dest => dest.DiseaseId, opt => opt.MapFrom(src => src.DiseaseId))
-                .ForMember(dest => dest.FacilityVaccine, opt => opt.MapFrom(src => src.FacilityVaccine)) 
-                .ForMember(dest => dest.Disease, opt => opt.MapFrom(src => src.Disease));
+            .ForMember(dest => dest.FacilityVaccineId, opt => opt.MapFrom(src => src.FacilityVaccineId))
+            .ForMember(dest => dest.DiseaseId, opt => opt.MapFrom(src => src.DiseaseId))
+            .ForMember(dest => dest.FacilityVaccine, opt => opt.MapFrom(src => src.FacilityVaccine))
+            .ForMember(dest => dest.Disease, opt => opt.MapFrom(src => src.Disease));
 
             CreateMap<CreatePackageVaccineDTO, PackageVaccine>()
                 .ForMember(dest => dest.FacilityVaccineId, opt => opt.MapFrom(src => src.FacilityVaccineId))

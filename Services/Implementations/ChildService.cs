@@ -59,8 +59,8 @@ namespace Services.Implementations
             try
             {
                 _logger.LogInformation($"ChildService: Getting children for AccountId: {accountId}");
-                
-              
+
+
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -72,12 +72,12 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-               
+
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var children = await childRepository.FindAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                
+
                 _logger.LogInformation($"ChildService: Found {children.Count()} children for MemberId {member.MemberId}");
-                
+
                 return _mapper.Map<IEnumerable<ChildDTO>>(children);
             }
             catch (Exception ex)
@@ -91,7 +91,7 @@ namespace Services.Implementations
         {
             try
             {
-              
+
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -100,7 +100,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                
+
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -145,9 +145,9 @@ namespace Services.Implementations
         public async Task<ChildDTO> CreateChildAsync(int accountId, CreateChildDTO childDTO)
         {
             try
-            {        
+            {
                 ValidateCreateChildData(childDTO);
-               
+
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -159,22 +159,22 @@ namespace Services.Implementations
                 // TODO: Kiểm tra membership validation khi production
                 // Tạm thời bỏ membership validation cho development phase
                 var childRepository = _unitOfWork.GetRepository<Child>();
-                
-              
+
+
                 var currentChildrenCount = await childRepository.CountAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                int maxChildren = 10; 
-                
+                int maxChildren = 10;
+
                 if (currentChildrenCount >= maxChildren)
                 {
                     throw new InvalidOperationException($"Bạn đã đạt giới hạn số lượng trẻ ({maxChildren})");
                 }
 
                 var child = _mapper.Map<Child>(childDTO);
-                
-             
+
+
                 child.Gender = NormalizeGender(childDTO.Gender);
                 child.BloodType = NormalizeBloodType(childDTO.BloodType);
-                child.MemberId = member.MemberId; 
+                child.MemberId = member.MemberId;
                 child.Status = true;
                 child.CreatedAt = DateTime.UtcNow;
                 child.UpdateAt = DateTime.UtcNow;
@@ -243,7 +243,7 @@ namespace Services.Implementations
         {
             try
             {
-                
+
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -287,7 +287,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-              
+
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -298,7 +298,7 @@ namespace Services.Implementations
 
                 // Hard delete - có thể cần xóa các records liên quan trước
                 // TODO: Xử lý cascade delete cho GrowthRecord, VaccinationAppointment, ..
-                
+
                 childRepository.Delete(child);
                 await _unitOfWork.SaveChangesAsync();
 
@@ -456,7 +456,7 @@ namespace Services.Implementations
                 errors.Add("Cân nặng phải từ 0.5-200 kg");
             }
 
-            if (createDTO.HeadCircumference.HasValue && 
+            if (createDTO.HeadCircumference.HasValue &&
                 (createDTO.HeadCircumference.Value < 20 || createDTO.HeadCircumference.Value > 80))
             {
                 errors.Add("Vòng đầu phải từ 20-80 cm");
@@ -471,7 +471,7 @@ namespace Services.Implementations
         private void ValidateCreateChildData(CreateChildDTO childDTO)
         {
             var errors = new List<string>();
-         
+
             if (string.IsNullOrWhiteSpace(childDTO.FullName))
             {
                 errors.Add("Tên đầy đủ là bắt buộc");
@@ -480,7 +480,7 @@ namespace Services.Implementations
             {
                 errors.Add("Tên phải từ 2-100 ký tự");
             }
-            
+
             if (childDTO.BirthDate == default)
             {
                 errors.Add("Ngày sinh là bắt buộc");
@@ -503,7 +503,7 @@ namespace Services.Implementations
                 errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
             }
 
-            
+
             if (!string.IsNullOrWhiteSpace(childDTO.BloodType) && !IsValidBloodType(childDTO.BloodType))
             {
                 errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
@@ -519,7 +519,7 @@ namespace Services.Implementations
         {
             var errors = new List<string>();
 
-            
+
             if (string.IsNullOrWhiteSpace(childDTO.FullName))
             {
                 errors.Add("Tên đầy đủ là bắt buộc");
@@ -529,7 +529,7 @@ namespace Services.Implementations
                 errors.Add("Tên phải từ 2-100 ký tự");
             }
 
-           
+
             if (childDTO.BirthDate == default)
             {
                 errors.Add("Ngày sinh là bắt buộc");
@@ -552,7 +552,7 @@ namespace Services.Implementations
                 errors.Add("Giới tính chỉ được nhận giá trị: Male hoặc Female");
             }
 
-           
+
             if (!string.IsNullOrWhiteSpace(childDTO.BloodType) && !IsValidBloodType(childDTO.BloodType))
             {
                 errors.Add("Nhóm máu phải theo định dạng: A, B, AB, O (có thể có + hoặc -)");
@@ -567,34 +567,34 @@ namespace Services.Implementations
         private bool IsValidGender(string gender)
         {
             if (string.IsNullOrWhiteSpace(gender)) return false;
-            
+
             var normalizedGender = gender.Trim().ToLowerInvariant();
             return normalizedGender == "male" || normalizedGender == "female";
         }
 
         private bool IsValidBloodType(string bloodType)
         {
-            if (string.IsNullOrWhiteSpace(bloodType)) return true; 
-            
+            if (string.IsNullOrWhiteSpace(bloodType)) return true;
+
             var normalizedBloodType = bloodType.Trim().ToUpperInvariant();
             var validBloodTypes = new[] { "A", "B", "AB", "O", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-" };
-            
+
             return validBloodTypes.Contains(normalizedBloodType);
         }
 
         private string NormalizeGender(string gender)
         {
             if (string.IsNullOrWhiteSpace(gender)) return null;
-            
+
             var normalizedGender = gender.Trim().ToLowerInvariant();
-            return normalizedGender == "male" ? "Male" : 
+            return normalizedGender == "male" ? "Male" :
                    normalizedGender == "female" ? "Female" : gender;
         }
 
         private string NormalizeBloodType(string bloodType)
         {
             if (string.IsNullOrWhiteSpace(bloodType)) return null;
-            
+
             return bloodType.Trim().ToUpperInvariant();
         }
 
@@ -602,7 +602,7 @@ namespace Services.Implementations
         public async Task<int> GetTotalCountAsync()
         {
             var repository = _unitOfWork.GetRepository<Child>();
-            return await repository.CountAsync(a => true); 
+            return await repository.CountAsync(a => true);
         }
     }
 }
