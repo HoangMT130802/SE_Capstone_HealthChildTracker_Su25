@@ -803,19 +803,30 @@ namespace Services.Implementations
 
                 if (orderId.HasValue)
                 {
-                    // Existing Order → lấy đúng giá order
+                    // Existing Order → kiểm tra status để quyết định giá
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     var order = await orderRepo.GetAsync(o => o.OrderId == orderId.Value, "Package");
                     if (order != null)
                     {
-                        totalCost = order.TotalAmount;
+                        if (order.Status == "Paid")
+                        {
+                            totalCost = 0; // Đã thanh toán
+                            _logger.LogInformation("💰 CalculateEstimatedCost = 0 (Order {OrderId} đã Paid)", order.OrderId);
+                        }
+                        else
+                        {
+                            totalCost = order.TotalAmount; // Chưa thanh toán
+                            _logger.LogInformation("💰 CalculateEstimatedCost from Order: {OrderId} Status={Status} = {TotalAmount}", 
+                                order.OrderId, order.Status, totalCost);
+                        }
+                        
                         items.Add(new CostItemDTO
                         {
                             Name = order.Package?.Name ?? "Order Package",
-                            Type = "Existing Order",
+                            Type = order.Status == "Paid" ? "Paid Order" : "Pending Order",
                             Quantity = 1,
-                            UnitPrice = order.TotalAmount,
-                            TotalPrice = order.TotalAmount
+                            UnitPrice = totalCost,
+                            TotalPrice = totalCost
                         });
                     }
                 }
@@ -2331,29 +2342,51 @@ namespace Services.Implementations
                 packageName = package?.Name;
             }
 
-            // Calculate estimated cost - map từ VaccineId -> FacilityVaccineId theo cơ sở
-            List<int>? facilityVaccineIds = null;
-            if (details.Any())
+            // Calculate estimated cost - ✅ SỬ DỤNG GIÁ ĐÃ SNAPSHOT + KIỂM TRA ORDER STATUS
+            decimal estimatedCostTotal = 0;
+            if (appointment.Order?.OrderId != null)
             {
-                var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
-                var tmpIds = new List<int>();
-                foreach (var d in details)
+                // Trường hợp có Order - kiểm tra status để quyết định EstimatedCost
+                if (appointment.Order.Status == "Paid")
                 {
-                    var fv = await facilityVaccineRepo.GetAsync(
-                        f => f.FacilityId == appointment.Schedule.FacilityId && f.VaccineId == d.VaccineId);
-                    if (fv != null)
+                    estimatedCostTotal = 0; // Đã thanh toán
+                    _logger.LogInformation("💰 EstimatedCost = 0 (Order {OrderId} đã Paid)", appointment.Order.OrderId);
+                }
+                else
+                {
+                    estimatedCostTotal = appointment.Order.TotalAmount; // Chưa thanh toán
+                    _logger.LogInformation("💰 EstimatedCost from Order: {OrderId} Status={Status} = {TotalAmount}", 
+                        appointment.Order.OrderId, appointment.Order.Status, estimatedCostTotal);
+                }
+            }
+            else
+            {
+                // Trường hợp vaccine lẻ - sử dụng FacilityVaccinePrice đã snapshot
+                foreach (var detail in details)
+                {
+                    if (detail.FacilityVaccinePrice.HasValue)
                     {
-                        tmpIds.Add(fv.FacilityVaccineId);
+                        estimatedCostTotal += detail.FacilityVaccinePrice.Value;
+                        _logger.LogInformation("💰 EstimatedCost from VaccinationAppointmentDetail - VaccineId: {VaccineId}, Price: {Price}", 
+                            detail.VaccineId, detail.FacilityVaccinePrice.Value);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ VaccinationAppointmentDetail {DetailId} không có FacilityVaccinePrice", detail.DetailId);
+                        
+                        // Fallback: lấy giá hiện tại nếu không có snapshot (data cũ)
+                        var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                        var fv = await facilityVaccineRepo.GetAsync(
+                            f => f.FacilityId == appointment.Schedule.FacilityId && f.VaccineId == detail.VaccineId);
+                        if (fv != null)
+                        {
+                            estimatedCostTotal += fv.Price;
+                            _logger.LogInformation("💰 Fallback EstimatedCost from current FacilityVaccine - VaccineId: {VaccineId}, Price: {Price}", 
+                                detail.VaccineId, fv.Price);
+                        }
                     }
                 }
-                facilityVaccineIds = tmpIds.Any() ? tmpIds : null;
             }
-
-            var estimatedCost = await CalculateEstimatedCostAsync(
-                appointment.Schedule.FacilityId,
-                appointment.Order?.OrderId, // Sử dụng OrderId từ Order
-                appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null, // Sử dụng PackageId từ Order
-                facilityVaccineIds);
 
             var dto = new AppointmentHistoryDTO
             {
@@ -2377,7 +2410,7 @@ namespace Services.Implementations
                 VaccineNames = vaccineNames,
 
                 // Cost
-                EstimatedCost = estimatedCost.TotalCost,
+                EstimatedCost = estimatedCostTotal,
 
                 // Status flags
                 IsUpcoming = slotDateTime > now,
@@ -2663,13 +2696,55 @@ namespace Services.Implementations
                 }
             }
 
-            // Calculate estimated cost
-            var facilityVaccineIds = facilityVaccines.Select(fv => fv.FacilityVaccineId).ToList();
-            var estimatedCost = await CalculateEstimatedCostAsync(
-                appointment.Schedule.FacilityId,
-                appointment.Order?.OrderId,
-                appointment.Order?.PackageId > 0 ? appointment.Order.PackageId : null,
-                facilityVaccineIds.Any() ? facilityVaccineIds : null);
+            // Calculate estimated cost - ✅ SỬ DỤNG GIÁ ĐÃ SNAPSHOT + KIỂM TRA ORDER STATUS
+            decimal estimatedCostTotal = 0;
+            
+            if (appointment.Order?.OrderId != null)
+            {
+                // Trường hợp có Order - kiểm tra status để quyết định EstimatedCost
+                if (appointment.Order.Status == "Paid")
+                {
+                    estimatedCostTotal = 0; // Đã thanh toán
+                    _logger.LogInformation("💰 FacilityAppointment EstimatedCost = 0 (Order {OrderId} đã Paid)", appointment.Order.OrderId);
+                }
+                else
+                {
+                    estimatedCostTotal = appointment.Order.TotalAmount; // Chưa thanh toán
+                    _logger.LogInformation("💰 FacilityAppointment EstimatedCost from Order: {OrderId} Status={Status} = {TotalAmount}", 
+                        appointment.Order.OrderId, appointment.Order.Status, estimatedCostTotal);
+                }
+            }
+            else
+            {
+                // Trường hợp vaccine lẻ - sử dụng FacilityVaccinePrice đã snapshot từ VaccinationAppointmentDetail
+                var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
+                var details = await detailRepo.FindAsync(d => d.AppointmentId == appointment.AppointmentId, "Vaccine");
+                
+                foreach (var detail in details)
+                {
+                    if (detail.FacilityVaccinePrice.HasValue)
+                    {
+                        estimatedCostTotal += detail.FacilityVaccinePrice.Value;
+                        _logger.LogInformation("💰 FacilityAppointment EstimatedCost from VaccinationAppointmentDetail - VaccineId: {VaccineId}, Price: {Price}", 
+                            detail.VaccineId, detail.FacilityVaccinePrice.Value);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ FacilityAppointment VaccinationAppointmentDetail {DetailId} không có FacilityVaccinePrice", detail.DetailId);
+                        
+                        // Fallback: lấy giá hiện tại nếu không có snapshot (data cũ)
+                        var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                        var fv = await facilityVaccineRepo.GetAsync(
+                            f => f.FacilityId == appointment.Schedule.FacilityId && f.VaccineId == detail.VaccineId);
+                        if (fv != null)
+                        {
+                            estimatedCostTotal += fv.Price;
+                            _logger.LogInformation("💰 FacilityAppointment Fallback EstimatedCost from current FacilityVaccine - VaccineId: {VaccineId}, Price: {Price}", 
+                                detail.VaccineId, fv.Price);
+                        }
+                    }
+                }
+            }
 
             var dto = new FacilityAppointmentDTO
             {
@@ -2699,7 +2774,7 @@ namespace Services.Implementations
                 SlotTime = appointment.Schedule.Slot?.SlotTime ?? "",
 
                 // Cost
-                EstimatedCost = estimatedCost.TotalCost,
+                EstimatedCost = estimatedCostTotal,
 
                 // Status flags
                 IsUpcoming = slotDateTime > now,
@@ -3819,20 +3894,53 @@ namespace Services.Implementations
                 // Tạo VaccinationAppointmentDetail cho tất cả vaccines đã xác định
                 if (vaccineInfoList.Any())
                 {
+                    // Get facility ID for price lookup
+                    var scheduleRepo = _unitOfWork.GetRepository<AppointmentSchedule>();
+                    var scheduleForPrice = await scheduleRepo.GetAsync(s => s.ScheduleId == appointment.ScheduleId, "Facility");
+                    var facilityId = scheduleForPrice?.FacilityId ?? 0;
+                    
+                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    
                     foreach (var (vaccineId, doseNumber) in vaccineInfoList)
                     {
+                        // 🎯 Lấy giá hiện tại của FacilityVaccine để snapshot
+                        decimal? facilityVaccinePrice = null;
+                        try
+                        {
+                            var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                                fv => fv.FacilityId == facilityId && fv.VaccineId == vaccineId,
+                                includeProperties: "Vaccine");
+                            
+                            if (facilityVaccine != null)
+                            {
+                                facilityVaccinePrice = facilityVaccine.Price;
+                                _logger.LogInformation("💰 Snapshot giá cho VaccineId {VaccineId}: {Price}", 
+                                    vaccineId, facilityVaccinePrice);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("⚠️ Không tìm thấy FacilityVaccine cho VaccineId {VaccineId} tại Facility {FacilityId}", 
+                                    vaccineId, facilityId);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "❌ Lỗi khi lấy giá FacilityVaccine cho VaccineId {VaccineId}", vaccineId);
+                        }
+                        
                         var detail = new VaccinationAppointmentDetail
                         {
                             AppointmentId = appointment.AppointmentId,
                             VaccineId = vaccineId,
                             VaccinationDate = vaccinationDate,
                             DoseNumber = doseNumber,
+                            FacilityVaccinePrice = facilityVaccinePrice, // 🎯 LƯU GIÁ TẠI THỜI ĐIỂM BOOK
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
                         await detailRepo.AddAsync(detail);
-                        _logger.LogInformation("✅ Tạo VaccinationAppointmentDetail cho VaccineId {VaccineId}, DoseNumber {DoseNumber}", 
-                            vaccineId, doseNumber);
+                        _logger.LogInformation("✅ Tạo VaccinationAppointmentDetail cho VaccineId {VaccineId}, DoseNumber {DoseNumber}, Price Snapshot: {Price}", 
+                            vaccineId, doseNumber, facilityVaccinePrice);
                     }
 
                     await _unitOfWork.SaveChangesAsync();
@@ -3880,20 +3988,49 @@ namespace Services.Implementations
 
                     foreach (var oldDetail in currentAppointment.VaccinationAppointmentDetails)
                     {
+                        // 🎯 Lấy giá hiện tại của FacilityVaccine để snapshot cho appointment mới
+                        decimal? facilityVaccinePrice = null;
+                        try
+                        {
+                            var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                            var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                                fv => fv.FacilityId == newSchedule.FacilityId && fv.VaccineId == oldDetail.VaccineId,
+                                includeProperties: "Vaccine");
+                            
+                            if (facilityVaccine != null)
+                            {
+                                facilityVaccinePrice = facilityVaccine.Price;
+                                _logger.LogInformation("💰 Cancel&Rebook - Snapshot giá cho VaccineId {VaccineId}: {Price}", 
+                                    oldDetail.VaccineId, facilityVaccinePrice);
+                            }
+                            else
+                            {
+                                // Fallback: giữ giá cũ nếu có
+                                facilityVaccinePrice = oldDetail.FacilityVaccinePrice;
+                                _logger.LogWarning("⚠️ Cancel&Rebook - Không tìm thấy FacilityVaccine mới, dùng giá cũ: {OldPrice}", facilityVaccinePrice);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "❌ Cancel&Rebook - Lỗi khi lấy giá FacilityVaccine cho VaccineId {VaccineId}", oldDetail.VaccineId);
+                            facilityVaccinePrice = oldDetail.FacilityVaccinePrice; // Fallback
+                        }
+                        
                         var newDetail = new VaccinationAppointmentDetail
                         {
                             AppointmentId = newAppointment.AppointmentId,
                             VaccineId = oldDetail.VaccineId,
                             VaccinationDate = newSchedule.Date, // Cập nhật ngày mới
                             DoseNumber = oldDetail.DoseNumber,
+                            FacilityVaccinePrice = facilityVaccinePrice, // 🎯 LƯU GIÁ SNAPSHOT MỚI
                             Notes = note ?? oldDetail.Notes ?? "Cancel and rebook appointment detail",
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
                         await appointmentDetailRepo.AddAsync(newDetail);
                         
-                        _logger.LogInformation("✅ Copy VaccinationAppointmentDetail - VaccineId {VaccineId}, DoseNumber {DoseNumber}", 
-                            oldDetail.VaccineId, oldDetail.DoseNumber);
+                        _logger.LogInformation("✅ Copy VaccinationAppointmentDetail - VaccineId {VaccineId}, DoseNumber {DoseNumber}, Price Snapshot: {Price}", 
+                            oldDetail.VaccineId, oldDetail.DoseNumber, facilityVaccinePrice);
                     }
                 }
                 // TRƯỜNG HỢP 2: Appointment cũ không có VaccinationAppointmentDetails - Tạo từ ChildVaccineProfile
@@ -3901,20 +4038,42 @@ namespace Services.Implementations
                 {
                     _logger.LogWarning("⚠️ Appointment cũ không có VaccinationAppointmentDetails, tạo từ ChildVaccineProfile");
 
+                    // 🎯 Lấy giá hiện tại của FacilityVaccine để snapshot
+                    decimal? facilityVaccinePrice = null;
+                    try
+                    {
+                        var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                        var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                            fv => fv.FacilityId == newSchedule.FacilityId && fv.VaccineId == childVaccineProfile.VaccineId,
+                            includeProperties: "Vaccine");
+                        
+                        if (facilityVaccine != null)
+                        {
+                            facilityVaccinePrice = facilityVaccine.Price;
+                            _logger.LogInformation("💰 Cancel&Rebook from Profile - Snapshot giá cho VaccineId {VaccineId}: {Price}", 
+                                childVaccineProfile.VaccineId, facilityVaccinePrice);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "❌ Cancel&Rebook from Profile - Lỗi khi lấy giá FacilityVaccine cho VaccineId {VaccineId}", childVaccineProfile.VaccineId);
+                    }
+
                     var newDetail = new VaccinationAppointmentDetail
                     {
                         AppointmentId = newAppointment.AppointmentId,
                         VaccineId = childVaccineProfile.VaccineId,
                         VaccinationDate = newSchedule.Date,
                         DoseNumber = childVaccineProfile.DoseNum.ToString(),
+                        FacilityVaccinePrice = facilityVaccinePrice, // 🎯 LƯU GIÁ SNAPSHOT
                         Notes = note ?? "Cancel and rebook - created from ChildVaccineProfile",
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
                     await appointmentDetailRepo.AddAsync(newDetail);
 
-                    _logger.LogInformation("✅ Tạo VaccinationAppointmentDetail từ ChildVaccineProfile - VaccineId {VaccineId}, DoseNumber {DoseNumber}", 
-                        childVaccineProfile.VaccineId, childVaccineProfile.DoseNum);
+                    _logger.LogInformation("✅ Tạo VaccinationAppointmentDetail từ ChildVaccineProfile - VaccineId {VaccineId}, DoseNumber {DoseNumber}, Price Snapshot: {Price}", 
+                        childVaccineProfile.VaccineId, childVaccineProfile.DoseNum, facilityVaccinePrice);
                 }
 
                 await _unitOfWork.SaveChangesAsync();
