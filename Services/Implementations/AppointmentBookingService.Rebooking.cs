@@ -461,7 +461,7 @@ namespace Services.Implementations
                 // Nếu không dùng Order, cần kiểm tra cơ sở có vaccine này không
                 if (usedOrder == null)
                 {
-                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    // Reuse facilityVaccineRepo đã khai báo ở trên
                     var facilityVaccine = await facilityVaccineRepo.GetAsync(
                         fv => fv.FacilityId == schedule.FacilityId 
                            && fv.Vaccine.VaccineId == profile.VaccineId
