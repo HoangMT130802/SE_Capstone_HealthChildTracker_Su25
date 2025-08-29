@@ -4,6 +4,7 @@ using Google.Apis.Auth.OAuth2;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Services.Interfaces;
+using Services.Config;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,19 +31,54 @@ namespace Services.Implementations
                 // Khởi tạo Firebase App nếu chưa có
                 if (FirebaseApp.DefaultInstance == null)
                 {
-                    var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
-                    if (!string.IsNullOrEmpty(firebaseCredentialsPath))
+                    try
                     {
-                        if (System.IO.File.Exists(firebaseCredentialsPath))
+                        // ✅ Sử dụng EncryptedConfig để lấy credentials đã được mã hóa
+                        var firebaseCredentialsJson = EncryptedConfig.GetFirebaseCredentials();
+                        
+                        // Kiểm tra xem có phải là placeholder không
+                        if (firebaseCredentialsJson.Contains("placeholder") || firebaseCredentialsJson.Contains("fallback"))
                         {
-                            // Kiểm tra nội dung file trước khi sử dụng
-                            var credentialsContent = System.IO.File.ReadAllText(firebaseCredentialsPath);
-                            if (credentialsContent.Contains("REPLACE_WITH_NEW"))
+                            _logger.LogWarning("Firebase credentials contain placeholder values. Real credentials should be encrypted using encrypt-firebase tool.");
+                            
+                            // Fallback: thử đọc từ file nếu có
+                            var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
+                            if (!string.IsNullOrEmpty(firebaseCredentialsPath) && System.IO.File.Exists(firebaseCredentialsPath))
                             {
-                                _logger.LogWarning("Firebase credentials file contains placeholder values. Please update with real credentials from Firebase Console.");
-                                return;
+                                firebaseCredentialsJson = System.IO.File.ReadAllText(firebaseCredentialsPath);
+                                _logger.LogInformation("Fallback: Using Firebase credentials from file: {Path}", firebaseCredentialsPath);
                             }
+                            else
+                            {
+                                // Fallback cuối: sử dụng từ configuration
+                                var serviceAccountJson = configuration["Firebase:ServiceAccountJson"];
+                                if (!string.IsNullOrEmpty(serviceAccountJson))
+                                {
+                                    firebaseCredentialsJson = serviceAccountJson;
+                                    _logger.LogInformation("Fallback: Using Firebase credentials from configuration");
+                                }
+                                else
+                                {
+                                    _logger.LogError("No valid Firebase credentials found. Please run encrypt-firebase tool or set Firebase:ServiceAccountJson in configuration");
+                                    return;
+                                }
+                            }
+                        }
 
+                        FirebaseApp.Create(new AppOptions()
+                        {
+                            Credential = GoogleCredential.FromJson(firebaseCredentialsJson)
+                        });
+                        _logger.LogInformation("Firebase initialized successfully with encrypted credentials");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to load encrypted Firebase credentials, trying fallback methods");
+                        
+                        // Fallback: thử các phương pháp cũ
+                        var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
+                        if (!string.IsNullOrEmpty(firebaseCredentialsPath) && System.IO.File.Exists(firebaseCredentialsPath))
+                        {
                             FirebaseApp.Create(new AppOptions()
                             {
                                 Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
@@ -51,26 +87,20 @@ namespace Services.Implementations
                         }
                         else
                         {
-                            _logger.LogError("Firebase credentials file not found at: {Path}", firebaseCredentialsPath);
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        // Fallback: sử dụng service account JSON từ environment variable
-                        var serviceAccountJson = configuration["Firebase:ServiceAccountJson"];
-                        if (!string.IsNullOrEmpty(serviceAccountJson))
-                        {
-                            FirebaseApp.Create(new AppOptions()
+                            var serviceAccountJson = configuration["Firebase:ServiceAccountJson"];
+                            if (!string.IsNullOrEmpty(serviceAccountJson))
                             {
-                                Credential = GoogleCredential.FromJson(serviceAccountJson)
-                            });
-                            _logger.LogInformation("Firebase initialized with service account JSON");
-                        }
-                        else
-                        {
-                            _logger.LogWarning("No Firebase credentials found in configuration");
-                            return;
+                                FirebaseApp.Create(new AppOptions()
+                                {
+                                    Credential = GoogleCredential.FromJson(serviceAccountJson)
+                                });
+                                _logger.LogInformation("Firebase initialized with service account JSON from configuration");
+                            }
+                            else
+                            {
+                                _logger.LogError("All Firebase initialization methods failed");
+                                return;
+                            }
                         }
                     }
                 }

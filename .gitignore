@@ -398,3 +398,13 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+# Custom: Encrypted Firebase Credentials
+config/
+*.dat
+Tools/EncryptCredentials.exe
+
+# Security: Never commit service account keys or secrets
+*firebase*.json
+*service-account*.json
+*private-key*
+*credentials*.json

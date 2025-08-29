@@ -1,0 +1,19 @@
+### Quick Firebase Test - Kiểm tra Firebase setup
+
+### 1. Test Firebase connection (không cần token)
+POST https://localhost:7008/api/testpush/check-firebase
+Content-Type: application/json
+
+### 2. Test với real FCM token (nếu có device)
+POST https://localhost:7008/api/testpush/test-real-token  
+Content-Type: application/json
+
+{
+  "token": "PASTE_YOUR_FCM_TOKEN_HERE"
+}
+
+### Notes:
+# - Test 1: Kiểm tra xem Firebase có khởi tạo được không
+# - Test 2: Gửi push notification thật đến device (cần FCM token từ app)
+# - Nếu Test 1 thành công: Firebase credentials đã work
+# - Nếu Test 1 fail: Có vấn đề với encryption/decryption
