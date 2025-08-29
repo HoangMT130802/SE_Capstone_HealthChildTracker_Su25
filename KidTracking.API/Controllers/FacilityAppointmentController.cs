@@ -96,15 +96,17 @@ namespace KidTracking.API.Controllers
         #endregion
 
         /// <summary>
-        /// Lấy tất cả lịch đặt của facility với phân trang
+        /// Lấy tất cả lịch đặt của facility với phân trang và search theo tên trẻ
         /// </summary>
         /// <param name="pageIndex">Số trang (mặc định: 1)</param>
         /// <param name="pageSize">Kích thước trang (mặc định: 50)</param>
+        /// <param name="childName">Tên trẻ để search (tùy chọn)</param>
         /// <returns>Danh sách lịch đặt có phân trang</returns>
         [HttpGet]
         public async Task<ActionResult<FacilityAppointmentResponseDTO>> GetAllFacilityAppointments(
             [FromQuery] int pageIndex = 1, 
-            [FromQuery] int pageSize = 50)
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? childName = null)
         {
             try
             {
@@ -113,7 +115,7 @@ namespace KidTracking.API.Controllers
                 if (pageSize < 1 || pageSize > 100) pageSize = 50; // Giới hạn max 100 items/page
                 
                 var facilityId = await GetFacilityIdAsync();
-                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId, pageIndex, pageSize);
+                var result = await _appointmentBookingService.GetAllFacilityAppointmentsAsync(facilityId, pageIndex, pageSize, childName);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)

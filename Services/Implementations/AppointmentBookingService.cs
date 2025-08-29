@@ -1809,19 +1809,34 @@ namespace Services.Implementations
 
         #region Facility Staff Methods
 
-        public async Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50)
+        public async Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50, string? childName = null)
         {
             try
             {
-                _logger.LogInformation("Lấy tất cả lịch đặt cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}",
-                    facilityId, pageIndex, pageSize);
+                _logger.LogInformation("Lấy tất cả lịch đặt cho facility {FacilityId} - Page {PageIndex}, Size {PageSize}, ChildName: {ChildName}",
+                    facilityId, pageIndex, pageSize, childName ?? "null");
 
                 // Get appointments của facility với phân trang
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
 
+                // ✅ Tạo filter động dựa trên childName
+                System.Linq.Expressions.Expression<Func<VaccinationAppointment, bool>> filter;
+                if (!string.IsNullOrWhiteSpace(childName))
+                {
+                    // Filter theo facility và tên trẻ (case-insensitive, contains)
+                    filter = a => a.Schedule.FacilityId == facilityId && 
+                                  a.Child.FullName.ToLower().Contains(childName.ToLower());
+                    _logger.LogInformation("Áp dụng filter theo tên trẻ: {ChildName}", childName);
+                }
+                else
+                {
+                    // Chỉ filter theo facility
+                    filter = a => a.Schedule.FacilityId == facilityId;
+                }
+
                 // ✅ Sử dụng phân trang từ repository
                 var result = await appointmentRepo.GetAllAsync(
-                    filter: a => a.Schedule.FacilityId == facilityId,
+                    filter: filter,
                     orderBy: q => q.OrderByDescending(a => a.Schedule.Date).ThenByDescending(a => a.Schedule.Slot.StartTime),
                     include: "Schedule.Slot,Schedule.Facility,Child.Member.Account,Order.OrderDetails.FacilityVaccine.Vaccine,Order.OrderDetails.Disease,Order.Member",
                     pageIndex: pageIndex,
@@ -1835,9 +1850,9 @@ namespace Services.Implementations
                     appointmentDTOs.Add(dto);
                 }
 
-                // ✅ Calculate statistics từ tất cả appointments (không phân trang)
+                // ✅ Calculate statistics từ tất cả appointments (không phân trang) - áp dụng cùng filter
                 var allAppointments = await appointmentRepo.FindAsync(
-                    a => a.Schedule.FacilityId == facilityId,
+                    filter,
                     "Schedule.Slot,Schedule.Facility");
                 var stats = CalculateFacilityAppointmentStatistics(allAppointments);
 

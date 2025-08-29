@@ -5,6 +5,21 @@ GET {{baseUrl}}/api/facilityappointment
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
+### Lấy tất cả lịch đặt với phân trang
+GET {{baseUrl}}/api/facilityappointment?pageIndex=1&pageSize=10
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Search lịch đặt theo tên trẻ
+GET {{baseUrl}}/api/facilityappointment?childName=Nguyễn
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### Search lịch đặt theo tên trẻ với phân trang
+GET {{baseUrl}}/api/facilityappointment?childName=An&pageIndex=1&pageSize=5
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
 ### Lấy tất cả lịch đặt của facility cụ thể (dành cho Admin)
 GET {{baseUrl}}/api/facilityappointment/admin/1
 Authorization: Bearer {{adminToken}}

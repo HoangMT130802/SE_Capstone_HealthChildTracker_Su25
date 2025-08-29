@@ -38,7 +38,7 @@ namespace Services.Interfaces
         Task<AppointmentHistoryResponseDTO> GetAppointmentHistoryAsync(int memberId, int? childId = null);
         
         // Facility Staff Methods  
-        Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50);
+        Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50, string? childName = null);
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByDateAsync(int facilityId, DateTime date, int pageIndex = 1, int pageSize = 50);
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByWeekAsync(int facilityId, DateTime startOfWeek, int pageIndex = 1, int pageSize = 50);
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByMonthAsync(int facilityId, DateTime month, int pageIndex = 1, int pageSize = 50);
