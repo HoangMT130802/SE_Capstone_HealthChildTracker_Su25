@@ -1426,6 +1426,23 @@ namespace Services.Implementations
                 // ✅ Lưu ScheduleId trước khi xóa appointment
                 var scheduleId = appointment.ScheduleId;
 
+                // ✅ QUAN TRỌNG: Xử lý ChildVaccineProfile trước khi xóa appointment
+                var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                var childVaccineProfiles = await childVaccineProfileRepo.FindAsync(p => p.AppointmentId == appointmentId);
+                if (childVaccineProfiles.Any())
+                {
+                    foreach (var profile in childVaccineProfiles)
+                    {
+                        // Set AppointmentId về null và đặt lại status về "Pending" 
+                        profile.AppointmentId = null;
+                        profile.Status = "Pending";
+                        profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        childVaccineProfileRepo.Update(profile);
+                    }
+                    _logger.LogInformation("Đã cập nhật {Count} ChildVaccineProfiles, đặt AppointmentId về null cho appointment {AppointmentId}",
+                        childVaccineProfiles.Count, appointmentId);
+                }
+
                 // Xóa các VaccinationAppointmentDetails nếu có (individual vaccines)
                 var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
                 var appointmentDetails = await appointmentDetailRepo.FindAsync(d => d.AppointmentId == appointmentId);

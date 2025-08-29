@@ -31,21 +31,37 @@ namespace Services.Implementations
                 // Khởi tạo Firebase App nếu chưa có
                 if (FirebaseApp.DefaultInstance == null)
                 {
-                    // Sử dụng đường dẫn tuyệt đối đến Firebase service account key
-                    var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
+                    // Thử Environment Variable trước (cho Production)
+                    var firebaseServiceAccountJson = Environment.GetEnvironmentVariable("FIREBASE_SERVICE_ACCOUNT") 
+                                                   ?? configuration["Firebase:ServiceAccountJson"];
                     
-                    if (!string.IsNullOrEmpty(firebaseCredentialsPath) && System.IO.File.Exists(firebaseCredentialsPath))
+                    if (!string.IsNullOrEmpty(firebaseServiceAccountJson))
                     {
+                        // Sử dụng JSON từ Environment Variable
                         FirebaseApp.Create(new AppOptions()
                         {
-                            Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
+                            Credential = GoogleCredential.FromJson(firebaseServiceAccountJson)
                         });
-                        _logger.LogInformation("Firebase initialized with credentials file: {Path}", firebaseCredentialsPath);
+                        _logger.LogInformation("Firebase initialized with service account JSON from environment");
                     }
                     else
                     {
-                        _logger.LogError("Firebase credentials file not found at: {Path}", firebaseCredentialsPath);
-                        return;
+                        // Fallback: sử dụng file path (cho Development)
+                        var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
+                        
+                        if (!string.IsNullOrEmpty(firebaseCredentialsPath) && System.IO.File.Exists(firebaseCredentialsPath))
+                        {
+                            FirebaseApp.Create(new AppOptions()
+                            {
+                                Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
+                            });
+                            _logger.LogInformation("Firebase initialized with credentials file: {Path}", firebaseCredentialsPath);
+                        }
+                        else
+                        {
+                            _logger.LogError("Firebase credentials not found. Check FIREBASE_SERVICE_ACCOUNT env var or file path: {Path}", firebaseCredentialsPath);
+                            return;
+                        }
                     }
                 }
 
