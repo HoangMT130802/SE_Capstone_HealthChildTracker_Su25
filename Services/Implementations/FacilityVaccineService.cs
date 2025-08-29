@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Contracts.DTOs.FacilityVaccine;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Repositories.Entities;
 using Repositories.Interfaces;
@@ -19,12 +20,14 @@ namespace Services.Implementations
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ILogger<FacilityVaccineService> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
-        public FacilityVaccineService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<FacilityVaccineService> logger)
+        public FacilityVaccineService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<FacilityVaccineService> logger, IServiceProvider serviceProvider)
         {
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _serviceProvider = serviceProvider;
         }
 
         private async Task ValidateManagerAccess(int accountId, int facilityId)
@@ -159,7 +162,6 @@ namespace Services.Implementations
                 throw;
             }
         }
-
         public async Task<FacilityVaccineDTO> UpdateFacilityVaccineAsync(int facilityVaccineId, UpdateFacilityVaccineDTO facilityVaccineDto, int accountId)
         {
             try
@@ -199,23 +201,46 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"FacilityVaccine với FacilityId {facilityVaccineDto.FacilityId} và VaccineId {facilityVaccineDto.VaccineId} đã tồn tại");
                 }
 
-                // Update facility vaccine properties
-                _mapper.Map(facilityVaccineDto, facilityVaccine);
-                var currentTime = DateTime.UtcNow;
-                if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
+                using (var transaction = await _unitOfWork.BeginTransactionAsync())
                 {
-                    _logger.LogError($"Invalid DateTime value: {currentTime}");
-                    throw new InvalidOperationException($"Invalid DateTime value for UpdatedAt: {currentTime}");
+                    try
+                    {
+                        // Update facility vaccine properties
+                        _mapper.Map(facilityVaccineDto, facilityVaccine);
+                        var currentTime = DateTime.UtcNow;
+                        if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
+                        {
+                            _logger.LogError($"Invalid DateTime value: {currentTime}");
+                            throw new InvalidOperationException($"Invalid DateTime value for UpdatedAt: {currentTime}");
+                        }
+                        facilityVaccine.UpdatedAt = currentTime;
+                        _logger.LogInformation($"FacilityVaccine UpdatedAt: {facilityVaccine.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+
+                        // Update facility vaccine
+                        facilityVaccineRepository.Update(facilityVaccine);
+                        await _unitOfWork.SaveChangesAsync();
+
+                        // Update prices of related VaccinePackages
+                        var vaccinePackageService = _serviceProvider.GetService<IVaccinePackageService>();
+                        if (vaccinePackageService == null)
+                        {
+                            _logger.LogError("IVaccinePackageService is not registered in the service provider.");
+                            throw new InvalidOperationException("Không thể truy cập dịch vụ VaccinePackageService để cập nhật giá gói vaccine.");
+                        }
+                        await vaccinePackageService.UpdatePackagePricesByFacilityVaccineAsync(facilityVaccineId);
+
+                        await transaction.CommitAsync();
+
+                        var updatedFacilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == facilityVaccineId);
+                        return _mapper.Map<FacilityVaccineDTO>(updatedFacilityVaccine);
+                    }
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        _logger.LogError(ex, $"Error updating facility vaccine with ID {facilityVaccineId}");
+                        throw;
+                    }
                 }
-                facilityVaccine.UpdatedAt = currentTime;
-                _logger.LogInformation($"FacilityVaccine UpdatedAt: {facilityVaccine.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-
-                // Update facility vaccine
-                facilityVaccineRepository.Update(facilityVaccine);
-                await _unitOfWork.SaveChangesAsync();
-
-                var updatedFacilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == facilityVaccineId);
-                return _mapper.Map<FacilityVaccineDTO>(updatedFacilityVaccine);
             }
             catch (Exception ex)
             {
@@ -223,6 +248,69 @@ namespace Services.Implementations
                 throw;
             }
         }
+        //public async Task<FacilityVaccineDTO> UpdateFacilityVaccineAsync(int facilityVaccineId, UpdateFacilityVaccineDTO facilityVaccineDto, int accountId)
+        //{
+        //    try
+        //    {
+        //        _logger.LogInformation($"Updating facility vaccine with ID: {facilityVaccineId}, by AccountId: {accountId}");
+
+        //        var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
+        //        var facilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == facilityVaccineId);
+        //        if (facilityVaccine == null)
+        //        {
+        //            throw new KeyNotFoundException($"FacilityVaccine với ID {facilityVaccineId} không tồn tại");
+        //        }
+
+        //        // Validate Manager access
+        //        await ValidateManagerAccess(accountId, facilityVaccineDto.FacilityId);
+
+        //        // Validate FacilityId
+        //        var facilityRepository = _unitOfWork.GetRepository<VaccinationFacility>();
+        //        var facilityExists = await facilityRepository.AnyAsync(f => f.FacilityId == facilityVaccineDto.FacilityId);
+        //        if (!facilityExists)
+        //        {
+        //            throw new InvalidOperationException($"Facility với ID {facilityVaccineDto.FacilityId} không tồn tại");
+        //        }
+
+        //        // Validate VaccineId
+        //        var vaccineRepository = _unitOfWork.GetRepository<Vaccine>();
+        //        var vaccineExists = await vaccineRepository.AnyAsync(v => v.VaccineId == facilityVaccineDto.VaccineId);
+        //        if (!vaccineExists)
+        //        {
+        //            throw new InvalidOperationException($"Vaccine với ID {facilityVaccineDto.VaccineId} không tồn tại");
+        //        }
+
+        //        // Validate no duplicate FacilityVaccine (excluding current record)
+        //        var existingFacilityVaccine = await facilityVaccineRepository.AnyAsync(fv => fv.FacilityId == facilityVaccineDto.FacilityId && fv.VaccineId == facilityVaccineDto.VaccineId && fv.FacilityVaccineId != facilityVaccineId);
+        //        if (existingFacilityVaccine)
+        //        {
+        //            throw new InvalidOperationException($"FacilityVaccine với FacilityId {facilityVaccineDto.FacilityId} và VaccineId {facilityVaccineDto.VaccineId} đã tồn tại");
+        //        }
+
+        //        // Update facility vaccine properties
+        //        _mapper.Map(facilityVaccineDto, facilityVaccine);
+        //        var currentTime = DateTime.UtcNow;
+        //        if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
+        //        {
+        //            _logger.LogError($"Invalid DateTime value: {currentTime}");
+        //            throw new InvalidOperationException($"Invalid DateTime value for UpdatedAt: {currentTime}");
+        //        }
+        //        facilityVaccine.UpdatedAt = currentTime;
+        //        _logger.LogInformation($"FacilityVaccine UpdatedAt: {facilityVaccine.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+
+        //        // Update facility vaccine
+        //        facilityVaccineRepository.Update(facilityVaccine);
+        //        await _unitOfWork.SaveChangesAsync();
+
+        //        var updatedFacilityVaccine = await facilityVaccineRepository.GetAsync(fv => fv.FacilityVaccineId == facilityVaccineId);
+        //        return _mapper.Map<FacilityVaccineDTO>(updatedFacilityVaccine);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, $"Error updating facility vaccine with ID {facilityVaccineId}");
+        //        throw;
+        //    }
+        //}
 
         public async Task<bool> DeleteFacilityVaccineAsync(int facilityVaccineId, int accountId)
         {

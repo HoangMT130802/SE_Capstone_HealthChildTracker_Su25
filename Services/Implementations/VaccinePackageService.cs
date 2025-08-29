@@ -39,7 +39,10 @@ namespace Services.Implementations
         private async Task<decimal> CalculatePackagePriceAsync(int packageId)
         {
             var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
-            var packageVaccines = await packageVaccineRepository.GetAllAsync(pv => pv.PackageId == packageId, include: "FacilityVaccine");
+            var packageVaccines = await packageVaccineRepository.GetAllAsync(
+                pv => pv.PackageId == packageId,
+                include: "FacilityVaccine"
+            );
 
             decimal totalPrice = 0;
             _logger.LogInformation($"Calculating price for PackageId {packageId}. Found {packageVaccines.Data.Count()} PackageVaccines.");
@@ -47,8 +50,8 @@ namespace Services.Implementations
             {
                 if (packageVaccine.FacilityVaccine == null)
                 {
-                    _logger.LogError($"FacilityVaccine with ID {packageVaccine.FacilityVaccineId} not found for PackageId {packageId}.");
-                    throw new InvalidOperationException($"FacilityVaccine with ID {packageVaccine.FacilityVaccineId} not found for PackageId {packageId}.");
+                    _logger.LogWarning($"FacilityVaccine with ID {packageVaccine.FacilityVaccineId} not found for PackageId {packageId}. Skipping price calculation for this vaccine.");
+                    continue; // Bỏ qua nếu FacilityVaccine không tồn tại
                 }
                 if (packageVaccine.FacilityVaccine.Price < 0)
                 {
@@ -76,6 +79,7 @@ namespace Services.Implementations
                 throw new InvalidOperationException($"FacilityVaccine với ID {facilityVaccineId} không tồn tại hoặc không thuộc Facility {facilityId}");
             }
         }
+
         private async Task<int> GetDiseaseIdForFacilityVaccineAsync(int facilityVaccineId)
         {
             var facilityVaccineRepository = _unitOfWork.GetRepository<FacilityVaccine>();
@@ -98,6 +102,57 @@ namespace Services.Implementations
             }
 
             return vaccineDisease.DiseaseId;
+        }
+
+        public async Task UpdatePackagePricesByFacilityVaccineAsync(int facilityVaccineId)
+        {
+            try
+            {
+                _logger.LogInformation($"Updating prices for all VaccinePackages related to FacilityVaccineId: {facilityVaccineId}");
+
+                var packageVaccineRepository = _unitOfWork.GetRepository<PackageVaccine>();
+                var packageVaccines = await packageVaccineRepository.GetAllAsync(
+                    pv => pv.FacilityVaccineId == facilityVaccineId,
+                    include: "Package"
+                );
+
+                if (!packageVaccines.Data.Any())
+                {
+                    _logger.LogInformation($"No VaccinePackages found for FacilityVaccineId {facilityVaccineId}. No updates needed.");
+                    return;
+                }
+
+                var packageRepository = _unitOfWork.GetRepository<VaccinePackage>();
+                var currentTime = DateTime.UtcNow;
+                if (currentTime < new DateTime(1753, 1, 1) || currentTime > new DateTime(9999, 12, 31))
+                {
+                    throw new InvalidOperationException($"Invalid DateTime value for UpdatedAt: {currentTime}");
+                }
+
+                foreach (var packageVaccine in packageVaccines.Data)
+                {
+                    var packageId = packageVaccine.PackageId;
+                    var package = await packageRepository.GetAsync(p => p.PackageId == packageId);
+                    if (package == null)
+                    {
+                        _logger.LogWarning($"VaccinePackage with ID {packageId} not found. Skipping price update.");
+                        continue;
+                    }
+
+                    package.Price = await CalculatePackagePriceAsync(packageId);
+                    package.UpdatedAt = currentTime;
+                    _logger.LogInformation($"Updated Price for PackageId {packageId}: {package.Price}, UpdatedAt: {package.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+                    packageRepository.Update(package);
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                _logger.LogInformation($"Successfully updated prices for VaccinePackages related to FacilityVaccineId {facilityVaccineId}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating prices for VaccinePackages related to FacilityVaccineId {facilityVaccineId}");
+                throw;
+            }
         }
 
         public async Task<VaccinePackageDTO> CreateVaccinePackageAsync(CreateVaccinePackageDTO vaccinePackageDto, int accountId)
@@ -613,5 +668,7 @@ namespace Services.Implementations
                 throw;
             }
         }
+
+        
     }
 }
