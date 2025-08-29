@@ -17,6 +17,8 @@ public partial class VaccinationAppointmentDetail
 
     public string DoseNumber { get; set; }
 
+    public decimal? FacilityVaccinePrice { get; set; }
+
     public string Notes { get; set; }
 
     public DateTime CreatedAt { get; set; }
