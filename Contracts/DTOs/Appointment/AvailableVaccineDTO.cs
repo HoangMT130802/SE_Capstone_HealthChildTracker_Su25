@@ -14,6 +14,21 @@ namespace Contracts.DTOs.Appointment
         public List<string> TreatedDiseases { get; set; } = new List<string>();
         public bool CanTreatBookedDiseases { get; set; }
         public List<string> BookedDiseasesItCanTreat { get; set; } = new List<string>();
+        
+        /// <summary>
+        /// Thông tin nguồn vaccine (order hoặc mua lẻ)
+        /// </summary>
+        public List<VaccineSourceInfo> AvailableSources { get; set; } = new List<VaccineSourceInfo>();
+        
+        /// <summary>
+        /// Có vaccine miễn phí từ order không
+        /// </summary>
+        public bool HasFreeSource { get; set; }
+        
+        /// <summary>
+        /// Nguồn được ưu tiên nhất
+        /// </summary>
+        public VaccineSourceInfo? RecommendedSource { get; set; }
     }
 
     /// <summary>

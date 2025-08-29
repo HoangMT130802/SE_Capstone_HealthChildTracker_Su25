@@ -47,5 +47,25 @@ namespace Contracts.DTOs.Appointment
         public string? Notes { get; set; }
         public DateTime UpdatedAt { get; set; }
         public string UpdatedBy { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Nguồn vaccine mới (Order hoặc Individual)
+        /// </summary>
+        public string SourceType { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// ID của OrderDetail nếu sử dụng từ order
+        /// </summary>
+        public int? OrderDetailId { get; set; }
+        
+        /// <summary>
+        /// Tên gói vaccine nếu sử dụng từ order
+        /// </summary>
+        public string? PackageName { get; set; }
+        
+        /// <summary>
+        /// Chi phí phát sinh (0 nếu từ order đã trả tiền)
+        /// </summary>
+        public decimal AdditionalCost { get; set; }
     }
 }

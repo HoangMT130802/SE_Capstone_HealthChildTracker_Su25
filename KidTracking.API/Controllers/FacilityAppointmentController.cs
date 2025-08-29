@@ -1,4 +1,5 @@
 using Contracts.DTOs.Appointment;
+using Contracts.DTOs.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
@@ -384,7 +385,13 @@ namespace KidTracking.API.Controllers
                 }
 
                 var facilityId = await GetFacilityIdAsync();
-                var staffAccountId = await GetAccountIdAsync();
+                
+                // Lấy AccountId từ JWT claims
+                var accountIdClaim = User.FindFirst("AccountId")?.Value;
+                if (string.IsNullOrEmpty(accountIdClaim) || !int.TryParse(accountIdClaim, out int staffAccountId))
+                {
+                    return Unauthorized("Không tìm thấy thông tin người dùng");
+                }
                 
                 var result = await _appointmentBookingService.UpdateAppointmentVaccineAsync(request, facilityId, staffAccountId);
                 
@@ -399,7 +406,7 @@ namespace KidTracking.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 _logger.LogWarning(ex, "Unauthorized access to update vaccine for AppointmentDetail {DetailId}", request.AppointmentDetailId);
-                return Forbid(new { message = "Bạn không có quyền thực hiện thao tác này" });
+                return Forbid("Bạn không có quyền thực hiện thao tác này");
             }
             catch (ArgumentException ex)
             {
@@ -443,7 +450,7 @@ namespace KidTracking.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 _logger.LogWarning(ex, "Unauthorized access to get available vaccines for AppointmentDetail {DetailId}", appointmentDetailId);
-                return Forbid(new { message = "Bạn không có quyền thực hiện thao tác này" });
+                return Forbid("Bạn không có quyền thực hiện thao tác này");
             }
             catch (Exception ex)
             {
