@@ -362,6 +362,102 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
+        /// Thay đổi vaccine trong appointment (dành cho bác sĩ/staff khi vaccine hết)
+        /// </summary>
+        /// <param name="request">Thông tin thay đổi vaccine</param>
+        /// <returns>Kết quả thay đổi</returns>
+        [HttpPut("vaccine/update")]
+        [Authorize(Roles = "FacilityStaff")]
+        public async Task<ActionResult<ResponseDataModel<UpdateVaccineResponseDTO>>> UpdateAppointmentVaccine(
+            [FromBody] UpdateVaccineRequestDTO request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new ResponseDataModel<UpdateVaccineResponseDTO>
+                    {
+                        Status = false,
+                        Message = "Dữ liệu đầu vào không hợp lệ",
+                        Data = new UpdateVaccineResponseDTO { IsSuccess = false, Message = "Dữ liệu đầu vào không hợp lệ" }
+                    });
+                }
+
+                var facilityId = await GetFacilityIdAsync();
+                var staffAccountId = await GetAccountIdAsync();
+                
+                var result = await _appointmentBookingService.UpdateAppointmentVaccineAsync(request, facilityId, staffAccountId);
+                
+                if (result.Status)
+                {
+                    _logger.LogInformation("Staff {StaffAccountId} đã thay đổi vaccine thành công cho AppointmentDetail {DetailId}", 
+                        staffAccountId, request.AppointmentDetailId);
+                }
+                
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to update vaccine for AppointmentDetail {DetailId}", request.AppointmentDetailId);
+                return Forbid(new { message = "Bạn không có quyền thực hiện thao tác này" });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid request for updating vaccine: {Message}", ex.Message);
+                return BadRequest(new ResponseDataModel<UpdateVaccineResponseDTO>
+                {
+                    Status = false,
+                    Message = ex.Message,
+                    Data = new UpdateVaccineResponseDTO { IsSuccess = false, Message = ex.Message }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi thay đổi vaccine cho AppointmentDetail {DetailId}", request.AppointmentDetailId);
+                return StatusCode(500, new ResponseDataModel<UpdateVaccineResponseDTO>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi thay đổi vaccine",
+                    Data = new UpdateVaccineResponseDTO { IsSuccess = false, Message = "Có lỗi xảy ra khi thay đổi vaccine" }
+                });
+            }
+        }
+
+        /// <summary>
+        /// Lấy danh sách vaccine có thể thay thế cho appointment detail (khi vaccine hiện tại hết)
+        /// </summary>
+        /// <param name="appointmentDetailId">ID của VaccinationAppointmentDetail</param>
+        /// <returns>Danh sách vaccine thay thế</returns>
+        [HttpGet("appointment-detail/{appointmentDetailId}/available-vaccines")]
+        [Authorize(Roles = "FacilityStaff")]
+        public async Task<ActionResult<ResponseDataModel<AvailableVaccinesResponseDTO>>> GetAvailableVaccinesForReplacement(
+            int appointmentDetailId)
+        {
+            try
+            {
+                var facilityId = await GetFacilityIdAsync();
+                var result = await _appointmentBookingService.GetAvailableVaccinesForReplacementAsync(appointmentDetailId, facilityId);
+                
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access to get available vaccines for AppointmentDetail {DetailId}", appointmentDetailId);
+                return Forbid(new { message = "Bạn không có quyền thực hiện thao tác này" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy danh sách vaccine thay thế cho AppointmentDetail {DetailId}", appointmentDetailId);
+                return StatusCode(500, new ResponseDataModel<AvailableVaccinesResponseDTO>
+                {
+                    Status = false,
+                    Message = "Có lỗi xảy ra khi lấy danh sách vaccine thay thế",
+                    Data = new AvailableVaccinesResponseDTO { AppointmentDetailId = appointmentDetailId, TotalAvailable = 0 }
+                });
+            }
+        }
+
+        /// <summary>
         /// Manager duyệt hoàn tiền (Refunding -> Accepted) - Chỉ Manager được phép
         /// </summary>
         /// <param name="appointmentId">ID lịch đặt</param>
