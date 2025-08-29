@@ -49,7 +49,7 @@ namespace Contracts.MapperProfiles
             CreateMap<OrderDetail, OrderDetailDTO>();
             CreateMap<FacilityVaccine, FacilityVaccineDTO>();
             CreateMap<Disease, DiseaseDTO>();
-            CreateMap<Member, MemberDTO>();
+            // Removed CreateMap<Member, MemberDTO>() - use MemberProfile instead
         }
     }
 }

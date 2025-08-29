@@ -29,6 +29,8 @@ public partial class VaccinationAppointment
 
     public virtual ICollection<ChildVaccineProfile> ChildVaccineProfiles { get; set; } = new List<ChildVaccineProfile>();
 
+    public virtual ICollection<NotificationHistory> NotificationHistories { get; set; } = new List<NotificationHistory>();
+
     public virtual Order Order { get; set; }
 
     public virtual AppointmentSchedule Schedule { get; set; }

@@ -13,7 +13,7 @@ public partial class HealthChildTrackerContext : DbContext
         : base(options)
     {
     }
-    public HealthChildTrackerContext() { }
+    public HealthChildTrackerContext() {  }
     public virtual DbSet<Account> Accounts { get; set; }
 
     public virtual DbSet<AppointmentSchedule> AppointmentSchedules { get; set; }
@@ -55,6 +55,10 @@ public partial class HealthChildTrackerContext : DbContext
     public virtual DbSet<Membership> Memberships { get; set; }
 
     public virtual DbSet<Nationality> Nationalities { get; set; }
+
+    public virtual DbSet<NotificationDeliveryStatus> NotificationDeliveryStatuses { get; set; }
+
+    public virtual DbSet<NotificationHistory> NotificationHistories { get; set; }
 
     public virtual DbSet<Order> Orders { get; set; }
 
@@ -100,6 +104,7 @@ public partial class HealthChildTrackerContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder.UseSqlServer(GetConnectionString("DefaultConnection"));
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Account>(entity =>
@@ -302,32 +307,27 @@ public partial class HealthChildTrackerContext : DbContext
 
         modelBuilder.Entity<DeviceToken>(entity =>
         {
-            entity.HasKey(e => e.DeviceTokenId).HasName("PK__DeviceToken__DeviceTokenId");
-
             entity.ToTable("DeviceToken");
 
             entity.Property(e => e.DeviceTokenId).HasColumnName("DeviceTokenID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.DeviceInfo)
+                .IsRequired()
+                .HasMaxLength(2000);
+            entity.Property(e => e.DeviceType)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.LastUsedAt).HasColumnType("datetime");
             entity.Property(e => e.Token)
                 .IsRequired()
                 .HasMaxLength(500);
-            entity.Property(e => e.DeviceType)
-                .IsRequired()
-                .HasMaxLength(20);
-            entity.Property(e => e.DeviceInfo).HasMaxLength(2000);
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
-            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
-            entity.Property(e => e.LastUsedAt).HasColumnType("datetime");
 
             entity.HasOne(d => d.Account).WithMany(p => p.DeviceTokens)
                 .HasForeignKey(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_DeviceToken_Account");
-
-            // Index cho performance
-            entity.HasIndex(e => e.AccountId).HasDatabaseName("IX_DeviceToken_AccountId");
-            entity.HasIndex(e => e.Token).HasDatabaseName("IX_DeviceToken_Token");
         });
 
         modelBuilder.Entity<Disease>(entity =>
@@ -644,6 +644,72 @@ public partial class HealthChildTrackerContext : DbContext
                 .IsRequired()
                 .HasMaxLength(50)
                 .IsFixedLength();
+        });
+
+        modelBuilder.Entity<NotificationDeliveryStatus>(entity =>
+        {
+            entity.ToTable("NotificationDeliveryStatus");
+
+            entity.Property(e => e.ClickedAt).HasColumnType("datetime");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.DeliveredAt).HasColumnType("datetime");
+            entity.Property(e => e.ErrorCode).HasMaxLength(150);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.FirebaseMessageId).HasMaxLength(500);
+            entity.Property(e => e.SentAt).HasColumnType("datetime");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.DeviceToken).WithMany(p => p.NotificationDeliveryStatuses)
+                .HasForeignKey(d => d.DeviceTokenId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_NotificationDeliveryStatus_DeviceToken");
+
+            entity.HasOne(d => d.NotificationHistory).WithMany(p => p.NotificationDeliveryStatuses)
+                .HasForeignKey(d => d.NotificationHistoryId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_NotificationDeliveryStatus_NotificationHistory");
+        });
+
+        modelBuilder.Entity<NotificationHistory>(entity =>
+        {
+            entity.ToTable("NotificationHistory");
+
+            entity.Property(e => e.Body)
+                .IsRequired()
+                .HasMaxLength(2000);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.NotificationType)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.SentAt).HasColumnType("datetime");
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+            entity.Property(e => e.Title)
+                .IsRequired()
+                .HasMaxLength(500);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_NotificationHistory_Account");
+
+            entity.HasOne(d => d.Appointment).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.AppointmentId)
+                .HasConstraintName("FK_NotificationHistory_VaccinationAppointment");
+
+            entity.HasOne(d => d.Child).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.ChildId)
+                .HasConstraintName("FK_NotificationHistory_Child");
+
+            entity.HasOne(d => d.Vaccine).WithMany(p => p.NotificationHistories)
+                .HasForeignKey(d => d.VaccineId)
+                .HasConstraintName("FK_NotificationHistory_Vaccine");
         });
 
         modelBuilder.Entity<Order>(entity =>

@@ -245,7 +245,7 @@ namespace KidTracking.API.Controllers
         /// <param name="reason">Lý do hủy</param>
         /// <returns>Kết quả hủy</returns>
         [HttpDelete("{appointmentId}/cancel")]
-        public async Task<ActionResult<ResponseDataModel<bool>>> CancelAppointment(
+        public async Task<ActionResult<ResponseDataModel<CancelAppointmentResponseDTO>>> CancelAppointment(
             int appointmentId,
             [FromBody] string reason)
         {
@@ -257,11 +257,15 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi hủy lịch hẹn {AppointmentId}", appointmentId);
-                return StatusCode(500, new ResponseDataModel<bool>
+                return StatusCode(500, new ResponseDataModel<CancelAppointmentResponseDTO>
                 {
                     Status = false,
                     Message = "Có lỗi xảy ra khi hủy lịch hẹn",
-                    Data = false
+                    Data = new CancelAppointmentResponseDTO 
+                    { 
+                        IsSuccess = false, 
+                        Message = ex.Message 
+                    }
                 });
             }
         }

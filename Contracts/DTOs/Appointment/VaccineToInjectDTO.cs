@@ -6,10 +6,13 @@ namespace Contracts.DTOs.Appointment
     public class VaccineToInjectDTO
     {
         public int VaccineId { get; set; }
-        public string VaccineName { get; set; }
-        public string DiseaseName { get; set; }
-        public string DoseNumber { get; set; }
+        public string VaccineName { get; set; } = string.Empty;
+        public string DiseaseName { get; set; } = string.Empty;
+        public string DoseNumber { get; set; } = string.Empty;
         public string? Notes { get; set; }
+        
+        // ✅ THÊM MỚI: FacilityVaccineId để xác định vaccine cụ thể tại cơ sở
+        public int? FacilityVaccineId { get; set; }
         
         // Thông tin bổ sung
         public string? Manufacturer { get; set; }

@@ -21,7 +21,7 @@ namespace Services.Interfaces
         // Booking Methods
         Task<ResponseDataModel<AppointmentBookingResponseDTO>> BookAppointmentAsync(AppointmentBookingRequestDTO request);
         Task<ResponseDataModel<AppointmentQuickBookingResponseDTO>> QuickBookAppointmentAsync(AppointmentQuickBookingDTO request);
-        Task<ResponseDataModel<bool>> CancelAppointmentAsync(int appointmentId, string reason);
+        Task<ResponseDataModel<CancelAppointmentResponseDTO>> CancelAppointmentAsync(int appointmentId, string reason);
         
         // Rebooking Methods
         Task<ResponseDataModel<AppointmentRebookingValidationDTO>> ValidateRebookingRequestAsync(int childVaccineProfileId, int accountId);
@@ -30,11 +30,15 @@ namespace Services.Interfaces
         // Cancel and Rebook Methods
         Task<ResponseDataModel<CancelAndRebookResponseDTO>> CancelAndRebookAppointmentAsync(CancelAndRebookRequestDTO request, int staffAccountId);
         
+        // Vaccine Update Methods  
+        Task<ResponseDataModel<UpdateVaccineResponseDTO>> UpdateAppointmentVaccineAsync(UpdateVaccineRequestDTO request, int facilityId, int staffAccountId);
+        Task<ResponseDataModel<AvailableVaccinesResponseDTO>> GetAvailableVaccinesForReplacementAsync(int appointmentDetailId, int facilityId);
+        
         // History Methods
         Task<AppointmentHistoryResponseDTO> GetAppointmentHistoryAsync(int memberId, int? childId = null);
         
         // Facility Staff Methods  
-        Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50);
+        Task<FacilityAppointmentResponseDTO> GetAllFacilityAppointmentsAsync(int facilityId, int pageIndex = 1, int pageSize = 50, string? childName = null);
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByDateAsync(int facilityId, DateTime date, int pageIndex = 1, int pageSize = 50);
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByWeekAsync(int facilityId, DateTime startOfWeek, int pageIndex = 1, int pageSize = 50);
         Task<FacilityAppointmentResponseDTO> GetFacilityAppointmentsByMonthAsync(int facilityId, DateTime month, int pageIndex = 1, int pageSize = 50);

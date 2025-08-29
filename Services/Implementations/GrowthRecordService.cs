@@ -88,19 +88,43 @@ namespace Services.Implementations
                 }
 
                 var currentDateTime = DateTime.UtcNow;
-
                 var recordRepository = _unitOfWork.GetRepository<GrowthRecord>();
-                var record = _mapper.Map<GrowthRecord>(recordDTO);
 
-                record.ChildId = childId;
+                // Kiểm tra bản ghi growth record đã tồn tại cho cùng ngày
+                var existingRecord = await recordRepository.GetAsync(
+                    r => r.ChildId == childId && r.CreatedAt.Date == createdAtDate
+                );
 
-                decimal heightInMeters = recordDTO.Height / 100;
-                record.Bmi = Math.Round(recordDTO.Weight / (heightInMeters * heightInMeters), 2);
-                // CreatedAt đã được set từ DTO thông qua mapper
-                record.UpdatedAt = currentDateTime;
-                record.Note = recordDTO.Note;
+                GrowthRecord record;
+                if (existingRecord != null)
+                {
+                    // Ghi đè bản ghi đã có
+                    _mapper.Map(recordDTO, existingRecord);
+                    existingRecord.ChildId = childId;
+                    
+                    decimal heightInMeters = recordDTO.Height / 100;
+                    existingRecord.Bmi = Math.Round(recordDTO.Weight / (heightInMeters * heightInMeters), 2);
+                    existingRecord.UpdatedAt = currentDateTime;
+                    existingRecord.Note = recordDTO.Note;
 
-                await recordRepository.AddAsync(record);
+                    recordRepository.Update(existingRecord);
+                    record = existingRecord;
+                }
+                else
+                {
+                    // Tạo bản ghi mới
+                    record = _mapper.Map<GrowthRecord>(recordDTO);
+                    record.ChildId = childId;
+
+                    decimal heightInMeters = recordDTO.Height / 100;
+                    record.Bmi = Math.Round(recordDTO.Weight / (heightInMeters * heightInMeters), 2);
+                    // CreatedAt đã được set từ DTO thông qua mapper
+                    record.UpdatedAt = currentDateTime;
+                    record.Note = recordDTO.Note;
+
+                    await recordRepository.AddAsync(record);
+                }
+
                 await _unitOfWork.SaveChangesAsync();
 
                 var savedRecord = await recordRepository.GetAsync(

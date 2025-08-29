@@ -235,6 +235,7 @@ namespace KidTracking.API
             // Push notification services
             builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
             builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
+            builder.Services.AddScoped<INotificationHistoryService, NotificationHistoryService>();
             
             // Đăng ký automapper
             builder.Services.AddAutoMapper(typeof(AuthenticationProfile).Assembly);

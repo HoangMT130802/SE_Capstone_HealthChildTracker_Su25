@@ -50,5 +50,10 @@ namespace Services.Interfaces
         /// Chuyển ownership của device token sang account mới
         /// </summary>
         Task<bool> TransferDeviceTokenAsync(string token, int fromAccountId, int toAccountId);
+
+        /// <summary>
+        /// Lấy device token ID từ token string để lưu notification history
+        /// </summary>
+        Task<int?> GetDeviceTokenIdByTokenAsync(string token);
     }
 }
