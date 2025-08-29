@@ -4,6 +4,7 @@ using Google.Apis.Auth.OAuth2;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Services.Interfaces;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,48 +31,21 @@ namespace Services.Implementations
                 // Khởi tạo Firebase App nếu chưa có
                 if (FirebaseApp.DefaultInstance == null)
                 {
+                    // Sử dụng đường dẫn tuyệt đối đến Firebase service account key
                     var firebaseCredentialsPath = configuration["Firebase:CredentialsPath"];
-                    if (!string.IsNullOrEmpty(firebaseCredentialsPath))
+                    
+                    if (!string.IsNullOrEmpty(firebaseCredentialsPath) && System.IO.File.Exists(firebaseCredentialsPath))
                     {
-                        if (System.IO.File.Exists(firebaseCredentialsPath))
+                        FirebaseApp.Create(new AppOptions()
                         {
-                            // Kiểm tra nội dung file trước khi sử dụng
-                            var credentialsContent = System.IO.File.ReadAllText(firebaseCredentialsPath);
-                            if (credentialsContent.Contains("REPLACE_WITH_NEW"))
-                            {
-                                _logger.LogWarning("Firebase credentials file contains placeholder values. Please update with real credentials from Firebase Console.");
-                                return;
-                            }
-
-                            FirebaseApp.Create(new AppOptions()
-                            {
-                                Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
-                            });
-                            _logger.LogInformation("Firebase initialized with credentials file: {Path}", firebaseCredentialsPath);
-                        }
-                        else
-                        {
-                            _logger.LogError("Firebase credentials file not found at: {Path}", firebaseCredentialsPath);
-                            return;
-                        }
+                            Credential = GoogleCredential.FromFile(firebaseCredentialsPath)
+                        });
+                        _logger.LogInformation("Firebase initialized with credentials file: {Path}", firebaseCredentialsPath);
                     }
                     else
                     {
-                        // Fallback: sử dụng service account JSON từ environment variable
-                        var serviceAccountJson = configuration["Firebase:ServiceAccountJson"];
-                        if (!string.IsNullOrEmpty(serviceAccountJson))
-                        {
-                            FirebaseApp.Create(new AppOptions()
-                            {
-                                Credential = GoogleCredential.FromJson(serviceAccountJson)
-                            });
-                            _logger.LogInformation("Firebase initialized with service account JSON");
-                        }
-                        else
-                        {
-                            _logger.LogWarning("No Firebase credentials found in configuration");
-                            return;
-                        }
+                        _logger.LogError("Firebase credentials file not found at: {Path}", firebaseCredentialsPath);
+                        return;
                     }
                 }
 
@@ -187,7 +161,7 @@ namespace Services.Implementations
         }
 
         public async Task<string?> SendAppointmentReminderPushAsync(string deviceToken, string childName, string appointmentDate,
-            string appointmentTime, string facilityName, string facilityAddress = null)
+            string appointmentTime, string facilityName, string? facilityAddress = null)
         {
             try
             {
@@ -230,7 +204,7 @@ namespace Services.Implementations
         }
 
         public async Task<string?> SendVaccinationCompletionPushAsync(string deviceToken, string childName, string vaccineName,
-            int doseNumber, string nextVaccineDate = null)
+            int doseNumber, string? nextVaccineDate = null)
         {
             try
             {
@@ -272,7 +246,7 @@ namespace Services.Implementations
         }
 
         public async Task<string?> SendCustomPushAsync(string deviceToken, string title, string body, 
-            Dictionary<string, string> data = null)
+            Dictionary<string, string>? data = null)
         {
             try
             {
@@ -297,7 +271,7 @@ namespace Services.Implementations
         }
 
         public async Task<List<string>> SendMulticastPushAsync(List<string> deviceTokens, string title, string body,
-            Dictionary<string, string> data = null)
+            Dictionary<string, string>? data = null)
         {
             var messageIds = new List<string>();
             
@@ -398,6 +372,7 @@ namespace Services.Implementations
                 _logger.LogWarning("Firebase messaging not initialized, cannot send push notification");
                 return null;
             }
+
 
             var response = await _messaging.SendAsync(message);
             _logger.LogDebug("Push notification sent successfully. Message ID: {MessageId}", response);
