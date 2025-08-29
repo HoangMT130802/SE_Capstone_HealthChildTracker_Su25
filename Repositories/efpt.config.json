@@ -4,6 +4,7 @@
    "ContextNamespace": null,
    "FilterSchemas": false,
    "IncludeConnectionString": false,
+   "MinimumProductVersion": "2.6.0",
    "ModelNamespace": null,
    "OutputContextPath": null,
    "OutputPath": "Entities",
@@ -40,6 +41,10 @@
       },
       {
          "Name": "[dbo].[DailyRecord]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[DeviceToken]",
          "ObjectType": 0
       },
       {
@@ -172,6 +177,7 @@
    "UseHandleBars": false,
    "UseHierarchyId": false,
    "UseInflector": true,
+   "UseInternalAccessModifiersForSprocsAndFunctions": false,
    "UseLegacyPluralizer": false,
    "UseManyToManyEntity": false,
    "UseNoDefaultConstructor": false,
