@@ -10,15 +10,15 @@ namespace Contracts.DTOs.GrowthRecord
     public class CreateGrowthRecordDTO
     {
         [Required]
-        [Range(30, 200, ErrorMessage = "Chiều cao phải từ 30cm đến 200cm")]
+        [Range(30, 200, ErrorMessage = "Chiều cao phải từ 20cm đến 200cm")]
         public decimal Height { get; set; }
 
         [Required]
-        [Range(2, 100, ErrorMessage = "Cân nặng phải từ 2kg đến 100kg")]
+        [Range(2, 100, ErrorMessage = "Cân nặng phải từ 0,5kg đến 100kg")]
         public decimal Weight { get; set; }
 
         [Required]
-        [Range(30, 100, ErrorMessage = "Chu vi đầu phải từ 30cm đến 100cm")]
+        [Range(30, 100, ErrorMessage = "Chu vi đầu phải từ 20cm đến 80cm")]
         public decimal HeadCircumference { get; set; }
         
         [Required]

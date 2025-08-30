@@ -18,5 +18,8 @@ namespace Services.Interfaces
         Task SendVaccineReminderEmailAsync(string email, string parentName, string childName, string vaccineName, int doseNumber, DateOnly expectedDate, string facilityName = null);
         Task SendAppointmentReminderEmailAsync(string email, string parentName, string childName, DateOnly appointmentDate, string timeSlot, string facilityName, string facilityAddress, string vaccineName);
         Task SendVaccinationCompletionEmailAsync(string email, string parentName, string childName, string vaccineName, int doseNumber, DateOnly vaccinationDate, DateOnly? nextDoseDate = null);
+        
+        // Thank you email method
+        Task SendThankYouEmailAsync(string email, string memberName, int totalChildren = 0, int totalAppointments = 0, int totalVaccinations = 0);
     }
 }

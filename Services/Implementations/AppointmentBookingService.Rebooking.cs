@@ -332,7 +332,43 @@ namespace Services.Implementations
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                // 9. Tạo response
+                // 9. Tính EstimatedCost từ giá đã snapshot + kiểm tra Order status
+                decimal estimatedCostForResponse = 0;
+                if (usedOrder != null)
+                {
+                    // Trường hợp có Order - kiểm tra status
+                    if (usedOrder.Status == "Paid")
+                    {
+                        estimatedCostForResponse = 0; // Đã thanh toán
+                        _logger.LogInformation("💰 Rebook EstimatedCost = 0 (Order {OrderId} đã Paid)", usedOrder.OrderId);
+                    }
+                    else
+                    {
+                        estimatedCostForResponse = usedOrder.TotalAmount; // Chưa thanh toán
+                        _logger.LogInformation("💰 Rebook EstimatedCost from Order: {OrderId} Status={Status} = {TotalAmount}", 
+                            usedOrder.OrderId, usedOrder.Status, estimatedCostForResponse);
+                    }
+                }
+                else
+                {
+                    // Lấy giá đã snapshot từ VaccinationAppointmentDetail vừa tạo
+                    var detailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
+                    var appointmentDetail = await detailRepo.GetAsync(d => d.AppointmentId == newAppointment.AppointmentId);
+                    
+                    if (appointmentDetail?.FacilityVaccinePrice.HasValue == true)
+                    {
+                        estimatedCostForResponse = appointmentDetail.FacilityVaccinePrice.Value;
+                        _logger.LogInformation("💰 Rebook EstimatedCost from snapshot: {Price}", estimatedCostForResponse);
+                    }
+                    else
+                    {
+                        // Fallback nếu không có snapshot
+                        estimatedCostForResponse = validation.EstimatedCost;
+                        _logger.LogWarning("⚠️ Rebook fallback to validation EstimatedCost: {Price}", estimatedCostForResponse);
+                    }
+                }
+                
+                // 10. Tạo response
                 var response = new AppointmentRebookingResponseDTO
                 {
                     AppointmentId = newAppointment.AppointmentId,
@@ -344,7 +380,7 @@ namespace Services.Implementations
                     Vaccine = _mapper.Map<VaccineDTO>(profile.Vaccine),
                     DoseNumber = profile.DoseNum,
                     Schedule = _mapper.Map<AppointmentScheduleDTO>(schedule),
-                    EstimatedCost = validation.EstimatedCost,
+                    EstimatedCost = estimatedCostForResponse, // ✅ Sử dụng giá đã snapshot
                     UsedExistingOrder = usedOrder != null,
                     UsedOrder = usedOrder != null ? _mapper.Map<OrderDTO>(usedOrder) : null,
                     RemainingVaccinesInOrder = remainingVaccines,
@@ -383,6 +419,27 @@ namespace Services.Implementations
 
                 var appointmentDetailRepo = _unitOfWork.GetRepository<VaccinationAppointmentDetail>();
 
+                // 🎯 Lấy giá hiện tại của FacilityVaccine để snapshot
+                decimal? facilityVaccinePrice = null;
+                var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                try
+                {
+                    var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                        fv => fv.FacilityId == schedule.FacilityId && fv.VaccineId == profile.VaccineId,
+                        includeProperties: "Vaccine");
+                    
+                    if (facilityVaccine != null)
+                    {
+                        facilityVaccinePrice = facilityVaccine.Price;
+                        _logger.LogInformation("💰 Rebook - Snapshot giá cho VaccineId {VaccineId}: {Price}", 
+                            profile.VaccineId, facilityVaccinePrice);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Lỗi khi lấy giá FacilityVaccine cho rebook VaccineId {VaccineId}", profile.VaccineId);
+                }
+                
                 // Luôn tạo VaccinationAppointmentDetail cho vaccine từ ChildVaccineProfile
                 var appointmentDetail = new VaccinationAppointmentDetail
                 {
@@ -390,6 +447,7 @@ namespace Services.Implementations
                     VaccineId = profile.VaccineId,
                     DoseNumber = profile.DoseNum.ToString(),
                     VaccinationDate = schedule.Date, // Ngày tiêm dự kiến từ schedule
+                    FacilityVaccinePrice = facilityVaccinePrice, // 🎯 LƯU GIÁ TẠI THỜI ĐIỂM REBOOK
                     Notes = note ?? "Rebooked appointment",
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -403,7 +461,7 @@ namespace Services.Implementations
                 // Nếu không dùng Order, cần kiểm tra cơ sở có vaccine này không
                 if (usedOrder == null)
                 {
-                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                    // Reuse facilityVaccineRepo đã khai báo ở trên
                     var facilityVaccine = await facilityVaccineRepo.GetAsync(
                         fv => fv.FacilityId == schedule.FacilityId 
                            && fv.Vaccine.VaccineId == profile.VaccineId

@@ -15,7 +15,7 @@ namespace Contracts.DTOs.GrowthAssessment
         
         // Thông tin về độ tin cậy và disclaimer
         public PredictionQualityDTO PredictionQuality { get; set; }
-        public string MedicalDisclaimer { get; set; } = "📝 **DISCLAIMER BẮT BUỘC**: Thông tin này chỉ mang tính tham khảo. Luôn tham vấn bác sĩ nhi khoa trước khi đưa ra quyết định về sức khỏe của trẻ.";
+        public string MedicalDisclaimer { get; set; } = "**DISCLAIMER**: Thông tin này chỉ mang tính tham khảo. Luôn tham vấn bác sĩ nhi khoa trước khi đưa ra quyết định về sức khỏe của trẻ.";
         public bool RequiresMedicalConsultation { get; set; }
         public List<string> DataLimitations { get; set; } = new List<string>();
     }

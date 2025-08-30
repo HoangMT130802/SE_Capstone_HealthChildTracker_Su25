@@ -231,6 +231,9 @@ namespace KidTracking.API
             
             builder.Services.AddScoped<IVaccineReminderService, VaccineReminderService>();
             builder.Services.AddHostedService<VaccineReminderBackgroundService>();
+            
+            // ✅ Thêm Appointment Cleanup Background Service
+            builder.Services.AddHostedService<AppointmentCleanupBackgroundService>();
 
             // Push notification services
             builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
