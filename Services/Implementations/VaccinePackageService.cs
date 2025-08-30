@@ -393,7 +393,11 @@ namespace Services.Implementations
                 vaccinePackage.UpdatedAt = currentTime;
                 vaccinePackage.Price = await CalculatePackagePriceAsync(packageId);
                 _logger.LogInformation($"VaccinePackage UpdatedAt: {vaccinePackage.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-                _logger.LogInformation($"VaccinePackage object before saving: {JsonConvert.SerializeObject(vaccinePackage)}");
+                _logger.LogInformation($"VaccinePackage object before saving: {JsonConvert.SerializeObject(vaccinePackage, new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                    Formatting = Formatting.Indented
+                })}");
 
                 packageRepository.Update(vaccinePackage);
                 await _unitOfWork.SaveChangesAsync();
