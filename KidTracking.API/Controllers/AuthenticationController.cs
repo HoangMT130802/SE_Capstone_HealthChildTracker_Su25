@@ -135,14 +135,14 @@ namespace KidTracking.API.Controllers
 
         [HttpPost("create-manager-with-facility")]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<ManagerWithFacilityResponseDTO>> CreateManagerWithFacility([FromBody] CreateManagerWithFacilityDTO request)
+        public async Task<ActionResult<ManagerWithFacilityResponseDTO>> CreateManagerWithFacility([FromForm] CreateManagerWithFacilityDTO request)
         {
             try
             {
                 var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(currentUserIdClaim) || !int.TryParse(currentUserIdClaim, out int currentUserId))
                 {
-                    return Unauthorized(new { message = "Token không hợp lệ" });
+                    return Unauthorized(new { message = "Invalid token" });
                 }
 
                 var response = await _authService.CreateManagerWithFacilityAsync(request, currentUserId);
@@ -166,11 +166,11 @@ namespace KidTracking.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"Create manager with facility error: {ex.Message}");
-                return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo Manager và cơ sở" });
+                return StatusCode(500, new { message = "An error occurred while creating Manager and facility" });
             }
         }
 
-        [HttpPost("create-staff")]
+    [HttpPost("create-staff")]
         [Authorize(Roles = "FacilityStaff")]
         public async Task<ActionResult<StaffResponseDTO>> CreateStaff([FromBody] CreateStaffDTO request)
         {

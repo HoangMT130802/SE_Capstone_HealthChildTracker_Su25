@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using System.ComponentModel.DataAnnotations;
 
 namespace Contracts.DTOs.Authentication
@@ -49,6 +50,7 @@ namespace Contracts.DTOs.Authentication
         public string FacilityEmail { get; set; }
 
         [StringLength(1000, ErrorMessage = "Mô tả cơ sở không được vượt quá 1000 ký tự")]
+        public IFormFile LicenseFile { get; set; }
         public string FacilityDescription { get; set; }
     }
 }
