@@ -32,7 +32,8 @@ namespace Services.Implementations
                 if (FirebaseApp.DefaultInstance == null)
                 {
                     // Thử Environment Variable trước (cho Production)
-                    var firebaseServiceAccountJson = Environment.GetEnvironmentVariable("FIREBASE_SERVICE_ACCOUNT") 
+                    var firebaseServiceAccountJson = Environment.GetEnvironmentVariable("FIREBASE_ACCOUNT_SERVICE") 
+                                                   ?? Environment.GetEnvironmentVariable("FIREBASE_SERVICE_ACCOUNT") 
                                                    ?? configuration["Firebase:ServiceAccountJson"];
                     
                     if (!string.IsNullOrEmpty(firebaseServiceAccountJson))

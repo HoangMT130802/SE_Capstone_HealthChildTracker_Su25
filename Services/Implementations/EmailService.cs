@@ -406,6 +406,159 @@ namespace Services.Implementations
             }
         }
 
+        public async Task SendThankYouEmailAsync(string email, string memberName, int totalChildren = 0, int totalAppointments = 0, int totalVaccinations = 0)
+        {
+            try
+            {
+                var subject = "🙏 Cảm ơn bạn đã tin tướng và sử dụng Health Child Tracker";
+                
+                var body = $@"
+                    <html>
+                    <head>
+                        <style>
+                            .container {{ max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; }}
+                            .header {{ background: linear-gradient(135deg, #007bff, #28a745); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                            .header h1 {{ margin: 0; font-size: 28px; font-weight: 600; }}
+                            .header p {{ margin: 10px 0 0 0; font-size: 16px; opacity: 0.9; }}
+                            .content {{ padding: 30px; background-color: white; }}
+                            .thank-you-message {{ font-size: 18px; line-height: 1.6; color: #333; margin-bottom: 25px; }}
+                            .stats-section {{ background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }}
+                            .stats-title {{ font-size: 20px; font-weight: 600; color: #007bff; margin-bottom: 15px; text-align: center; }}
+                            .stats-grid {{ display: flex; justify-content: space-around; flex-wrap: wrap; }}
+                            .stat-item {{ text-align: center; margin: 10px; min-width: 120px; }}
+                            .stat-number {{ font-size: 24px; font-weight: bold; color: #28a745; }}
+                            .stat-label {{ font-size: 14px; color: #666; margin-top: 5px; }}
+                            .features-section {{ margin: 25px 0; }}
+                            .feature-item {{ background-color: #fff; border-left: 4px solid #007bff; padding: 15px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                            .feature-title {{ font-weight: 600; color: #007bff; margin-bottom: 5px; }}
+                            .testimonial {{ background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }}
+                            .testimonial-text {{ font-style: italic; color: #555; }}
+                            .cta-section {{ text-align: center; margin: 30px 0; }}
+                            .cta-button {{ background: linear-gradient(135deg, #007bff, #28a745); color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; display: inline-block; font-weight: 600; font-size: 16px; }}
+                            .footer {{ background-color: #343a40; color: white; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
+                            .footer p {{ margin: 5px 0; }}
+                            .social-links {{ margin: 15px 0; }}
+                            .social-links a {{ color: #007bff; text-decoration: none; margin: 0 10px; }}
+                            .emoji {{ font-size: 20px; }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class='container'>
+                            <div class='header'>
+                                <h1><span class='emoji'>🙏</span> Cảm ơn bạn, {memberName}!</h1>
+                                <p>Vì đã tin tưởng và đồng hành cùng Health Child Tracker</p>
+                            </div>
+                            
+                            <div class='content'>
+                                <div class='thank-you-message'>
+                                    <p>Kính gửi <strong>{memberName}</strong>,</p>
+                                    
+                                    <p>Chúng tôi xin gửi lời cảm ơn sâu sắc nhất đến bạn vì đã tin tưởng và sử dụng hệ thống <strong>Health Child Tracker</strong> để chăm sóc sức khỏe của con em mình.</p>
+                                    
+                                    <p>Sự tin tưởng của bạn là động lực to lớn giúp chúng tôi không ngừng cải tiến và phát triển, mang đến những dịch vụ chăm sóc sức khỏe trẻ em tốt nhất.</p>
+                                </div>";
+
+                // Thêm thống kê nếu có dữ liệu
+                if (totalChildren > 0 || totalAppointments > 0 || totalVaccinations > 0)
+                {
+                    body += $@"
+                                <div class='stats-section'>
+                                    <div class='stats-title'><span class='emoji'>📊</span> Hành trình của bạn với Health Child Tracker</div>
+                                    <div class='stats-grid'>
+                                        <div class='stat-item'>
+                                            <div class='stat-number'>{totalChildren}</div>
+                                            <div class='stat-label'>Bé yêu đã đăng ký</div>
+                                        </div>
+                                        <div class='stat-item'>
+                                            <div class='stat-number'>{totalAppointments}</div>
+                                            <div class='stat-label'>Lịch hẹn đã đặt</div>
+                                        </div>
+                                        <div class='stat-item'>
+                                            <div class='stat-number'>{totalVaccinations}</div>
+                                            <div class='stat-label'>Mũi tiêm hoàn thành</div>
+                                        </div>
+                                    </div>
+                                </div>";
+                }
+
+                body += $@"
+                                <div class='features-section'>
+                                    <h3 style='color: #007bff; text-align: center;'><span class='emoji'>✨</span> Những giá trị mà chúng tôi mang lại</h3>
+                                    
+                                    <div class='feature-item'>
+                                        <div class='feature-title'><span class='emoji'>📱</span> Quản lý tiêm chủng dễ dàng</div>
+                                        <p>Theo dõi lịch tiêm, nhắc nhở tự động, lưu trữ hồ sơ vaccine an toàn</p>
+                                    </div>
+                                    
+                                    <div class='feature-item'>
+                                        <div class='feature-title'><span class='emoji'>🏥</span> Kết nối cơ sở y tế uy tín</div>
+                                        <p>Đặt lịch trực tuyến tại các cơ sở y tế chất lượng, tiết kiệm thời gian</p>
+                                    </div>
+                                    
+                                    <div class='feature-item'>
+                                        <div class='feature-title'><span class='emoji'>📈</span> Theo dõi tăng trưởng toàn diện</div>
+                                        <p>Ghi nhận cân nặng, chiều cao, đánh giá sự phát triển của bé</p>
+                                    </div>
+                                    
+                                    <div class='feature-item'>
+                                        <div class='feature-title'><span class='emoji'>🛡️</span> An toàn và bảo mật</div>
+                                        <p>Dữ liệu được mã hóa và bảo vệ theo tiêu chuẩn quốc tế</p>
+                                    </div>
+                                </div>
+                                
+                                <div class='testimonial'>
+                                    <div class='testimonial-text'>
+                                        ""Sức khỏe của trẻ em là tương lai của đất nước. Chúng tôi cam kết đồng hành cùng các bậc phụ huynh trong hành trình chăm sóc và bảo vệ sức khỏe cho thế hệ tương lai.""
+                                    </div>
+                                    <div style='text-align: right; margin-top: 10px; font-weight: 600; color: #007bff;'>
+                                        - Đội ngũ Health Child Tracker
+                                    </div>
+                                </div>
+                                
+                                <div class='cta-section'>
+                                    <p style='font-size: 16px; margin-bottom: 20px;'>Hãy tiếp tục đồng hành cùng chúng tôi!</p>
+                                    <a href='#' class='cta-button'>
+                                        <span class='emoji'>📱</span> Khám phá thêm tính năng mới
+                                    </a>
+                                </div>
+                                
+                                <div style='margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;'>
+                                    <p><strong>Nếu bạn có bất kỳ thắc mắc nào:</strong></p>
+                                    <ul style='color: #666; line-height: 1.6;'>
+                                        <li><span class='emoji'>📧</span> Email: support@healthchildtracker.com</li>
+                                        <li><span class='emoji'>📞</span> Hotline: 1900-xxxx (8:00 - 18:00, T2-T6)</li>
+                                        <li><span class='emoji'>💬</span> Chat trong app: Luôn sẵn sàng hỗ trợ 24/7</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class='footer'>
+                                <p><strong>Health Child Tracker</strong></p>
+                                <p><span class='emoji'>🏆</span> Hệ thống quản lý sức khỏe trẻ em hàng đầu Việt Nam</p>
+                                <div class='social-links'>
+                                    <a href='#'>Facebook</a> |
+                                    <a href='#'>Website</a> |
+                                    <a href='#'>Zalo</a>
+                                </div>
+                                <p style='font-size: 12px; opacity: 0.8; margin-top: 15px;'>
+                                    © 2024 Health Child Tracker. Tất cả quyền được bảo lưu.<br>
+                                    Email này được gửi tự động, vui lòng không trả lời trực tiếp.
+                                </p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>";
+
+                await SendEmailAsync(email, subject, body);
+                _logger.LogInformation($"Thank you email sent to {email} for member {memberName}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to send thank you email to {email}: {ex.Message}");
+                throw;
+            }
+        }
+
         private async Task SendEmailAsync(string toEmail, string subject, string body)
         {
             var emailSettings = _configuration.GetSection("EmailSettings");

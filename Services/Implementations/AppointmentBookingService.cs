@@ -3212,7 +3212,7 @@ namespace Services.Implementations
                     var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
                     var orderDetails = await orderDetailRepo.FindAsync(
                         od => od.OrderId == request.OrderId.Value,
-                        includeProperties: "FacilityVaccine,FacilityVaccine.Vaccine");
+                        includeProperties: "FacilityVaccine,FacilityVaccine.Vaccine,FacilityVaccine.Vaccine.VaccineDiseases");
 
                     // Chỉ chọn 1 dòng order phù hợp với bệnh đã chọn và đúng cơ sở của lịch
                     var matchedDetails = orderDetails
@@ -3231,14 +3231,16 @@ namespace Services.Implementations
                         _logger.LogInformation("📋 ORDER: Sử dụng VaccineId {VaccineId} từ OrderDetail {OrderDetailId} cho Disease {DiseaseId}", 
                             selectedDetail.FacilityVaccine.VaccineId, selectedDetail.OrderDetailId, selectedDetail.DiseaseId);
                             
-                        await CreateChildVaccineProfileAsync(
+                        // ✅ Tạo ChildVaccineProfile cho TẤT CẢ bệnh mà vaccine có thể chữa
+                        await CreateChildVaccineProfilesForMultiDiseaseVaccineAsync(
                             childVaccineProfileRepo,
                             appointment.ChildId,
                             selectedDetail.FacilityVaccine.VaccineId,
-                            selectedDetail.DiseaseId,
+                            selectedDetail.DiseaseId, // Disease được chọn chính
                             appointment.AppointmentId,
                             expectedDate,
-                            selectedDetail.FacilityVaccine.Vaccine.NumberOfDoses);
+                            selectedDetail.FacilityVaccine.Vaccine.NumberOfDoses,
+                            selectedDetail.FacilityVaccine.Vaccine.VaccineDiseases);
                     }
                 }
                 // LUỒNG 2: Package mới - Lấy vaccines từ PackageVaccines
@@ -3249,7 +3251,7 @@ namespace Services.Implementations
                     var packageVaccineRepo = _unitOfWork.GetRepository<PackageVaccine>();
                     var packageVaccines = await packageVaccineRepo.FindAsync(
                         pv => pv.PackageId == request.PackageId.Value,
-                        includeProperties: "FacilityVaccine,FacilityVaccine.Vaccine");
+                        includeProperties: "FacilityVaccine,FacilityVaccine.Vaccine,FacilityVaccine.Vaccine.VaccineDiseases");
 
                     // Chỉ chọn 1 vaccine trong gói phù hợp với bệnh đã chọn (và ưu tiên đúng cơ sở đặt lịch)
                     var matchedPackageVaccines = packageVaccines
@@ -3270,14 +3272,16 @@ namespace Services.Implementations
                         _logger.LogInformation("📦 PACKAGE: Sử dụng VaccineId {VaccineId} từ Package {PackageId} cho Disease {DiseaseId}", 
                             selectedPackageVaccine.FacilityVaccine.VaccineId, request.PackageId.Value, selectedPackageVaccine.DiseaseId);
                             
-                        await CreateChildVaccineProfileAsync(
+                        // ✅ Tạo ChildVaccineProfile cho TẤT CẢ bệnh mà vaccine có thể chữa
+                        await CreateChildVaccineProfilesForMultiDiseaseVaccineAsync(
                             childVaccineProfileRepo,
                             appointment.ChildId,
                             selectedPackageVaccine.FacilityVaccine.VaccineId,
-                            selectedPackageVaccine.DiseaseId,
+                            selectedPackageVaccine.DiseaseId, // Disease được chọn chính
                             appointment.AppointmentId,
                             expectedDate,
-                            selectedPackageVaccine.FacilityVaccine.Vaccine.NumberOfDoses);
+                            selectedPackageVaccine.FacilityVaccine.Vaccine.NumberOfDoses,
+                            selectedPackageVaccine.FacilityVaccine.Vaccine.VaccineDiseases);
                     }
                 }
                 // LUỒNG 3: Vaccine lẻ - Lấy từ FacilityVaccineIds
@@ -3301,15 +3305,17 @@ namespace Services.Implementations
                                 _logger.LogInformation("💉 VACCINE LẺ: Sử dụng VaccineId {VaccineId} từ FacilityVaccine {FacilityVaccineId} cho Disease {DiseaseId}", 
                                     facilityVaccine.VaccineId, facilityVaccineId, diseaseId);
                                     
-                                await CreateChildVaccineProfileAsync(
+                                // ✅ Tạo ChildVaccineProfile cho TẤT CẢ bệnh mà vaccine có thể chữa
+                                await CreateChildVaccineProfilesForMultiDiseaseVaccineAsync(
                                     childVaccineProfileRepo,
                                     appointment.ChildId,
                                     facilityVaccine.VaccineId,
-                                    diseaseId,
+                                    diseaseId, // Disease được chọn chính
                                     appointment.AppointmentId,
                                     expectedDate,
-                                    facilityVaccine.Vaccine.NumberOfDoses);
-                                break; // chỉ tạo 1 CVP cho disease đã chọn
+                                    facilityVaccine.Vaccine.NumberOfDoses,
+                                    facilityVaccine.Vaccine.VaccineDiseases);
+                                break; // Đã xử lý vaccine này
                             }
                         }
                     }
@@ -4548,6 +4554,266 @@ namespace Services.Implementations
             );
 
             return orderDetail?.Order?.Package?.Name;
+        }
+
+        /// <summary>
+        /// Tạo ChildVaccineProfile cho TẤT CẢ bệnh mà vaccine có thể chữa (Multi-Disease Vaccine)
+        /// </summary>
+        private async Task CreateChildVaccineProfilesForMultiDiseaseVaccineAsync(
+            IGenericRepository<ChildVaccineProfile> childVaccineProfileRepo,
+            int childId,
+            int vaccineId,
+            int primaryDiseaseId, // Bệnh được chọn chính
+            int appointmentId,
+            DateOnly expectedDate,
+            int totalDoses,
+            ICollection<VaccineDisease>? vaccineDiseases)
+        {
+            try
+            {
+                if (vaccineDiseases == null || !vaccineDiseases.Any())
+                {
+                    _logger.LogWarning("Vaccine {VaccineId} không có VaccineDiseases. Fallback về single disease {DiseaseId}", 
+                        vaccineId, primaryDiseaseId);
+                    
+                    // Fallback: Tạo CVP cho disease được chọn
+                    await CreateChildVaccineProfileAsync(
+                        childVaccineProfileRepo, childId, vaccineId, primaryDiseaseId, 
+                        appointmentId, expectedDate, totalDoses);
+                    return;
+                }
+
+                var diseaseIds = vaccineDiseases.Select(vd => vd.DiseaseId).ToList();
+                _logger.LogInformation("🦠 MULTI-DISEASE VACCINE: VaccineId {VaccineId} có thể chữa {DiseaseCount} bệnh: [{DiseaseIds}]", 
+                    vaccineId, diseaseIds.Count, string.Join(", ", diseaseIds));
+
+                // Tạo ChildVaccineProfile cho TẤT CẢ bệnh mà vaccine có thể chữa
+                foreach (var diseaseId in diseaseIds)
+                {
+                    try
+                    {
+                        _logger.LogInformation("🎯 Tạo ChildVaccineProfile cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}", 
+                            childId, vaccineId, diseaseId);
+
+                        await CreateChildVaccineProfileAsync(
+                            childVaccineProfileRepo,
+                            childId,
+                            vaccineId,
+                            diseaseId,
+                            appointmentId,
+                            expectedDate,
+                            totalDoses);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi tạo ChildVaccineProfile cho Disease {DiseaseId} của Vaccine {VaccineId}", 
+                            diseaseId, vaccineId);
+                        // Tiếp tục tạo cho các disease khác, không throw exception
+                    }
+                }
+
+                _logger.LogInformation("✅ Hoàn thành tạo ChildVaccineProfile cho {DiseaseCount} bệnh của Vaccine {VaccineId}", 
+                    diseaseIds.Count, vaccineId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi trong CreateChildVaccineProfilesForMultiDiseaseVaccineAsync cho Vaccine {VaccineId}", vaccineId);
+                throw;
+            }
+        }
+
+        #endregion
+
+        #region Cleanup Methods
+
+        /// <summary>
+        /// Tự động dọn dẹp các appointment đã quá hạn và xóa AppointmentId khỏi ChildVaccineProfile
+        /// </summary>
+        public async Task<AppointmentCleanupResultDTO> CleanupExpiredAppointmentsAsync()
+        {
+            var result = new AppointmentCleanupResultDTO
+            {
+                ProcessedAt = DateTime.UtcNow
+            };
+
+            try
+            {
+                _logger.LogInformation("Bắt đầu cleanup expired appointments");
+
+                var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
+                var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
+
+                // Lấy tất cả appointment có status "Pending" hoặc "Approval" và đã quá hạn
+                var now = DateTime.Now;
+                var expiredAppointments = await appointmentRepo.FindAsync(
+                    a => (a.Status == "Pending" || a.Status == "Approval"),
+                    includeProperties: "Schedule,Schedule.Slot"
+                );
+
+                var expiredList = new List<VaccinationAppointment>();
+                var cancelledList = new List<VaccinationAppointment>();
+
+                foreach (var appointment in expiredAppointments)
+                {
+                    if (appointment.Schedule?.Slot?.StartTime.HasValue == true)
+                    {
+                        var appointmentDateTime = appointment.Schedule.Date.ToDateTime(appointment.Schedule.Slot.StartTime.Value);
+                        
+                        // Appointment được coi là expired nếu đã qua thời gian hẹn 2 giờ
+                        if (appointmentDateTime.AddHours(2) < now)
+                        {
+                            if (appointment.Status == "Pending")
+                            {
+                                // Appointment Pending quá 24h sẽ bị hủy
+                                if (appointmentDateTime.AddHours(24) < now)
+                                {
+                                    cancelledList.Add(appointment);
+                                }
+                            }
+                            else if (appointment.Status == "Approval")
+                            {
+                                // Appointment Approval quá 2h sẽ bị coi là expired
+                                expiredList.Add(appointment);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Nếu không có StartTime, chỉ kiểm tra theo ngày
+                        var appointmentDate = appointment.Schedule?.Date;
+                        if (appointmentDate.HasValue && appointmentDate.Value < DateOnly.FromDateTime(now.AddDays(-1)))
+                        {
+                            if (appointment.Status == "Pending")
+                            {
+                                cancelledList.Add(appointment);
+                            }
+                            else if (appointment.Status == "Approval")
+                            {
+                                expiredList.Add(appointment);
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogInformation("Tìm thấy {ExpiredCount} expired appointments và {CancelledCount} cancelled appointments", 
+                    expiredList.Count, cancelledList.Count);
+
+                // Xử lý expired appointments (chuyển status thành "Expired")
+                foreach (var appointment in expiredList)
+                {
+                    await ProcessExpiredAppointmentAsync(appointment, childVaccineProfileRepo);
+                    result.ProcessedAppointmentIds.Add(appointment.AppointmentId);
+                }
+
+                // Xử lý cancelled appointments (chuyển status thành "Cancelled")
+                foreach (var appointment in cancelledList)
+                {
+                    await ProcessCancelledAppointmentAsync(appointment, childVaccineProfileRepo);
+                    result.ProcessedAppointmentIds.Add(appointment.AppointmentId);
+                }
+
+                // Lưu thay đổi
+                await _unitOfWork.SaveChangesAsync();
+
+                // Cập nhật kết quả
+                result.ExpiredAppointmentsCount = expiredList.Count;
+                result.CancelledAppointmentsCount = cancelledList.Count;
+                result.TotalProcessed = expiredList.Count + cancelledList.Count;
+                result.Message = $"Đã xử lý {result.TotalProcessed} appointments: {result.ExpiredAppointmentsCount} expired, {result.CancelledAppointmentsCount} cancelled";
+
+                _logger.LogInformation("Hoàn thành cleanup: {Message}", result.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi trong quá trình cleanup expired appointments");
+                result.HasErrors = true;
+                result.Errors.Add($"Lỗi cleanup: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Xử lý appointment đã expired (quá giờ hẹn)
+        /// </summary>
+        private async Task ProcessExpiredAppointmentAsync(VaccinationAppointment appointment, IGenericRepository<ChildVaccineProfile> childVaccineProfileRepo)
+        {
+            _logger.LogInformation("Xử lý expired appointment {AppointmentId}", appointment.AppointmentId);
+
+            // Cập nhật status appointment thành "Expired"
+            appointment.Status = "Expired";
+            appointment.UpdatedAt = DateTime.UtcNow;
+            
+            var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
+            appointmentRepo.Update(appointment);
+
+            // Xóa AppointmentId khỏi ChildVaccineProfile và đặt lại status về "Pending"
+            await RemoveAppointmentFromChildVaccineProfilesAsync(appointment.AppointmentId, childVaccineProfileRepo);
+
+            // Trả lại số lượng vaccine nếu cần
+            await RestoreVaccineQuantityOnExpiredAsync(appointment);
+        }
+
+        /// <summary>
+        /// Xử lý appointment bị cancelled (quá lâu không được approve)
+        /// </summary>
+        private async Task ProcessCancelledAppointmentAsync(VaccinationAppointment appointment, IGenericRepository<ChildVaccineProfile> childVaccineProfileRepo)
+        {
+            _logger.LogInformation("Xử lý cancelled appointment {AppointmentId}", appointment.AppointmentId);
+
+            // Cập nhật status appointment thành "Cancelled"
+            appointment.Status = "Cancelled";
+            appointment.UpdatedAt = DateTime.UtcNow;
+            appointment.Note = "Tự động hủy do quá thời gian chờ xác nhận";
+            
+            var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
+            appointmentRepo.Update(appointment);
+
+            // Xóa AppointmentId khỏi ChildVaccineProfile và đặt lại status về "Pending"
+            await RemoveAppointmentFromChildVaccineProfilesAsync(appointment.AppointmentId, childVaccineProfileRepo);
+
+            // Trả lại số lượng vaccine
+            await RestoreVaccineQuantityOnCancelAsync(appointment);
+        }
+
+        /// <summary>
+        /// Xóa AppointmentId khỏi ChildVaccineProfile và đặt lại status về "Pending"
+        /// </summary>
+        private async Task RemoveAppointmentFromChildVaccineProfilesAsync(int appointmentId, IGenericRepository<ChildVaccineProfile> childVaccineProfileRepo)
+        {
+            var childVaccineProfiles = await childVaccineProfileRepo.FindAsync(p => p.AppointmentId == appointmentId);
+
+            foreach (var profile in childVaccineProfiles)
+            {
+                _logger.LogInformation("Xóa AppointmentId {AppointmentId} khỏi ChildVaccineProfile {ProfileId}", 
+                    appointmentId, profile.VaccineProfileId);
+
+                // Xóa AppointmentId và đặt lại status về "Pending"
+                profile.AppointmentId = null;
+                profile.Status = "Pending";
+                profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                
+                childVaccineProfileRepo.Update(profile);
+            }
+
+            _logger.LogInformation("Đã xóa AppointmentId khỏi {Count} ChildVaccineProfiles", childVaccineProfiles.Count());
+        }
+
+        /// <summary>
+        /// Trả lại số lượng vaccine khi appointment expired
+        /// </summary>
+        private async Task RestoreVaccineQuantityOnExpiredAsync(VaccinationAppointment appointment)
+        {
+            try
+            {
+                // Logic tương tự như RestoreVaccineQuantityOnCancelAsync nhưng với log khác
+                _logger.LogInformation("Trả lại số lượng vaccine cho expired appointment {AppointmentId}", appointment.AppointmentId);
+                await RestoreVaccineQuantityOnCancelAsync(appointment);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi trả lại số lượng vaccine cho expired appointment {AppointmentId}", appointment.AppointmentId);
+            }
         }
 
         #endregion

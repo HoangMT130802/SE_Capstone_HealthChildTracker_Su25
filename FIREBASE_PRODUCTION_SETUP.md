@@ -19,27 +19,41 @@ GitHub/Git Guardian sẽ chặn nếu commit Firebase credentials vào code!
 
 **🖥️ Trên Production Server:**
 ```bash
-# Tạo environment variable với toàn bộ nội dung JSON
-export FIREBASE_SERVICE_ACCOUNT='{"type":"service_account","project_id":"kidtrack-78a49","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"firebase-adminsdk-xxx@kidtrack-78a49.iam.gserviceaccount.com",...}'
+# Tạo environment variable với toàn bộ nội dung JSON (tên mới cho Docker)
+export FIREBASE_ACCOUNT_SERVICE='{"type":"service_account","project_id":"kidtrack-78a49","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"firebase-adminsdk-xxx@kidtrack-78a49.iam.gserviceaccount.com",...}'
 
 # Hoặc đặt vào file .env
-echo 'FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}' >> /app/.env
+echo 'FIREBASE_ACCOUNT_SERVICE={"type":"service_account",...}' >> /app/.env
+
+# Backward compatibility (code vẫn support cả 2 tên)
+export FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
 ```
 
 **⚙️ Với Docker:**
 ```dockerfile
 # Dockerfile
-ENV FIREBASE_SERVICE_ACCOUNT=""
+ENV FIREBASE_ACCOUNT_SERVICE=""
 
 # Khi chạy container
-docker run -e FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}' your-app
+docker run -e FIREBASE_ACCOUNT_SERVICE='{"type":"service_account",...}' your-app
+
+# Hoặc với docker-compose.yml
+version: '3.8'
+services:
+  api:
+    image: your-app:latest
+    environment:
+      - FIREBASE_ACCOUNT_SERVICE={"type":"service_account",...}
 ```
 
 **☁️ Với Cloud Platforms:**
 
 **Azure App Service:**
 ```bash
-# Thêm Application Setting
+# Thêm Application Setting (tên mới)
+az webapp config appsettings set --name your-app --resource-group your-rg --settings FIREBASE_ACCOUNT_SERVICE='{"type":"service_account",...}'
+
+# Hoặc tên cũ (vẫn work)
 az webapp config appsettings set --name your-app --resource-group your-rg --settings FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
 ```
 
@@ -47,12 +61,20 @@ az webapp config appsettings set --name your-app --resource-group your-rg --sett
 ```bash
 # Thêm Environment Variable qua AWS Console
 # Configuration → Software → Environment properties
+# Key: FIREBASE_ACCOUNT_SERVICE (khuyến nghị)
+# Value: {"type":"service_account",...}
+
+# Hoặc dùng tên cũ (vẫn work)
 # Key: FIREBASE_SERVICE_ACCOUNT
 # Value: {"type":"service_account",...}
 ```
 
 **Heroku:**
 ```bash
+# Tên mới (khuyến nghị)
+heroku config:set FIREBASE_ACCOUNT_SERVICE='{"type":"service_account",...}' -a your-app
+
+# Tên cũ (vẫn work)
 heroku config:set FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}' -a your-app
 ```
 
@@ -168,6 +190,39 @@ curl https://your-api.com/api/TestPush/firebase-status
 
 ## 🎯 **WORKFLOW DEPLOY:**
 
+### **📦 Docker Deployment:**
+```bash
+# 1. Build Docker image
+docker build -t your-app:latest .
+
+# 2. Chạy với environment variable
+docker run -d \
+  -p 8080:80 \
+  -e FIREBASE_ACCOUNT_SERVICE='{"type":"service_account","project_id":"kidtrack-78a49",...}' \
+  your-app:latest
+
+# 3. Verify
+curl http://localhost:8080/api/TestPush/firebase-status
+```
+
+### **🐳 Docker Compose:**
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  api:
+    build: .
+    ports:
+      - "8080:80"
+    environment:
+      - FIREBASE_ACCOUNT_SERVICE={"type":"service_account","project_id":"kidtrack-78a49",...}
+    restart: unless-stopped
+
+# Chạy
+docker-compose up -d
+```
+
+### **☁️ Traditional Server:**
 ```bash
 # 1. Code commit (KHÔNG có credentials)
 git add .
@@ -175,7 +230,7 @@ git commit -m "Add FCM support"
 git push origin main
 
 # 2. Trên production server
-export FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
+export FIREBASE_ACCOUNT_SERVICE='{"type":"service_account",...}'
 systemctl restart your-app
 
 # 3. Verify
@@ -183,3 +238,15 @@ curl https://your-api.com/api/TestPush/firebase-status
 ```
 
 **✅ Với cách này, code sẽ deploy an toàn mà không bị GitHub chặn!**
+
+---
+
+## 🎁 **CHO NGƯỜI DEPLOY:**
+
+Bạn chỉ cần:
+1. **Download Firebase JSON file** từ Firebase Console
+2. **Copy toàn bộ nội dung JSON** vào biến `FIREBASE_ACCOUNT_SERVICE`
+3. **Set environment variable** khi chạy Docker/app
+4. **Khởi động ứng dụng** → Firebase sẽ tự hoạt động!
+
+**🔥 Không cần sửa code gì thêm!**
