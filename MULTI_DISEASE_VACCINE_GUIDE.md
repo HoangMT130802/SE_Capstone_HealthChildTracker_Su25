@@ -224,3 +224,4 @@ Hệ thống ghi log chi tiết:
 2. **Storage**: Tăng số lượng record trong ChildVaccineProfile table
 3. **UI/UX**: Frontend cần hiển thị đầy đủ thông tin về tất cả diseases được bảo vệ
 4. **Validation**: Đảm bảo không tạo duplicate CVP cho cùng Child-Vaccine-Disease-Dose
+
