@@ -9,6 +9,12 @@ using Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 using BC = BCrypt.Net.BCrypt;
 using Repositories.Models.QueryModels;
+using CloudinaryDotNet;
+using Microsoft.Extensions.Options;
+using Repositories.Models;
+using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Http;
+using System.Linq;
 
 namespace Services.Implementations
 {
@@ -19,19 +25,30 @@ namespace Services.Implementations
         private readonly IJwtService _jwtService;
         private readonly ILogger<AuthenticationService> _logger;
         private readonly IEmailService _emailService;
-
+        private readonly Cloudinary _cloudinary;
         public AuthenticationService(
-            IUnitOfWork unitOfWork,
-            IMapper mapper,
-            IJwtService jwtService,
-            ILogger<AuthenticationService> logger,
-            IEmailService emailService)
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        IJwtService jwtService,
+        ILogger<AuthenticationService> logger,
+        IEmailService emailService,
+        IOptions<CloudinarySettings> cloudinaryConfig)
         {
-            _unitOfWork = unitOfWork;
-            _mapper = mapper;
-            _jwtService = jwtService;
-            _logger = logger;
-            _emailService = emailService;
+            _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+            _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+            _jwtService = jwtService ?? throw new ArgumentNullException(nameof(jwtService));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            var config = cloudinaryConfig.Value;
+            if (string.IsNullOrEmpty(config.CloudName) || string.IsNullOrEmpty(config.ApiKey) || string.IsNullOrEmpty(config.ApiSecret))
+            {
+                throw new ArgumentException("Cloudinary configuration is incomplete or invalid.");
+            }
+            _cloudinary = new Cloudinary(new CloudinaryDotNet.Account(
+                config.CloudName,
+                config.ApiKey,
+                config.ApiSecret
+            ));
         }
 
         /// <summary>
@@ -41,7 +58,61 @@ namespace Services.Implementations
         {
             return role == "FacilityStaff";
         }
+        private async Task<string> UploadFileToCloudinary(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                throw new ArgumentException("License file is required");
 
+            // Limit file size to 5MB
+            if (file.Length > 5 * 1024 * 1024)
+                throw new ArgumentException("File size must not exceed 5MB");
+
+            // Allow only pdf, jpg, jpeg, png
+            var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(fileExtension))
+                throw new ArgumentException("File must be a PDF or image (jpg, jpeg, png)");
+
+            using var stream = file.OpenReadStream();
+
+            UploadResult uploadResult;
+
+            if (fileExtension == ".pdf")
+            {
+                // PDF => use RawUploadParams
+                var uploadParams = new RawUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "facility_licenses",
+                    UseFilename = true,
+                    UniqueFilename = false
+                };
+
+                uploadResult = await _cloudinary.UploadAsync(uploadParams);
+            }
+            else
+            {
+                // Image => use ImageUploadParams
+                var uploadParams = new ImageUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "facility_licenses",
+                    UseFilename = true,
+                    UniqueFilename = false
+                };
+
+                uploadResult = await _cloudinary.UploadAsync(uploadParams);
+            }
+
+            if (uploadResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                _logger.LogError($"Cloudinary upload failed: Status={uploadResult.StatusCode}, Error={uploadResult.Error?.Message}");
+                throw new InvalidOperationException($"Failed to upload file to Cloudinary: {uploadResult.Error?.Message}");
+            }
+
+            _logger.LogInformation($"Uploaded file: {uploadResult.SecureUrl}");
+            return uploadResult.SecureUrl.AbsoluteUri;
+        }
         public async Task<UserResponseDTO> LoginAsync(LoginRequestDTO request)
         {
             try
@@ -51,7 +122,7 @@ namespace Services.Implementations
                     throw new ArgumentException("AccountName và mật khẩu không được để trống");
                 }
 
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(u =>
                     (u.AccountName.ToLower() == request.AccountName.ToLower() ||
                      u.Email.ToLower() == request.AccountName.ToLower()));
@@ -174,7 +245,7 @@ namespace Services.Implementations
                     throw new ArgumentException("AccountName và mật khẩu không được để trống");
                 }
 
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(u =>
                     (u.AccountName.ToLower() == request.AccountName.ToLower() ||
                      u.Email.ToLower() == request.AccountName.ToLower()));
@@ -302,7 +373,7 @@ namespace Services.Implementations
 
         private async Task ValidateRegistrationRequest(RegisterRequestDTO request)
         {
-            var accountRepository = _unitOfWork.GetRepository<Account>();
+            var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
 
             if (string.IsNullOrEmpty(request.AccountName) || string.IsNullOrEmpty(request.Password))
             {
@@ -347,7 +418,7 @@ namespace Services.Implementations
             try
             {
                 // Validate admin account
-                var adminAccountRepository = _unitOfWork.GetRepository<Account>();
+                var adminAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var adminAccount = await adminAccountRepository.GetAsync(a => a.AccountId == adminAccountId);
                 
                 if (adminAccount == null || adminAccount.Role != "Admin")
@@ -365,8 +436,8 @@ namespace Services.Implementations
                     var hashedPassword = BC.HashPassword(request.Password);
                     
                     // ✅ Create Account với Role = "FacilityStaff"
-                    var accountRepository = _unitOfWork.GetRepository<Account>();
-                    var newAccount = new Account
+                    var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
+                    var newAccount = new Repositories.Entities.Account
                     {
                         AccountName = request.AccountName,
                         Email = request.Email,
@@ -425,12 +496,12 @@ namespace Services.Implementations
             try
             {
                 // Validate admin account
-                var adminAccountRepository = _unitOfWork.GetRepository<Account>();
+                var adminAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var adminAccount = await adminAccountRepository.GetAsync(a => a.AccountId == adminAccountId);
-                
+
                 if (adminAccount == null || adminAccount.Role != "Admin")
                 {
-                    throw new UnauthorizedAccessException("Chỉ Admin mới có quyền tạo tài khoản Manager với cơ sở");
+                    throw new UnauthorizedAccessException("Only Admin can create Manager account with facility");
                 }
 
                 // Validate manager account uniqueness
@@ -441,23 +512,23 @@ namespace Services.Implementations
                 var existingFacility = await facilityRepository.GetAsync(f => f.LicenseNumber == request.LicenseNumber && f.Status > 0);
                 if (existingFacility != null)
                 {
-                    throw new InvalidOperationException("Số giấy phép này đã được sử dụng bởi cơ sở khác");
+                    throw new InvalidOperationException("This license number is already used by another facility");
                 }
 
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
-                
+
                 try
                 {
                     // 1. Create Manager Account
                     var hashedPassword = BC.HashPassword(request.Password);
-                    
-                    var accountRepository = _unitOfWork.GetRepository<Account>();
-                    var newManagerAccount = new Account
+
+                    var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
+                    var newManagerAccount = new Repositories.Entities.Account
                     {
                         AccountName = request.AccountName,
                         Email = request.ManagerEmail,
                         Password = hashedPassword,
-                        Role = "FacilityStaff", // Manager có role FacilityStaff
+                        Role = "FacilityStaff", // Manager has FacilityStaff role
                         Status = true,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -480,7 +551,8 @@ namespace Services.Implementations
                         Description = request.FacilityDescription ?? "",
                         Status = 1, // Active
                         CreatedAt = currentTimestamp,
-                        UpdatedAt = currentTimestamp
+                        UpdatedAt = currentTimestamp,
+                        LicenseFile = await UploadFileToCloudinary(request.LicenseFile) // Upload license file
                     };
 
                     await facilityRepository.AddAsync(newFacility);
@@ -498,7 +570,7 @@ namespace Services.Implementations
                         Email = request.ManagerEmail,
                         Phone = request.ManagerPhone,
                         Position = "Manager",
-                        Description = request.ManagerDescription ?? "Quản lý cơ sở",
+                        Description = request.ManagerDescription ?? "Facility Manager",
                         Status = true,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -513,7 +585,7 @@ namespace Services.Implementations
 
                     // Prepare response
                     var managerWithAccount = await facilityStaffRepository.GetAsync(
-                        s => s.StaffId == newManagerStaff.StaffId, 
+                        s => s.StaffId == newManagerStaff.StaffId,
                         includeProperties: "Account"
                     );
 
@@ -549,7 +621,7 @@ namespace Services.Implementations
             try
             {
                 // Validate manager account and get facility info
-                var managerAccountRepository = _unitOfWork.GetRepository<Account>();
+                var managerAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
                 
                 if (managerAccount == null)
@@ -579,8 +651,8 @@ namespace Services.Implementations
                     var hashedPassword = BC.HashPassword(request.Password);
                     
                     // ✅ Create Account với Role = "FacilityStaff" tự động
-                    var accountRepository = _unitOfWork.GetRepository<Account>();
-                    var newAccount = new Account
+                    var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
+                    var newAccount = new Repositories.Entities.Account
                     {
                         AccountName = request.AccountName,
                         Email = request.Email,
@@ -678,7 +750,7 @@ namespace Services.Implementations
 
         private async Task ValidateStaffCreationRequest(string accountName, string email)
         {
-            var accountRepository = _unitOfWork.GetRepository<Account>();
+            var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
 
             if (string.IsNullOrEmpty(accountName))
             {
@@ -770,7 +842,7 @@ namespace Services.Implementations
                 }
 
                 // Check permission: Admin can update all, Manager can update in their facility, user can update themselves
-                var currentAccountRepository = _unitOfWork.GetRepository<Account>();
+                var currentAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var currentAccount = await currentAccountRepository.GetAsync(a => a.AccountId == currentUserId);
                 
                 if (currentAccount == null)
@@ -897,7 +969,7 @@ namespace Services.Implementations
         {
             try
             {
-                var currentAccountRepository = _unitOfWork.GetRepository<Account>();
+                var currentAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var currentAccount = await currentAccountRepository.GetAsync(a => a.AccountId == currentUserId);
                 
                 if (currentAccount == null || currentAccount.Role != "Admin")
@@ -905,7 +977,7 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Chỉ Admin mới có quyền ban/unban tài khoản");
                 }
 
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var targetAccount = await accountRepository.GetAsync(a => a.AccountId == request.AccountId);
                 
                 if (targetAccount == null)
@@ -943,7 +1015,7 @@ namespace Services.Implementations
         {
             try
             {
-                var managerAccountRepository = _unitOfWork.GetRepository<Account>();
+                var managerAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
                 
                 if (managerAccount == null)
@@ -986,7 +1058,7 @@ namespace Services.Implementations
                     await _unitOfWork.SaveChangesAsync();
 
                     // Then delete Account
-                    var accountRepository = _unitOfWork.GetRepository<Account>();
+                    var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                     accountRepository.Delete(staff.Account);
                     await _unitOfWork.SaveChangesAsync();
 
@@ -1012,7 +1084,7 @@ namespace Services.Implementations
             try
             {
                 
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var currentAccount = await accountRepository.GetAsync(a => a.AccountId == currentUserId);
                 if (currentAccount == null || currentAccount.Role != "Admin")
                 {
@@ -1049,7 +1121,7 @@ namespace Services.Implementations
         {
             try
             {
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(u => u.Email.ToLower() == email.ToLower());
                 
                 if (account != null)
@@ -1077,7 +1149,7 @@ namespace Services.Implementations
         {
             try
             {
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(u => u.Email.ToLower() == request.Email.ToLower());
                 
                 if (account != null)
@@ -1103,7 +1175,7 @@ namespace Services.Implementations
         {
             try
             {
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(u => u.Email.ToLower() == request.Email.ToLower());
                 
                 if (account == null)
@@ -1145,7 +1217,7 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Mã OTP không hợp lệ hoặc đã hết hạn");
                 }
 
-                var accountRepository = _unitOfWork.GetRepository<Account>();
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var account = await accountRepository.GetAsync(u => u.Email.ToLower() == request.Email.ToLower());
                 
                 if (account == null)
@@ -1183,8 +1255,8 @@ namespace Services.Implementations
                     var hashedPassword = BC.HashPassword(request.Password);
                     
                     // Tạo Account
-                    var accountRepository = _unitOfWork.GetRepository<Account>();
-                    var newAccount = _mapper.Map<Account>(request);
+                    var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
+                    var newAccount = _mapper.Map<Repositories.Entities.Account>(request);
                     newAccount.Password = hashedPassword;
                     newAccount.CreatedAt = DateTime.UtcNow;
                     newAccount.UpdatedAt = DateTime.UtcNow;
