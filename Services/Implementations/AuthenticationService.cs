@@ -615,7 +615,6 @@ namespace Services.Implementations
                 throw;
             }
         }
-
         public async Task<StaffResponseDTO> CreateStaffAsync(CreateStaffDTO request, int managerAccountId)
         {
             try
@@ -623,41 +622,38 @@ namespace Services.Implementations
                 // Validate manager account and get facility info
                 var managerAccountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                 var managerAccount = await managerAccountRepository.GetAsync(a => a.AccountId == managerAccountId);
-                
+
                 if (managerAccount == null)
                 {
-                    throw new UnauthorizedAccessException("Tài khoản Manager không tồn tại");
+                    throw new UnauthorizedAccessException("Manager account does not exist");
                 }
 
-                // ✅ Lấy thông tin facility từ Manager
+                // Get facility info from Manager
                 var staffRepository = _unitOfWork.GetRepository<FacilityStaff>();
                 var managerStaff = await staffRepository.GetAsync(s => s.AccountId == managerAccountId);
-                
+
                 if (managerStaff == null || managerStaff.Position != "Manager")
                 {
-                    throw new UnauthorizedAccessException("Chỉ Manager mới có quyền tạo tài khoản Staff/Doctor");
+                    throw new UnauthorizedAccessException("Only Manager can create Staff/Doctor accounts");
                 }
 
-                // ✅ FacilityId được lấy từ Manager, không cần từ request
+                // FacilityId is obtained from Manager
                 var facilityId = managerStaff.FacilityId;
-
-                await ValidateStaffCreationRequestWithPhone(request.AccountName, request.Email, request.Phone ?? "");
-
                 using var transaction = await _unitOfWork.BeginTransactionAsync();
-                
+
                 try
                 {
                     // Hash password
                     var hashedPassword = BC.HashPassword(request.Password);
-                    
-                    // ✅ Create Account với Role = "FacilityStaff" tự động
+
+                    // Create Account with Role = "FacilityStaff" automatically
                     var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
                     var newAccount = new Repositories.Entities.Account
                     {
                         AccountName = request.AccountName,
                         Email = request.Email,
                         Password = hashedPassword,
-                        Role = "FacilityStaff", // ✅ Set tự động
+                        Role = "FacilityStaff",
                         Status = true,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -666,37 +662,37 @@ namespace Services.Implementations
                     await accountRepository.AddAsync(newAccount);
                     await _unitOfWork.SaveChangesAsync();
 
-                    // ✅ Create FacilityStaff với FacilityId từ Manager
+                    // Create FacilityStaff with FacilityId from Manager
                     var newStaff = new FacilityStaff
                     {
                         AccountId = newAccount.AccountId,
-                        FacilityId = facilityId, // ✅ Từ Manager
+                        FacilityId = facilityId,
                         FullName = request.FullName,
                         Email = request.Email,
                         Phone = request.Phone,
-                        Position = request.Position, // "Doctor" hoặc "Staff"
+                        Position = request.Position, // "Doctor" or "Staff"
                         Description = request.Description ?? "",
                         Status = true,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
-                    
-                    // Log values để debug
+
+                    // Log values for debugging
                     _logger.LogInformation($"Creating {request.Position} for Manager's facility - FacilityId: {facilityId}, Position: {newStaff.Position}, FullName: {newStaff.FullName}");
 
                     await staffRepository.AddAsync(newStaff);
                     await _unitOfWork.SaveChangesAsync();
 
-                    // ✅ Tạo DoctorProfile nếu position = "Doctor"
+                    // Create DoctorProfile if position = "Doctor"
                     if (request.Position.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
                     {
                         var doctorProfileRepository = _unitOfWork.GetRepository<DoctorProfile>();
                         var doctorProfile = new DoctorProfile
                         {
-                            DoctorId = newStaff.StaffId, // FK to FacilityStaff
+                            DoctorId = newStaff.StaffId,
                             Age = request.Age ?? 0,
                             Specialization = request.Specialization ?? "",
-                            Certifications = request.Certifications ?? "",
+                            Certifications = request.CertificationFile != null ? await UploadFileToCloudinary(request.CertificationFile) : "",
                             University = request.University ?? "",
                             Bio = request.Bio ?? "",
                             CreatedAt = DateTime.UtcNow,
@@ -705,21 +701,21 @@ namespace Services.Implementations
 
                         await doctorProfileRepository.AddAsync(doctorProfile);
                         await _unitOfWork.SaveChangesAsync();
-                        
-                        _logger.LogInformation($"DoctorProfile created for Doctor {newStaff.FullName} (StaffId: {newStaff.StaffId})");
+
+                        _logger.LogInformation($"Tạo DoctorProfile cho Doctor {newStaff.FullName} (StaffId: {newStaff.StaffId})");
                     }
 
                     await transaction.CommitAsync();
 
                     // Prepare response
                     var staffWithAccount = await staffRepository.GetAsync(
-                        s => s.StaffId == newStaff.StaffId, 
+                        s => s.StaffId == newStaff.StaffId,
                         includeProperties: "Account"
                     );
 
                     var response = _mapper.Map<StaffResponseDTO>(staffWithAccount);
-                    
-                    // ✅ Load DoctorProfile nếu position = "Doctor"
+
+                    // Load DoctorProfile if position = "Doctor"
                     if (newStaff.Position.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
                     {
                         var doctorProfileRepository = _unitOfWork.GetRepository<DoctorProfile>();
@@ -729,8 +725,8 @@ namespace Services.Implementations
                             response.DoctorProfile = _mapper.Map<DoctorProfileDTO>(doctorProfile);
                         }
                     }
-                    
-                    response.Token = _jwtService.GenerateToken(newAccount, facilityId); // ✅ Include FacilityId
+
+                    response.Token = _jwtService.GenerateToken(newAccount, facilityId);
 
                     _logger.LogInformation($"{request.Position} {newAccount.AccountName} created successfully by Manager {managerAccount.AccountName}");
                     return response;
@@ -747,8 +743,9 @@ namespace Services.Implementations
                 throw;
             }
         }
+    
 
-        private async Task ValidateStaffCreationRequest(string accountName, string email)
+    private async Task ValidateStaffCreationRequest(string accountName, string email)
         {
             var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
 

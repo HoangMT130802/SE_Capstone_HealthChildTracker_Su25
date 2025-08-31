@@ -260,17 +260,21 @@ public class SurveyService : ISurveyService
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
             await ValidateManagerAccess(accountId);
+            survey.Status = "Inactive";  
+            survey.UpdatedAt = DateTime.UtcNow;
 
-            surveyRepository.Delete(survey);
+            surveyRepository.Update(survey);
             await _unitOfWork.SaveChangesAsync();
-            _logger.LogInformation($"Deleted survey with ID {surveyId} by AccountId {accountId}");
+
+            _logger.LogInformation($"Marked survey ID {surveyId} as Inactive by AccountId {accountId}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Error deleting survey with ID {surveyId} by AccountId {accountId}");
+            _logger.LogError(ex, $"Error marking survey with ID {surveyId} as Inactive by AccountId {accountId}");
             throw;
         }
     }
+
 
     public async Task UpdateSurveyAsync(int surveyId, CreateSurveyDto surveyDto, int accountId)
     {

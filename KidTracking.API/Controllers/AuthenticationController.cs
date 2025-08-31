@@ -170,9 +170,9 @@ namespace KidTracking.API.Controllers
             }
         }
 
-    [HttpPost("create-staff")]
+        [HttpPost("create-staff")]
         [Authorize(Roles = "FacilityStaff")]
-        public async Task<ActionResult<StaffResponseDTO>> CreateStaff([FromBody] CreateStaffDTO request)
+        public async Task<ActionResult<StaffResponseDTO>> CreateStaff([FromForm] CreateStaffDTO request)
         {
             try
             {
@@ -187,22 +187,22 @@ namespace KidTracking.API.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                _logger.LogWarning($"Create staff unauthorized: {ex.Message}");
+                _logger.LogWarning($"Tạo nhân viên không được phép: {ex.Message}");
                 return Forbid(ex.Message);
             }
             catch (ArgumentException ex)
             {
-                _logger.LogWarning($"Create staff validation failed: {ex.Message}");
+                _logger.LogWarning($"Xác thực tạo nhân viên thất bại: {ex.Message}");
                 return BadRequest(new { message = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning($"Create staff failed: {ex.Message}");
+                _logger.LogWarning($"Tạo nhân viên thất bại: {ex.Message}");
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Create staff error: {ex.Message}");
+                _logger.LogError($"Lỗi khi tạo nhân viên: {ex.Message}");
                 return StatusCode(500, new { message = "Đã có lỗi xảy ra khi tạo tài khoản Staff/Doctor" });
             }
         }

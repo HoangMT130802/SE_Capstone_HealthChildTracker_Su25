@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using System.ComponentModel.DataAnnotations;
 
 namespace Contracts.DTOs.Authentication
@@ -27,7 +28,7 @@ namespace Contracts.DTOs.Authentication
         // ✅ Optional DoctorProfile fields (chỉ dùng khi Position = "Doctor")
         public int? Age { get; set; }
         public string? Specialization { get; set; }
-        public string? Certifications { get; set; }
+        public IFormFile? CertificationFile { get; set; }
         public string? University { get; set; }
         public string? Bio { get; set; }
     }
