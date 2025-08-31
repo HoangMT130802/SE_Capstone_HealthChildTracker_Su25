@@ -3861,10 +3861,31 @@ namespace Services.Implementations
                 // 11.1. Tạo VaccinationAppointmentDetails cho appointment mới - ĐẢM BẢO LUÔN CÓ
                 await CreateVaccinationAppointmentDetailForCancelRebookAsync(currentAppointment, newAppointment, childVaccineProfile, newSchedule, request.Note);
 
-                // 12. Update ChildVaccineProfile
+                // 12. Update ChildVaccineProfile với validation consistency
                 childVaccineProfile.AppointmentId = newAppointment.AppointmentId;
                 childVaccineProfile.Status = "Pending"; // ✅ Đặt thành "Pending" để nhất quán với rebook API
                 childVaccineProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                // ✅ FUTURE-PROOF: Validate vaccine-disease consistency (trong trường hợp tương lai có thay đổi vaccine)
+                var vaccineRepo = _unitOfWork.GetRepository<Vaccine>();
+                var currentVaccine = await vaccineRepo.GetAsync(v => v.VaccineId == childVaccineProfile.VaccineId, "VaccineDiseases");
+                
+                if (currentVaccine?.VaccineDiseases != null)
+                {
+                    var canTreatDisease = currentVaccine.VaccineDiseases.Any(vd => vd.DiseaseId == childVaccineProfile.DiseaseId);
+                    if (!canTreatDisease)
+                    {
+                        _logger.LogWarning("⚠️ CONSISTENCY WARNING: Vaccine {VaccineId} không thể chữa Disease {DiseaseId} trong ChildVaccineProfile {ProfileId} sau rebook", 
+                            childVaccineProfile.VaccineId, childVaccineProfile.DiseaseId, childVaccineProfile.VaccineProfileId);
+                        
+                        // Có thể thêm logic auto-fix ở đây trong tương lai nếu cần
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Vaccine-Disease consistency validated cho ChildVaccineProfile {ProfileId} sau rebook", 
+                            childVaccineProfile.VaccineProfileId);
+                    }
+                }
 
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();

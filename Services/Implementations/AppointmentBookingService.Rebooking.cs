@@ -245,28 +245,55 @@ namespace Services.Implementations
                     }
                 }
 
-                // 4. Xử lý Order (ưu tiên OrderId từ request, nếu không có thì dùng validation)
+                // 4. Xử lý Order với support chọn vaccine khác (ưu tiên OrderDetailId, sau đó OrderId, cuối cùng validation)
                 Order? usedOrder = null;
+                OrderDetail? selectedOrderDetail = null;
                 int? remainingVaccines = null;
+                int selectedVaccineId = profile.VaccineId; // Default là vaccine hiện tại
+                int selectedDiseaseId = profile.DiseaseId; // Default là disease hiện tại
                 
-                // ✅ Ưu tiên OrderId từ request nếu có
-                if (request.OrderId.HasValue)
+                // ✅ PRIORITY 1: OrderDetailId từ request (cho phép chọn vaccine khác)
+                if (request.OrderDetailId.HasValue)
+                {
+                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                    selectedOrderDetail = await orderDetailRepo.GetAsync(
+                        od => od.OrderDetailId == request.OrderDetailId.Value && od.RemainingQuantity > 0,
+                        includeProperties: "Order,FacilityVaccine,FacilityVaccine.Vaccine,Disease"
+                    );
+
+                    if (selectedOrderDetail != null)
+                    {
+                        usedOrder = selectedOrderDetail.Order;
+                        remainingVaccines = selectedOrderDetail.RemainingQuantity;
+                        selectedVaccineId = selectedOrderDetail.FacilityVaccine?.VaccineId ?? profile.VaccineId;
+                        selectedDiseaseId = selectedOrderDetail.DiseaseId;
+                        
+                        _logger.LogInformation("✅ Chọn vaccine từ OrderDetailId {OrderDetailId}: VaccineId {VaccineId} → {NewVaccineId}, DiseaseId {DiseaseId} → {NewDiseaseId}", 
+                            request.OrderDetailId.Value, profile.VaccineId, selectedVaccineId, profile.DiseaseId, selectedDiseaseId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("OrderDetailId {OrderDetailId} không tồn tại hoặc đã hết", request.OrderDetailId.Value);
+                    }
+                }
+                // ✅ PRIORITY 2: OrderId từ request với vaccine hiện tại
+                else if (request.OrderId.HasValue)
                 {
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     usedOrder = await orderRepo.GetAsync(
                         o => o.OrderId == request.OrderId.Value,
-                        includeProperties: "OrderDetails,OrderDetails.FacilityVaccine"
+                        includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
                     );
 
                     if (usedOrder != null)
                     {
-                        var relevantOrderDetail = usedOrder.OrderDetails?
+                        selectedOrderDetail = usedOrder.OrderDetails?
                             .FirstOrDefault(od => od.FacilityVaccine != null && od.FacilityVaccine.VaccineId == profile.VaccineId 
-                                               && od.DiseaseId == profile.DiseaseId);
+                                               && od.DiseaseId == profile.DiseaseId && od.RemainingQuantity > 0);
                         
-                        if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
+                        if (selectedOrderDetail != null)
                         {
-                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            remainingVaccines = selectedOrderDetail.RemainingQuantity;
                             _logger.LogInformation("Sử dụng OrderId từ request: {OrderId}, RemainingQuantity: {RemainingQuantity}", 
                                 request.OrderId.Value, remainingVaccines);
                         }
@@ -277,24 +304,24 @@ namespace Services.Implementations
                         }
                     }
                 }
-                // Fallback: Sử dụng validation nếu không có OrderId từ request
+                // ✅ PRIORITY 3: Fallback sử dụng validation nếu không có OrderId từ request
                 else if (validation.HasApplicableOrder && validation.ApplicableOrder != null)
                 {
                     var orderRepo = _unitOfWork.GetRepository<Order>();
                     usedOrder = await orderRepo.GetAsync(
                         o => o.OrderId == validation.ApplicableOrder.OrderId,
-                        includeProperties: "OrderDetails,OrderDetails.FacilityVaccine"
+                        includeProperties: "OrderDetails,OrderDetails.FacilityVaccine,OrderDetails.Disease"
                     );
 
                     if (usedOrder != null)
                     {
-                        var relevantOrderDetail = usedOrder.OrderDetails?
+                        selectedOrderDetail = usedOrder.OrderDetails?
                             .FirstOrDefault(od => od.FacilityVaccine != null && od.FacilityVaccine.VaccineId == profile.VaccineId 
-                                               && od.DiseaseId == profile.DiseaseId);
+                                               && od.DiseaseId == profile.DiseaseId && od.RemainingQuantity > 0);
                         
-                        if (relevantOrderDetail != null && relevantOrderDetail.RemainingQuantity > 0)
+                        if (selectedOrderDetail != null)
                         {
-                            remainingVaccines = relevantOrderDetail.RemainingQuantity;
+                            remainingVaccines = selectedOrderDetail.RemainingQuantity;
                             _logger.LogInformation("Sử dụng OrderId từ validation: {OrderId}, RemainingQuantity: {RemainingQuantity}", 
                                 validation.ApplicableOrder.OrderId, remainingVaccines);
                         }
@@ -317,7 +344,33 @@ namespace Services.Implementations
                 await appointmentRepo.AddAsync(newAppointment);
                 await _unitOfWork.SaveChangesAsync();
 
-                // 6. Cập nhật ChildVaccineProfile với AppointmentId và Status
+                // 6. Cập nhật ChildVaccineProfile với vaccine/disease mới (nếu có thay đổi)
+                var hasVaccineChange = selectedVaccineId != profile.VaccineId;
+                var hasDiseaseChange = selectedDiseaseId != profile.DiseaseId;
+                
+                if (hasVaccineChange || hasDiseaseChange)
+                {
+                    _logger.LogInformation("🔄 Rebook với thay đổi: VaccineId {OldVaccine} → {NewVaccine}, DiseaseId {OldDisease} → {NewDisease}", 
+                        profile.VaccineId, selectedVaccineId, profile.DiseaseId, selectedDiseaseId);
+                        
+                    // Validate vaccine mới có thể chữa disease mới không
+                    var vaccineRepo = _unitOfWork.GetRepository<Vaccine>();
+                    var newVaccine = await vaccineRepo.GetAsync(v => v.VaccineId == selectedVaccineId, "VaccineDiseases");
+                    
+                    if (newVaccine?.VaccineDiseases != null)
+                    {
+                        var canTreatNewDisease = newVaccine.VaccineDiseases.Any(vd => vd.DiseaseId == selectedDiseaseId);
+                        if (!canTreatNewDisease)
+                        {
+                            return CreateErrorResponse<AppointmentRebookingResponseDTO>($"Vaccine được chọn không thể chữa bệnh được chọn. Vui lòng kiểm tra lại.");
+                        }
+                    }
+                    
+                    // Update VaccineId và DiseaseId
+                    profile.VaccineId = selectedVaccineId;
+                    profile.DiseaseId = selectedDiseaseId;
+                }
+                
                 profile.AppointmentId = newAppointment.AppointmentId;
                 profile.Status = "Pending"; // Cập nhật status từ "Scheduled" thành "Pending" khi có appointmentId
                 profileRepo.Update(profile);
@@ -328,6 +381,17 @@ namespace Services.Implementations
 
                 // 8. Tạo VaccinationAppointmentDetail cho TẤT CẢ trường hợp (có Order hoặc không)
                 await CreateVaccinationAppointmentDetailForRebookingAsync(newAppointment, profile, schedule, usedOrder, request.Note);
+
+                // 8.1. Decrease RemainingQuantity từ OrderDetail nếu sử dụng order
+                if (selectedOrderDetail != null && usedOrder != null)
+                {
+                    selectedOrderDetail.RemainingQuantity -= 1;
+                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
+                    orderDetailRepo.Update(selectedOrderDetail);
+                    
+                    _logger.LogInformation("✅ Giảm 1 vaccine từ OrderDetail {OrderDetailId} cho rebook. RemainingQuantity: {Remaining}", 
+                        selectedOrderDetail.OrderDetailId, selectedOrderDetail.RemainingQuantity);
+                }
 
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
