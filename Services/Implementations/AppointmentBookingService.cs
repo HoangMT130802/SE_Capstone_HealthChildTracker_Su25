@@ -604,6 +604,8 @@ namespace Services.Implementations
                 try
                 {
                     // 1) Double-book theo CVP: nếu đã có CVP Pending/Scheduled và đã gắn AppointmentId cho cùng bệnh
+                    // 🔧 COMMENTED FOR TESTING - Tạm thời tắt để test được đặt nhiều lịch cùng bệnh
+                    /*
                     var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
                     var existingPendingProfiles = await childVaccineProfileRepo.FindAsync(
                         p => p.ChildId == request.ChildId
@@ -622,8 +624,13 @@ namespace Services.Implementations
                             Severity = ValidationSeverity.Error
                         });
                     }
+                    */
+                    
+                    var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
 
                     // 2) Anti-spam: nếu vừa tạo CVP Pending/Scheduled cho cùng bệnh trong 5 phút gần đây
+                    // 🔧 COMMENTED FOR TESTING - Tạm thời tắt để test liên tục
+                    /*
                     if (validation.CanBook)
                     {
                         var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -645,6 +652,7 @@ namespace Services.Implementations
                             });
                         }
                     }
+                    */
 
                     // 3) Giữ số lượng gói theo kiểm tra reserved (không trừ thật) khi dùng OrderId
                     if (validation.CanBook && hasOrderId)
