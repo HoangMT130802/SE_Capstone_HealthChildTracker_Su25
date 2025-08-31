@@ -24,6 +24,11 @@ namespace Contracts.DTOs.Appointment
         /// Thông tin appointment detail đã được cập nhật
         /// </summary>
         public UpdatedAppointmentDetailInfo? UpdatedDetail { get; set; }
+
+        /// <summary>
+        /// Thông tin về các bệnh bị ảnh hưởng khi thay đổi vaccine
+        /// </summary>
+        public DiseaseCompatibilityInfo? DiseaseCompatibility { get; set; }
     }
 
     public class VaccineChangeInfo
@@ -67,5 +72,28 @@ namespace Contracts.DTOs.Appointment
         /// Chi phí phát sinh (0 nếu từ order đã trả tiền)
         /// </summary>
         public decimal AdditionalCost { get; set; }
+    }
+
+    public class DiseaseCompatibilityInfo
+    {
+        /// <summary>
+        /// Số lượng bệnh vẫn được chữa bởi vaccine mới
+        /// </summary>
+        public int CompatibleDiseaseCount { get; set; }
+
+        /// <summary>
+        /// Số lượng bệnh không còn được chữa bởi vaccine mới
+        /// </summary>
+        public int IncompatibleDiseaseCount { get; set; }
+
+        /// <summary>
+        /// Danh sách tên bệnh vẫn được chữa
+        /// </summary>
+        public List<string> CompatibleDiseases { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Danh sách tên bệnh không còn được chữa (cần đặt lịch lại)
+        /// </summary>
+        public List<string> IncompatibleDiseases { get; set; } = new List<string>();
     }
 }

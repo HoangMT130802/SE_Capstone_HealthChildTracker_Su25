@@ -391,18 +391,80 @@ namespace Services.Implementations
                     }
                 }
 
-                // 3) Cuối cùng, fallback theo VaccineDiseases (không khuyến nghị)
+                // 3) IMPROVED FALLBACK: Tìm disease từ appointment booking context thay vì lấy ngẫu nhiên
                 if (determinedDiseaseId == null)
                 {
-                    _logger.LogWarning("Fallback to VaccineDiseases to determine DiseaseId for Vaccine {VaccineId}", vaccine.VaccineId);
-                    _logger.LogInformation("Checking VaccineDiseases for Vaccine {VaccineId} (Name: {VaccineName})", vaccine.VaccineId, vaccine.Name);
-                    if (vaccine.VaccineDiseases == null || !vaccine.VaccineDiseases.Any())
+                    _logger.LogWarning("Using improved fallback logic to determine DiseaseId for Vaccine {VaccineId}", vaccine.VaccineId);
+                    
+                    // Cách 3a: Tìm từ tất cả ChildVaccineProfile có AppointmentId này (bất kể vaccine)
+                    var allAppointmentProfiles = await profileRepository.FindAsync(p => p.AppointmentId == completeDto.AppointmentId);
+                    if (allAppointmentProfiles.Any())
                     {
-                        _logger.LogError("Vaccine {VaccineId} (Name: {VaccineName}) has no VaccineDiseases. VaccineDiseases is null: {IsNull}, Count: {Count}", 
-                            vaccine.VaccineId, vaccine.Name, vaccine.VaccineDiseases == null, vaccine.VaccineDiseases?.Count ?? 0);
-                        throw new InvalidOperationException($"Vaccine {vaccine.Name} (ID: {vaccine.VaccineId}) has no associated diseases. Cannot complete vaccination.");
+                        // Ưu tiên disease có CVP với vaccine đang complete, hoặc lấy disease đầu tiên từ appointment
+                        var matchingVaccineProfile = allAppointmentProfiles.FirstOrDefault(p => p.VaccineId == facilityVaccine.VaccineId);
+                        if (matchingVaccineProfile != null)
+                        {
+                            determinedDiseaseId = matchingVaccineProfile.DiseaseId;
+                            _logger.LogInformation("Determined DiseaseId {DiseaseId} from ChildVaccineProfile of same vaccine in appointment", determinedDiseaseId);
+                        }
+                        else
+                        {
+                            // Lấy disease đầu tiên từ appointment (thường là disease chính đã book)
+                            var firstAppointmentProfile = allAppointmentProfiles.First();
+                            
+                            // Kiểm tra vaccine hiện tại có chữa được disease này không
+                            var canTreatThisDisease = vaccine.VaccineDiseases?.Any(vd => vd.DiseaseId == firstAppointmentProfile.DiseaseId) ?? false;
+                            if (canTreatThisDisease)
+                            {
+                                determinedDiseaseId = firstAppointmentProfile.DiseaseId;
+                                _logger.LogInformation("Determined DiseaseId {DiseaseId} from first disease in appointment (vaccine can treat this disease)", determinedDiseaseId);
+                            }
+                        }
                     }
-                    determinedDiseaseId = vaccine.VaccineDiseases.First().DiseaseId;
+                    
+                    // Cách 3b: Nếu vẫn không có, tìm từ Order context
+                    if (determinedDiseaseId == null && appointment.OrderId.HasValue)
+                    {
+                        _logger.LogInformation("Trying to determine disease from Order context for Order {OrderId}", appointment.OrderId.Value);
+                        var order = appointment.Order;
+                        if (order?.OrderDetails != null && order.OrderDetails.Any())
+                        {
+                            // Tìm OrderDetail có vaccine tương thích với vaccine đang complete
+                            var compatibleOrderDetail = order.OrderDetails
+                                .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == facilityVaccine.VaccineId);
+                            
+                            if (compatibleOrderDetail != null)
+                            {
+                                determinedDiseaseId = compatibleOrderDetail.DiseaseId;
+                                _logger.LogInformation("Determined DiseaseId {DiseaseId} from compatible OrderDetail {OrderDetailId}", determinedDiseaseId, compatibleOrderDetail.OrderDetailId);
+                            }
+                            else
+                            {
+                                // Lấy disease đầu tiên từ order và kiểm tra compatibility
+                                var firstOrderDetail = order.OrderDetails.First();
+                                var canTreatOrderDisease = vaccine.VaccineDiseases?.Any(vd => vd.DiseaseId == firstOrderDetail.DiseaseId) ?? false;
+                                if (canTreatOrderDisease)
+                                {
+                                    determinedDiseaseId = firstOrderDetail.DiseaseId;
+                                    _logger.LogInformation("Determined DiseaseId {DiseaseId} from first disease in order (vaccine can treat this disease)", determinedDiseaseId);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Cách 3c: Last resort - lấy disease đầu tiên của vaccine (logic cũ)
+                    if (determinedDiseaseId == null)
+                    {
+                        _logger.LogWarning("Last resort: Fallback to first VaccineDisease for Vaccine {VaccineId}", vaccine.VaccineId);
+                        if (vaccine.VaccineDiseases == null || !vaccine.VaccineDiseases.Any())
+                        {
+                            _logger.LogError("Vaccine {VaccineId} (Name: {VaccineName}) has no VaccineDiseases. Cannot determine disease for completion.", 
+                                vaccine.VaccineId, vaccine.Name);
+                            throw new InvalidOperationException($"Vaccine {vaccine.Name} (ID: {vaccine.VaccineId}) has no associated diseases. Cannot complete vaccination.");
+                        }
+                        determinedDiseaseId = vaccine.VaccineDiseases.First().DiseaseId;
+                        _logger.LogWarning("Used first VaccineDisease {DiseaseId} as last resort for Vaccine {VaccineId}", determinedDiseaseId, vaccine.VaccineId);
+                    }
                 }
 
                 // ✅ Double-check Disease exists in database

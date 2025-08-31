@@ -1581,16 +1581,97 @@ namespace Services.Implementations
                 appointmentDetail.Notes = $"{appointmentDetail.Notes ?? ""}\n[{DateTime.Now:yyyy-MM-dd HH:mm}] Thay đổi từ VaccineId {oldVaccineId} sang {request.NewVaccineId}. Lý do: {request.Reason}. Ghi chú: {request.Notes}".Trim();
                 
                 appointmentDetailRepo.Update(appointmentDetail);
+
+                // ✅ 11. CRITICAL FIX: Update ChildVaccineProfile với logic tương thích bệnh
+                var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                var childVaccineProfiles = await childVaccineProfileRepo.FindAsync(
+                    p => p.AppointmentId == appointmentDetail.AppointmentId && p.VaccineId == oldVaccineId);
+
+                // Lấy danh sách bệnh mà vaccine mới có thể chữa
+                var newVaccineDiseaseIds = newVaccine.VaccineDiseases?.Select(vd => vd.DiseaseId).ToList() ?? new List<int>();
+                
+                // Khởi tạo thông tin compatibility
+                var compatibleProfiles = new List<ChildVaccineProfile>();
+                var incompatibleProfiles = new List<ChildVaccineProfile>();
+
+                if (childVaccineProfiles.Any())
+                {
+                    _logger.LogInformation("Xử lý {Count} ChildVaccineProfile khi thay đổi từ VaccineId {OldVaccineId} sang {NewVaccineId}", 
+                        childVaccineProfiles.Count(), oldVaccineId, request.NewVaccineId);
+                    
+                    foreach (var profile in childVaccineProfiles)
+                    {
+                        // Kiểm tra vaccine mới có chữa được bệnh này không
+                        if (newVaccineDiseaseIds.Contains(profile.DiseaseId))
+                        {
+                            // ✅ Vaccine mới chữa được bệnh này → Update VaccineId
+                            profile.VaccineId = request.NewVaccineId;
+                            profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            childVaccineProfileRepo.Update(profile);
+                            compatibleProfiles.Add(profile);
+                            
+                            _logger.LogInformation("✅ Cập nhật ChildVaccineProfile {ProfileId} (Disease {DiseaseId}) với VaccineId mới {NewVaccineId}", 
+                                profile.VaccineProfileId, profile.DiseaseId, request.NewVaccineId);
+                        }
+                        else
+                        {
+                            // ❌ Vaccine mới KHÔNG chữa được bệnh này → Xóa AppointmentId (trả về trạng thái Scheduled)
+                            profile.AppointmentId = null;
+                            profile.Status = "Scheduled"; // Trả về trạng thái chờ đặt lịch
+                            profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            childVaccineProfileRepo.Update(profile);
+                            incompatibleProfiles.Add(profile);
+                            
+                            _logger.LogWarning("⚠️ Vaccine mới {NewVaccineId} không chữa được Disease {DiseaseId}. Xóa AppointmentId khỏi ChildVaccineProfile {ProfileId}", 
+                                request.NewVaccineId, profile.DiseaseId, profile.VaccineProfileId);
+                        }
+                    }
+
+                    _logger.LogInformation("📊 Kết quả thay đổi vaccine: {CompatibleCount} CVP tương thích (updated), {IncompatibleCount} CVP không tương thích (unlinked)", 
+                        compatibleProfiles.Count, incompatibleProfiles.Count);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Không tìm thấy ChildVaccineProfile nào cho AppointmentId {AppointmentId} với VaccineId {OldVaccineId}", 
+                        appointmentDetail.AppointmentId, oldVaccineId);
+                }
+
                 await _unitOfWork.SaveChangesAsync();
 
-                // 11. Build response
+                // 12. Build response với thông tin disease compatibility
                 var oldVaccine = await vaccineRepo.GetAsync(v => v.VaccineId == oldVaccineId, "VaccineDiseases,VaccineDiseases.Disease");
                 var oldFacilityVaccine = await facilityVaccineRepo.GetAsync(fv => fv.VaccineId == oldVaccineId && fv.FacilityId == facilityId);
                 
+                // Lấy tên bệnh để hiển thị trong response
+                var diseaseRepo = _unitOfWork.GetRepository<Disease>();
+                var compatibleDiseaseNames = new List<string>();
+                var incompatibleDiseaseNames = new List<string>();
+
+                if (compatibleProfiles.Any())
+                {
+                    var compatibleDiseaseIds = compatibleProfiles.Select(p => p.DiseaseId).Distinct().ToList();
+                    var compatibleDiseases = await diseaseRepo.FindAsync(d => compatibleDiseaseIds.Contains(d.DiseaseId));
+                    compatibleDiseaseNames = compatibleDiseases.Select(d => d.Name).ToList();
+                }
+
+                if (incompatibleProfiles.Any())
+                {
+                    var incompatibleDiseaseIds = incompatibleProfiles.Select(p => p.DiseaseId).Distinct().ToList();
+                    var incompatibleDiseases = await diseaseRepo.FindAsync(d => incompatibleDiseaseIds.Contains(d.DiseaseId));
+                    incompatibleDiseaseNames = incompatibleDiseases.Select(d => d.Name).ToList();
+                }
+
+                // Tạo message phù hợp
+                var message = "Thay đổi vaccine thành công";
+                if (incompatibleProfiles.Any())
+                {
+                    message += $". Lưu ý: {incompatibleProfiles.Count} bệnh không còn được chữa bởi vaccine mới và cần đặt lịch lại: {string.Join(", ", incompatibleDiseaseNames)}";
+                }
+
                 var response = new UpdateVaccineResponseDTO
                 {
                     IsSuccess = true,
-                    Message = "Thay đổi vaccine thành công",
+                    Message = message,
                     OldVaccine = new VaccineChangeInfo
                     {
                         VaccineId = oldVaccineId,
@@ -1625,6 +1706,13 @@ namespace Services.Implementations
                         OrderDetailId = request.OrderDetailId,
                         PackageName = request.OrderDetailId.HasValue ? await GetPackageNameByOrderDetailIdAsync(request.OrderDetailId.Value) : null,
                         AdditionalCost = request.SourceType == "Order" ? 0 : facilityVaccine.Price
+                    },
+                    DiseaseCompatibility = new DiseaseCompatibilityInfo
+                    {
+                        CompatibleDiseaseCount = compatibleProfiles.Select(p => p.DiseaseId).Distinct().Count(),
+                        IncompatibleDiseaseCount = incompatibleProfiles.Select(p => p.DiseaseId).Distinct().Count(),
+                        CompatibleDiseases = compatibleDiseaseNames,
+                        IncompatibleDiseases = incompatibleDiseaseNames
                     }
                 };
 
@@ -2863,34 +2951,99 @@ namespace Services.Implementations
             // ✅ Chỉ lấy vaccines từ VaccinationAppointmentDetails nếu shouldShowVaccinesToInject = true
             if (shouldShowVaccinesToInject)
             {
-                _logger.LogInformation("🔍 DEBUG: Checking VaccinationAppointmentDetails for appointment {AppointmentId}: Count={Count}", 
-                    appointment.AppointmentId, appointment.VaccinationAppointmentDetails?.Count ?? 0);
-                    
-                if (appointment.VaccinationAppointmentDetails != null && appointment.VaccinationAppointmentDetails.Any())
+            _logger.LogInformation("🔍 DEBUG: Checking VaccinationAppointmentDetails for appointment {AppointmentId}: Count={Count}", 
+                appointment.AppointmentId, appointment.VaccinationAppointmentDetails?.Count ?? 0);
+                
+            if (appointment.VaccinationAppointmentDetails != null && appointment.VaccinationAppointmentDetails.Any())
+            {
+                foreach (var vaccinationDetail in appointment.VaccinationAppointmentDetails)
                 {
-                    foreach (var vaccinationDetail in appointment.VaccinationAppointmentDetails)
+                    // Tìm ChildVaccineProfile để lấy DoseNumber và Disease
+                    var childVaccineProfile = appointment.Child?.ChildVaccineProfiles?
+                        .FirstOrDefault(cvp => cvp.VaccineId == vaccinationDetail.VaccineId 
+                                            && cvp.AppointmentId == appointment.AppointmentId);
+                    
+                    if (vaccinationDetail.Vaccine != null)
                     {
-                        // Tìm ChildVaccineProfile để lấy DoseNumber và Disease
-                        var childVaccineProfile = appointment.Child?.ChildVaccineProfiles?
-                            .FirstOrDefault(cvp => cvp.VaccineId == vaccinationDetail.VaccineId 
-                                                && cvp.AppointmentId == appointment.AppointmentId);
+                        // Ưu tiên DoseNum từ ChildVaccineProfile, fallback về VaccinationAppointmentDetail
+                        var doseNumber = childVaccineProfile?.DoseNum.ToString() ?? vaccinationDetail.DoseNumber;
                         
-                        if (vaccinationDetail.Vaccine != null)
+                        // Lấy disease name từ ChildVaccineProfile hoặc fallback
+                        var diseaseName = childVaccineProfile?.Disease?.Name ?? "Unknown Disease";
+                        
+                        // Tìm FacilityVaccineId từ VaccinationAppointmentDetail
+                        int? facilityVaccineId = null;
+                        
+                        // Cách 1: Tìm từ Order.OrderDetails nếu có
+                        if (appointment.Order?.OrderDetails != null)
                         {
-                            // Ưu tiên DoseNum từ ChildVaccineProfile, fallback về VaccinationAppointmentDetail
-                            var doseNumber = childVaccineProfile?.DoseNum.ToString() ?? vaccinationDetail.DoseNumber;
-                            
-                            // Lấy disease name từ ChildVaccineProfile hoặc fallback
-                            var diseaseName = childVaccineProfile?.Disease?.Name ?? "Unknown Disease";
-                            
-                            // Tìm FacilityVaccineId từ VaccinationAppointmentDetail
+                            var matchingOrderDetail = appointment.Order.OrderDetails
+                                .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == vaccinationDetail.VaccineId);
+                            facilityVaccineId = matchingOrderDetail?.FacilityVaccineId;
+                        }
+                        
+                        // Cách 2: Nếu không tìm được, query trực tiếp từ DB
+                        if (!facilityVaccineId.HasValue)
+                        {
+                            var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
+                            var facilityVaccine = await facilityVaccineRepo.GetAsync(
+                                fv => fv.VaccineId == vaccinationDetail.VaccineId 
+                                   && fv.FacilityId == appointment.Schedule.FacilityId);
+                            facilityVaccineId = facilityVaccine?.FacilityVaccineId;
+                        }
+
+                        var vaccineToInject = new VaccineToInjectDTO
+                        {
+                            VaccineId = vaccinationDetail.VaccineId,
+                            VaccineName = vaccinationDetail.Vaccine.Name,
+                            DiseaseName = diseaseName,
+                            DoseNumber = doseNumber,
+                            Notes = vaccinationDetail.Notes,
+                            FacilityVaccineId = facilityVaccineId,
+                            Manufacturer = vaccinationDetail.Vaccine.Manufacturer,
+                            SideEffects = vaccinationDetail.Vaccine.SideEffects,
+                            Contraindications = vaccinationDetail.Vaccine.Contraindications
+                        };
+                        
+                        dto.VaccinesToInject.Add(vaccineToInject);
+                        
+                        _logger.LogInformation("✅ Found vaccine to inject: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}, FacilityVaccineId: {FacilityVaccineId}", 
+                            vaccinationDetail.Vaccine.Name, diseaseName, doseNumber, facilityVaccineId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Skipped VaccinationAppointmentDetail {DetailId}: Missing vaccine", 
+                            vaccinationDetail.DetailId);
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ DEBUG: No VaccinationAppointmentDetails found for appointment {AppointmentId}, trying ChildVaccineProfile fallback", 
+                    appointment.AppointmentId);
+                
+                // ✅ FALLBACK: Lấy từ ChildVaccineProfile với AppointmentId cụ thể này
+                if (appointment.Child?.ChildVaccineProfiles != null && appointment.Child.ChildVaccineProfiles.Any())
+                {
+                    var relevantProfiles = appointment.Child.ChildVaccineProfiles
+                        .Where(cvp => cvp.AppointmentId == appointment.AppointmentId)
+                        .ToList();
+                        
+                    _logger.LogInformation("🔍 Found {ProfileCount} ChildVaccineProfiles for appointment {AppointmentId}", 
+                        relevantProfiles.Count, appointment.AppointmentId);
+                    
+                    foreach (var profile in relevantProfiles)
+                    {
+                        if (profile.Vaccine != null && profile.Disease != null)
+                        {
+                            // Tìm FacilityVaccineId từ ChildVaccineProfile
                             int? facilityVaccineId = null;
                             
                             // Cách 1: Tìm từ Order.OrderDetails nếu có
                             if (appointment.Order?.OrderDetails != null)
                             {
                                 var matchingOrderDetail = appointment.Order.OrderDetails
-                                    .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == vaccinationDetail.VaccineId);
+                                    .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == profile.VaccineId);
                                 facilityVaccineId = matchingOrderDetail?.FacilityVaccineId;
                             }
                             
@@ -2899,96 +3052,31 @@ namespace Services.Implementations
                             {
                                 var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
                                 var facilityVaccine = await facilityVaccineRepo.GetAsync(
-                                    fv => fv.VaccineId == vaccinationDetail.VaccineId 
+                                    fv => fv.VaccineId == profile.VaccineId 
                                        && fv.FacilityId == appointment.Schedule.FacilityId);
                                 facilityVaccineId = facilityVaccine?.FacilityVaccineId;
                             }
 
                             var vaccineToInject = new VaccineToInjectDTO
                             {
-                                VaccineId = vaccinationDetail.VaccineId,
-                                VaccineName = vaccinationDetail.Vaccine.Name,
-                                DiseaseName = diseaseName,
-                                DoseNumber = doseNumber,
-                                Notes = vaccinationDetail.Notes,
+                                VaccineId = profile.VaccineId,
+                                VaccineName = profile.Vaccine.Name,
+                                DiseaseName = profile.Disease.Name,
+                                DoseNumber = profile.DoseNum.ToString(),
+                                Notes = profile.Note,
                                 FacilityVaccineId = facilityVaccineId,
-                                Manufacturer = vaccinationDetail.Vaccine.Manufacturer,
-                                SideEffects = vaccinationDetail.Vaccine.SideEffects,
-                                Contraindications = vaccinationDetail.Vaccine.Contraindications
+                                Manufacturer = profile.Vaccine.Manufacturer,
+                                SideEffects = profile.Vaccine.SideEffects,
+                                Contraindications = profile.Vaccine.Contraindications
                             };
                             
                             dto.VaccinesToInject.Add(vaccineToInject);
                             
-                            _logger.LogInformation("✅ Found vaccine to inject: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}, FacilityVaccineId: {FacilityVaccineId}", 
-                                vaccinationDetail.Vaccine.Name, diseaseName, doseNumber, facilityVaccineId);
-                        }
-                        else
-                        {
-                            _logger.LogWarning("⚠️ Skipped VaccinationAppointmentDetail {DetailId}: Missing vaccine", 
-                                vaccinationDetail.DetailId);
+                            _logger.LogInformation("✅ Found vaccine from ChildVaccineProfile: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}, FacilityVaccineId: {FacilityVaccineId}", 
+                                profile.Vaccine.Name, profile.Disease.Name, profile.DoseNum, facilityVaccineId);
                         }
                     }
                 }
-                else
-                {
-                    _logger.LogWarning("⚠️ DEBUG: No VaccinationAppointmentDetails found for appointment {AppointmentId}, trying ChildVaccineProfile fallback", 
-                        appointment.AppointmentId);
-                    
-                    // ✅ FALLBACK: Lấy từ ChildVaccineProfile với AppointmentId cụ thể này
-                    if (appointment.Child?.ChildVaccineProfiles != null && appointment.Child.ChildVaccineProfiles.Any())
-                    {
-                        var relevantProfiles = appointment.Child.ChildVaccineProfiles
-                            .Where(cvp => cvp.AppointmentId == appointment.AppointmentId)
-                            .ToList();
-                            
-                        _logger.LogInformation("🔍 Found {ProfileCount} ChildVaccineProfiles for appointment {AppointmentId}", 
-                            relevantProfiles.Count, appointment.AppointmentId);
-                        
-                        foreach (var profile in relevantProfiles)
-                        {
-                            if (profile.Vaccine != null && profile.Disease != null)
-                            {
-                                // Tìm FacilityVaccineId từ ChildVaccineProfile
-                                int? facilityVaccineId = null;
-                                
-                                // Cách 1: Tìm từ Order.OrderDetails nếu có
-                                if (appointment.Order?.OrderDetails != null)
-                                {
-                                    var matchingOrderDetail = appointment.Order.OrderDetails
-                                        .FirstOrDefault(od => od.FacilityVaccine?.VaccineId == profile.VaccineId);
-                                    facilityVaccineId = matchingOrderDetail?.FacilityVaccineId;
-                                }
-                                
-                                // Cách 2: Nếu không tìm được, query trực tiếp từ DB
-                                if (!facilityVaccineId.HasValue)
-                                {
-                                    var facilityVaccineRepo = _unitOfWork.GetRepository<FacilityVaccine>();
-                                    var facilityVaccine = await facilityVaccineRepo.GetAsync(
-                                        fv => fv.VaccineId == profile.VaccineId 
-                                           && fv.FacilityId == appointment.Schedule.FacilityId);
-                                    facilityVaccineId = facilityVaccine?.FacilityVaccineId;
-                                }
-
-                                var vaccineToInject = new VaccineToInjectDTO
-                                {
-                                    VaccineId = profile.VaccineId,
-                                    VaccineName = profile.Vaccine.Name,
-                                    DiseaseName = profile.Disease.Name,
-                                    DoseNumber = profile.DoseNum.ToString(),
-                                    Notes = profile.Note,
-                                    FacilityVaccineId = facilityVaccineId,
-                                    Manufacturer = profile.Vaccine.Manufacturer,
-                                    SideEffects = profile.Vaccine.SideEffects,
-                                    Contraindications = profile.Vaccine.Contraindications
-                                };
-                                
-                                dto.VaccinesToInject.Add(vaccineToInject);
-                                
-                                _logger.LogInformation("✅ Found vaccine from ChildVaccineProfile: {VaccineName} for disease {DiseaseName}, dose {DoseNumber}, FacilityVaccineId: {FacilityVaccineId}", 
-                                    profile.Vaccine.Name, profile.Disease.Name, profile.DoseNum, facilityVaccineId);
-                            }
-                        }
-                    }
                 }
             }
             else
