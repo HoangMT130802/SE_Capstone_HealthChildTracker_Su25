@@ -557,9 +557,13 @@ namespace Services.Implementations
                 // 6. Tạo CVP mũi tiếp theo cho TẤT CẢ diseases (Multi-Disease Vaccine Support)
                 if (nextDoseNumber <= totalDoses)
                 {
+                    // ✅ CHỈ sử dụng ExpectedDateForNextDose khi thực sự có next dose
                     nextExpectedDate = completeDto.ExpectedDateForNextDose != default
                         ? completeDto.ExpectedDateForNextDose
                         : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+                    
+                    _logger.LogInformation("✅ Vaccine {VaccineId} chưa hoàn thành (Dose {CurrentDose}/{TotalDoses}), sẽ tạo next dose với ExpectedDate: {ExpectedDate}", 
+                        facilityVaccine.VaccineId, completeDto.DoseNumber, totalDoses, nextExpectedDate);
 
                     // Tạo next dose profile cho TẤT CẢ diseases mà vaccine có thể chữa
                     var diseaseIds = appointmentProfiles.Select(p => p.DiseaseId).Distinct().ToList();
@@ -621,8 +625,51 @@ namespace Services.Implementations
                 }
                 else
                 {
-                    _logger.LogInformation("Vaccine {VaccineId} course completed for Child {ChildId}. No more doses needed.", 
-                        currentProfile.VaccineId, currentProfile.ChildId);
+                    _logger.LogInformation("🏁 Vaccine {VaccineId} course completed for Child {ChildId} (Dose {CurrentDose}/{TotalDoses}). No more doses needed.", 
+                        currentProfile.VaccineId, currentProfile.ChildId, completeDto.DoseNumber, totalDoses);
+                    
+                    // ✅ XỬ LÝ: Khi vaccine hiện tại hoàn thành, tìm bệnh kế tiếp trong order để tạo profile
+                    if (completeDto.ExpectedDateForNextDose != default && appointment.OrderId.HasValue)
+                    {
+                        _logger.LogInformation("🔍 Vaccine {VaccineId} đã hoàn thành, tìm bệnh kế tiếp trong Order {OrderId} để sử dụng ExpectedDate {ExpectedDate}", 
+                            facilityVaccine.VaccineId, appointment.OrderId.Value, completeDto.ExpectedDateForNextDose);
+                        
+                        // Tìm các bệnh khác trong order mà chưa có appointment
+                        var orderRepo = _unitOfWork.GetRepository<Order>();
+                        var order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, "OrderDetails,OrderDetails.Disease");
+                        
+                        if (order?.OrderDetails != null)
+                        {
+                            // Lấy tất cả diseases trong order
+                            var orderDiseaseIds = order.OrderDetails.Select(od => od.DiseaseId).Distinct().ToList();
+                            
+                            // Loại bỏ disease đã hoàn thành (determinedDiseaseId)
+                            var remainingDiseaseIds = orderDiseaseIds.Where(id => id != determinedDiseaseId.Value).ToList();
+                            
+                            if (remainingDiseaseIds.Any())
+                            {
+                                _logger.LogInformation("📋 Tìm thấy {Count} bệnh còn lại trong order: [{DiseaseIds}]", 
+                                    remainingDiseaseIds.Count, string.Join(", ", remainingDiseaseIds));
+                                
+                                // Tạo suggestion cho bệnh kế tiếp (có thể được sử dụng trong UI)
+                                var nextDiseaseId = remainingDiseaseIds.First();
+                                var nextDiseaseName = order.OrderDetails.FirstOrDefault(od => od.DiseaseId == nextDiseaseId)?.Disease?.Name ?? "Unknown";
+                                
+                                _logger.LogInformation("💡 Gợi ý: ExpectedDate {ExpectedDate} có thể được dùng cho bệnh kế tiếp {DiseaseName} (DiseaseId: {DiseaseId})", 
+                                    completeDto.ExpectedDateForNextDose, nextDiseaseName, nextDiseaseId);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("✅ Tất cả bệnh trong order đã được xử lý. ExpectedDate {ExpectedDate} sẽ không được sử dụng.", 
+                                    completeDto.ExpectedDateForNextDose);
+                            }
+                        }
+                    }
+                    else if (completeDto.ExpectedDateForNextDose != default)
+                    {
+                        _logger.LogWarning("⚠️ ExpectedDateForNextDose ({ExpectedDate}) được nhập nhưng sẽ KHÔNG được sử dụng vì vaccine {VaccineId} đã hoàn thành và không có order", 
+                            completeDto.ExpectedDateForNextDose, facilityVaccine.VaccineId);
+                    }
                 }
 
                 // 7. Cập nhật appointment: status và note

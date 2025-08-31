@@ -2897,67 +2897,10 @@ namespace Services.Implementations
                 CanComplete = appointment.Status == "Approval" && slotDateTime <= now
             };
 
-            // ✅ NEW LOGIC: Kiểm tra xem có nên hiển thị VaccinesToInject không
-            bool shouldShowVaccinesToInject = true;
+            // ✅ SIMPLIFIED LOGIC: Luôn hiển thị VaccinesToInject mà không cần check điều kiện
+            _logger.LogInformation("✅ Luôn hiển thị VaccinesToInject cho appointment {AppointmentId}", appointment.AppointmentId);
             
-            // Nếu có Order, kiểm tra xem order đã bị sử dụng (mất mũi) chưa
-            if (appointment.Order?.OrderDetails != null && appointment.Order.OrderDetails.Any())
-            {
-                // Lấy thông tin ban đầu của OrderDetails từ database để so sánh
-                var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                var currentOrderDetails = await orderDetailRepo.FindAsync(
-                    od => od.OrderId == appointment.Order.OrderId,
-                    includeProperties: "FacilityVaccine");
-                
-                bool hasUsedVaccines = false;
-                
-                // Kiểm tra từng OrderDetail xem có bị giảm RemainingQuantity không
-                foreach (var orderDetail in currentOrderDetails)
-                {
-                    // Logic: Nếu order đã được mua và tiêm ít nhất 1 mũi, thì RemainingQuantity sẽ nhỏ hơn số lượng ban đầu
-                    // Hoặc có thể kiểm tra xem có VaccinationAppointment nào khác đã Completed với order này không
-                    
-                    // Cách 1: Kiểm tra có appointment nào khác đã hoàn thành với order này không
-                    var completedAppointments = await _unitOfWork.GetRepository<VaccinationAppointment>()
-                        .FindAsync(va => va.OrderId == appointment.Order.OrderId 
-                                      && va.AppointmentId != appointment.AppointmentId 
-                                      && va.Status == "Completed");
-                    
-                    if (completedAppointments.Any())
-                    {
-                        hasUsedVaccines = true;
-                        _logger.LogInformation("✅ Tìm thấy {Count} appointment đã completed với Order {OrderId}", 
-                            completedAppointments.Count(), appointment.Order.OrderId);
-                        break;
-                    }
-                    
-                    // Cách 2: Kiểm tra RemainingQuantity (nếu < quantity ban đầu thì đã sử dụng)
-                    // Tạm thời giả sử nếu RemainingQuantity = 0 thì đã sử dụng hết
-                    if (orderDetail.RemainingQuantity == 0)
-                    {
-                        hasUsedVaccines = true;
-                        _logger.LogInformation("✅ OrderDetail {OrderDetailId} có RemainingQuantity = 0, order đã được sử dụng", 
-                            orderDetail.OrderDetailId);
-                        break;
-                    }
-                }
-                
-                // Nếu order mới lần đầu (chưa có appointment completed và vẫn còn full quantity), không hiện VaccinesToInject
-                if (!hasUsedVaccines)
-                {
-                    shouldShowVaccinesToInject = false;
-                    _logger.LogInformation("🚫 Order {OrderId} chưa được sử dụng lần nào, không hiển thị VaccinesToInject cho appointment {AppointmentId}", 
-                        appointment.Order.OrderId, appointment.AppointmentId);
-                }
-                else
-                {
-                    _logger.LogInformation("✅ Order {OrderId} đã được sử dụng trước đó, hiển thị VaccinesToInject cho appointment {AppointmentId}", 
-                        appointment.Order.OrderId, appointment.AppointmentId);
-                }
-            }
-            
-            // ✅ Chỉ lấy vaccines từ VaccinationAppointmentDetails nếu shouldShowVaccinesToInject = true
-            if (shouldShowVaccinesToInject)
+            // ✅ Lấy vaccines từ VaccinationAppointmentDetails
             {
             _logger.LogInformation("🔍 DEBUG: Checking VaccinationAppointmentDetails for appointment {AppointmentId}: Count={Count}", 
                 appointment.AppointmentId, appointment.VaccinationAppointmentDetails?.Count ?? 0);
@@ -3086,11 +3029,6 @@ namespace Services.Implementations
                     }
                 }
                 }
-            }
-            else
-            {
-                _logger.LogInformation("🚫 Không hiển thị VaccinesToInject cho appointment {AppointmentId} vì order chưa được sử dụng", 
-                    appointment.AppointmentId);
             }
 
             _logger.LogInformation("Mapped FacilityAppointmentDTO for appointment {AppointmentId} with {FacilityVaccinesCount} vaccines and {VaccinesToInjectCount} vaccines to inject",

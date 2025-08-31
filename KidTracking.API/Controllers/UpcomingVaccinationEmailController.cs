@@ -29,13 +29,12 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Gửi email lịch tiêm chủng sắp tới cho member cụ thể
+        /// Gửi email lịch tiêm chủng sắp tới gần nhất cho member cụ thể
         /// </summary>
         /// <param name="memberId">ID của member</param>
-        /// <param name="daysAhead">Số ngày tìm lịch hẹn sắp tới (mặc định: 30 ngày)</param>
         /// <returns>Kết quả gửi email</returns>
         [HttpPost("send/{memberId}")]
-        public async Task<ActionResult> SendUpcomingVaccinationEmail(int memberId, [FromQuery] int daysAhead = 30)
+        public async Task<ActionResult> SendUpcomingVaccinationEmail(int memberId)
         {
             try
             {
@@ -63,8 +62,8 @@ namespace KidTracking.API.Controllers
                     return BadRequest(new { message = "Member không có email để gửi" });
                 }
 
-                // 2. Lấy danh sách lịch tiêm sắp tới của member
-                var upcomingVaccinations = await GetUpcomingVaccinationsForMemberAsync(memberId, daysAhead);
+                // 2. Lấy lịch tiêm sắp tới gần nhất của member
+                var upcomingVaccinations = await GetNearestUpcomingVaccinationsForMemberAsync(memberId);
 
                 // 3. Gửi email
                 await _emailService.SendUpcomingVaccinationEmailAsync(
@@ -89,7 +88,6 @@ namespace KidTracking.API.Controllers
                     vaccinationInfo = new
                     {
                         totalUpcomingAppointments = upcomingVaccinations.Count,
-                        daysAhead = daysAhead,
                         appointments = upcomingVaccinations.Select(v => new
                         {
                             childName = v.ChildName,
@@ -115,26 +113,37 @@ namespace KidTracking.API.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách lịch tiêm sắp tới của member
+        /// Lấy lịch tiêm sắp tới gần nhất của member
         /// </summary>
-        private async Task<List<UpcomingVaccinationItemDTO>> GetUpcomingVaccinationsForMemberAsync(int memberId, int daysAhead)
+        private async Task<List<UpcomingVaccinationItemDTO>> GetNearestUpcomingVaccinationsForMemberAsync(int memberId)
         {
             var result = new List<UpcomingVaccinationItemDTO>();
 
             try
             {
                 var fromDate = DateOnly.FromDateTime(DateTime.Today);
-                var toDate = DateOnly.FromDateTime(DateTime.Today.AddDays(daysAhead));
 
-                // Lấy tất cả appointment sắp tới của member
+                // Lấy tất cả appointment sắp tới của member (không giới hạn ngày)
                 var appointmentRepo = _unitOfWork.GetRepository<VaccinationAppointment>();
-                var appointments = await appointmentRepo.FindAsync(
+                var allUpcomingAppointments = await appointmentRepo.FindAsync(
                     a => a.Child.MemberId == memberId &&
                          a.Schedule.Date >= fromDate &&
-                         a.Schedule.Date <= toDate &&
                          (a.Status == "Pending" || a.Status == "Confirmed" || a.Status == "Paid"),
                     includeProperties: "Child,Schedule,Schedule.Facility,Schedule.Slot"
                 );
+
+                // Tìm ngày gần nhất
+                if (!allUpcomingAppointments.Any())
+                {
+                    _logger.LogInformation("Không tìm thấy lịch tiêm sắp tới nào cho Member {MemberId}", memberId);
+                    return result;
+                }
+
+                var nearestDate = allUpcomingAppointments.Min(a => a.Schedule.Date);
+                _logger.LogInformation("Tìm thấy lịch tiêm gần nhất vào ngày {NearestDate} cho Member {MemberId}", nearestDate, memberId);
+
+                // Lấy tất cả appointments trong ngày gần nhất đó
+                var appointments = allUpcomingAppointments.Where(a => a.Schedule.Date == nearestDate).ToList();
 
                 // Lấy tất cả VaccinationAppointmentDetail cùng lúc để tránh N+1 queries
                 var appointmentIds = appointments.Select(a => a.AppointmentId).ToList();
@@ -178,11 +187,11 @@ namespace KidTracking.API.Controllers
                     }
                 }
 
-                // Sắp xếp theo ngày hẹn
-                result = result.OrderBy(v => v.AppointmentDate).ToList();
+                // Sắp xếp theo thời gian hẹn
+                result = result.OrderBy(v => v.AppointmentDate).ThenBy(v => v.AppointmentTime).ToList();
 
-                _logger.LogInformation("Tìm thấy {Count} lịch tiêm sắp tới cho Member {MemberId} trong {Days} ngày tới", 
-                    result.Count, memberId, daysAhead);
+                _logger.LogInformation("Tìm thấy {Count} lịch tiêm gần nhất vào ngày {NearestDate} cho Member {MemberId}", 
+                    result.Count, nearestDate, memberId);
 
                 return result;
             }
