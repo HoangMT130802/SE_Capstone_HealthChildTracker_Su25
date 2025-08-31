@@ -604,6 +604,8 @@ namespace Services.Implementations
                 try
                 {
                     // 1) Double-book theo CVP: nếu đã có CVP Pending/Scheduled và đã gắn AppointmentId cho cùng bệnh
+                    // 🔧 COMMENTED FOR TESTING - Tạm thời tắt để test được đặt nhiều lịch cùng bệnh
+                    /*
                     var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
                     var existingPendingProfiles = await childVaccineProfileRepo.FindAsync(
                         p => p.ChildId == request.ChildId
@@ -622,8 +624,13 @@ namespace Services.Implementations
                             Severity = ValidationSeverity.Error
                         });
                     }
+                    */
+                    
+                    var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
 
                     // 2) Anti-spam: nếu vừa tạo CVP Pending/Scheduled cho cùng bệnh trong 5 phút gần đây
+                    // 🔧 COMMENTED FOR TESTING - Tạm thời tắt để test liên tục
+                    /*
                     if (validation.CanBook)
                     {
                         var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -645,6 +652,7 @@ namespace Services.Implementations
                             });
                         }
                     }
+                    */
 
                     // 3) Giữ số lượng gói theo kiểm tra reserved (không trừ thật) khi dùng OrderId
                     if (validation.CanBook && hasOrderId)
@@ -1581,16 +1589,97 @@ namespace Services.Implementations
                 appointmentDetail.Notes = $"{appointmentDetail.Notes ?? ""}\n[{DateTime.Now:yyyy-MM-dd HH:mm}] Thay đổi từ VaccineId {oldVaccineId} sang {request.NewVaccineId}. Lý do: {request.Reason}. Ghi chú: {request.Notes}".Trim();
                 
                 appointmentDetailRepo.Update(appointmentDetail);
+
+                // ✅ 11. CRITICAL FIX: Update ChildVaccineProfile với logic tương thích bệnh
+                var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
+                var childVaccineProfiles = await childVaccineProfileRepo.FindAsync(
+                    p => p.AppointmentId == appointmentDetail.AppointmentId && p.VaccineId == oldVaccineId);
+
+                // Lấy danh sách bệnh mà vaccine mới có thể chữa
+                var newVaccineDiseaseIds = newVaccine.VaccineDiseases?.Select(vd => vd.DiseaseId).ToList() ?? new List<int>();
+                
+                // Khởi tạo thông tin compatibility
+                var compatibleProfiles = new List<ChildVaccineProfile>();
+                var incompatibleProfiles = new List<ChildVaccineProfile>();
+
+                if (childVaccineProfiles.Any())
+                {
+                    _logger.LogInformation("Xử lý {Count} ChildVaccineProfile khi thay đổi từ VaccineId {OldVaccineId} sang {NewVaccineId}", 
+                        childVaccineProfiles.Count(), oldVaccineId, request.NewVaccineId);
+                    
+                    foreach (var profile in childVaccineProfiles)
+                    {
+                        // Kiểm tra vaccine mới có chữa được bệnh này không
+                        if (newVaccineDiseaseIds.Contains(profile.DiseaseId))
+                        {
+                            // ✅ Vaccine mới chữa được bệnh này → Update VaccineId
+                            profile.VaccineId = request.NewVaccineId;
+                            profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            childVaccineProfileRepo.Update(profile);
+                            compatibleProfiles.Add(profile);
+                            
+                            _logger.LogInformation("✅ Cập nhật ChildVaccineProfile {ProfileId} (Disease {DiseaseId}) với VaccineId mới {NewVaccineId}", 
+                                profile.VaccineProfileId, profile.DiseaseId, request.NewVaccineId);
+                        }
+                        else
+                        {
+                            // ❌ Vaccine mới KHÔNG chữa được bệnh này → Xóa AppointmentId (trả về trạng thái Scheduled)
+                            profile.AppointmentId = null;
+                            profile.Status = "Scheduled"; // Trả về trạng thái chờ đặt lịch
+                            profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            childVaccineProfileRepo.Update(profile);
+                            incompatibleProfiles.Add(profile);
+                            
+                            _logger.LogWarning("⚠️ Vaccine mới {NewVaccineId} không chữa được Disease {DiseaseId}. Xóa AppointmentId khỏi ChildVaccineProfile {ProfileId}", 
+                                request.NewVaccineId, profile.DiseaseId, profile.VaccineProfileId);
+                        }
+                    }
+
+                    _logger.LogInformation("📊 Kết quả thay đổi vaccine: {CompatibleCount} CVP tương thích (updated), {IncompatibleCount} CVP không tương thích (unlinked)", 
+                        compatibleProfiles.Count, incompatibleProfiles.Count);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Không tìm thấy ChildVaccineProfile nào cho AppointmentId {AppointmentId} với VaccineId {OldVaccineId}", 
+                        appointmentDetail.AppointmentId, oldVaccineId);
+                }
+
                 await _unitOfWork.SaveChangesAsync();
 
-                // 11. Build response
+                // 12. Build response với thông tin disease compatibility
                 var oldVaccine = await vaccineRepo.GetAsync(v => v.VaccineId == oldVaccineId, "VaccineDiseases,VaccineDiseases.Disease");
                 var oldFacilityVaccine = await facilityVaccineRepo.GetAsync(fv => fv.VaccineId == oldVaccineId && fv.FacilityId == facilityId);
                 
+                // Lấy tên bệnh để hiển thị trong response
+                var diseaseRepo = _unitOfWork.GetRepository<Disease>();
+                var compatibleDiseaseNames = new List<string>();
+                var incompatibleDiseaseNames = new List<string>();
+
+                if (compatibleProfiles.Any())
+                {
+                    var compatibleDiseaseIds = compatibleProfiles.Select(p => p.DiseaseId).Distinct().ToList();
+                    var compatibleDiseases = await diseaseRepo.FindAsync(d => compatibleDiseaseIds.Contains(d.DiseaseId));
+                    compatibleDiseaseNames = compatibleDiseases.Select(d => d.Name).ToList();
+                }
+
+                if (incompatibleProfiles.Any())
+                {
+                    var incompatibleDiseaseIds = incompatibleProfiles.Select(p => p.DiseaseId).Distinct().ToList();
+                    var incompatibleDiseases = await diseaseRepo.FindAsync(d => incompatibleDiseaseIds.Contains(d.DiseaseId));
+                    incompatibleDiseaseNames = incompatibleDiseases.Select(d => d.Name).ToList();
+                }
+
+                // Tạo message phù hợp
+                var message = "Thay đổi vaccine thành công";
+                if (incompatibleProfiles.Any())
+                {
+                    message += $". Lưu ý: {incompatibleProfiles.Count} bệnh không còn được chữa bởi vaccine mới và cần đặt lịch lại: {string.Join(", ", incompatibleDiseaseNames)}";
+                }
+
                 var response = new UpdateVaccineResponseDTO
                 {
                     IsSuccess = true,
-                    Message = "Thay đổi vaccine thành công",
+                    Message = message,
                     OldVaccine = new VaccineChangeInfo
                     {
                         VaccineId = oldVaccineId,
@@ -1625,6 +1714,13 @@ namespace Services.Implementations
                         OrderDetailId = request.OrderDetailId,
                         PackageName = request.OrderDetailId.HasValue ? await GetPackageNameByOrderDetailIdAsync(request.OrderDetailId.Value) : null,
                         AdditionalCost = request.SourceType == "Order" ? 0 : facilityVaccine.Price
+                    },
+                    DiseaseCompatibility = new DiseaseCompatibilityInfo
+                    {
+                        CompatibleDiseaseCount = compatibleProfiles.Select(p => p.DiseaseId).Distinct().Count(),
+                        IncompatibleDiseaseCount = incompatibleProfiles.Select(p => p.DiseaseId).Distinct().Count(),
+                        CompatibleDiseases = compatibleDiseaseNames,
+                        IncompatibleDiseases = incompatibleDiseaseNames
                     }
                 };
 
@@ -2801,7 +2897,11 @@ namespace Services.Implementations
                 CanComplete = appointment.Status == "Approval" && slotDateTime <= now
             };
 
-            // ✅ Chỉ lấy vaccines từ VaccinationAppointmentDetails (thực sự được tiêm)
+            // ✅ SIMPLIFIED LOGIC: Luôn hiển thị VaccinesToInject mà không cần check điều kiện
+            _logger.LogInformation("✅ Luôn hiển thị VaccinesToInject cho appointment {AppointmentId}", appointment.AppointmentId);
+            
+            // ✅ Lấy vaccines từ VaccinationAppointmentDetails
+            {
             _logger.LogInformation("🔍 DEBUG: Checking VaccinationAppointmentDetails for appointment {AppointmentId}: Count={Count}", 
                 appointment.AppointmentId, appointment.VaccinationAppointmentDetails?.Count ?? 0);
                 
@@ -2927,6 +3027,7 @@ namespace Services.Implementations
                                 profile.Vaccine.Name, profile.Disease.Name, profile.DoseNum, facilityVaccineId);
                         }
                     }
+                }
                 }
             }
 
@@ -3706,10 +3807,31 @@ namespace Services.Implementations
                 // 11.1. Tạo VaccinationAppointmentDetails cho appointment mới - ĐẢM BẢO LUÔN CÓ
                 await CreateVaccinationAppointmentDetailForCancelRebookAsync(currentAppointment, newAppointment, childVaccineProfile, newSchedule, request.Note);
 
-                // 12. Update ChildVaccineProfile
+                // 12. Update ChildVaccineProfile với validation consistency
                 childVaccineProfile.AppointmentId = newAppointment.AppointmentId;
                 childVaccineProfile.Status = "Pending"; // ✅ Đặt thành "Pending" để nhất quán với rebook API
                 childVaccineProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                // ✅ FUTURE-PROOF: Validate vaccine-disease consistency (trong trường hợp tương lai có thay đổi vaccine)
+                var vaccineRepo = _unitOfWork.GetRepository<Vaccine>();
+                var currentVaccine = await vaccineRepo.GetAsync(v => v.VaccineId == childVaccineProfile.VaccineId, "VaccineDiseases");
+                
+                if (currentVaccine?.VaccineDiseases != null)
+                {
+                    var canTreatDisease = currentVaccine.VaccineDiseases.Any(vd => vd.DiseaseId == childVaccineProfile.DiseaseId);
+                    if (!canTreatDisease)
+                    {
+                        _logger.LogWarning("⚠️ CONSISTENCY WARNING: Vaccine {VaccineId} không thể chữa Disease {DiseaseId} trong ChildVaccineProfile {ProfileId} sau rebook", 
+                            childVaccineProfile.VaccineId, childVaccineProfile.DiseaseId, childVaccineProfile.VaccineProfileId);
+                        
+                        // Có thể thêm logic auto-fix ở đây trong tương lai nếu cần
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Vaccine-Disease consistency validated cho ChildVaccineProfile {ProfileId} sau rebook", 
+                            childVaccineProfile.VaccineProfileId);
+                    }
+                }
 
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();

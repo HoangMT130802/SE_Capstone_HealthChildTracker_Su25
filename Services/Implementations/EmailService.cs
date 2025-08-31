@@ -243,10 +243,6 @@ namespace Services.Implementations
                                 
                                 <p class='important'>⏰ Lưu ý: Việc tiêm vaccine đúng lịch rất quan trọng cho sức khỏe của trẻ.</p>
                                 
-                                <p style='text-align: center; margin: 30px 0;'>
-                                    <a href='#' class='button'>Đặt lịch ngay</a>
-                                </p>
-                                
                                 <p>Nếu bạn có bất kỳ câu hỏi nào, vui lòng liên hệ với chúng tôi qua ứng dụng Health Child Tracker.</p>
                                 
                                 <br>
@@ -314,12 +310,7 @@ namespace Services.Implementations
                                         <li>Mang theo giấy tờ tùy thân của trẻ</li>
                                     </ul>
                                 </div>
-                                
-                                <p style='text-align: center; margin: 30px 0;'>
-                                    <a href='#' class='button'>Xác nhận tham gia</a>
-                                    <a href='#' class='button-secondary'>Thay đổi lịch</a>
-                                </p>
-                                
+                                                             
                                 <p class='important'>⚠️ Nếu không thể tham gia, vui lòng hủy lịch trước 24 giờ.</p>
                                 
                                 <br>
@@ -382,11 +373,7 @@ namespace Services.Implementations
                                 </div>
                                 
                                 {nextDoseInfo}
-                                
-                                <p style='text-align: center; margin: 30px 0;'>
-                                    <a href='#' class='button'>Xem lịch sử tiêm vaccine</a>
-                                </p>
-                                
+                                                           
                                 <p>Cảm ơn bạn đã tin tưởng và sử dụng dịch vụ Health Child Tracker để theo dõi sức khỏe của trẻ.</p>
                                 
                                 <br>
@@ -555,6 +542,152 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError($"Failed to send thank you email to {email}: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task SendUpcomingVaccinationEmailAsync(string email, string memberName, List<Contracts.DTOs.Email.UpcomingVaccinationItemDTO> upcomingVaccinations)
+        {
+            try
+            {
+                var subject = $"🗓️ Lịch tiêm chủng sắp tới - {memberName}";
+                
+                // Tạo danh sách vaccinations
+                var vaccinationListHtml = "";
+                if (upcomingVaccinations.Any())
+                {
+                    foreach (var vaccination in upcomingVaccinations)
+                    {
+                        var statusColor = vaccination.Status switch
+                        {
+                            "Confirmed" => "#28a745",
+                            "Paid" => "#007bff", 
+                            "Pending" => "#ffc107",
+                            _ => "#6c757d"
+                        };
+                        
+                        var statusText = vaccination.Status switch
+                        {
+                            "Confirmed" => "✅ Đã xác nhận",
+                            "Paid" => "💳 Đã thanh toán",
+                            "Pending" => "⏳ Chờ xác nhận",
+                            _ => "📋 " + vaccination.Status
+                        };
+
+                        var urgencyClass = vaccination.DaysUntilAppointment <= 3 ? "urgent" : "";
+                        
+                        vaccinationListHtml += $@"
+                            <div class='vaccination-item {urgencyClass}' style='background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                                <div style='display: flex; align-items: center; margin-bottom: 15px;'>
+                                    <span style='background: {statusColor}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-right: 15px;'>{statusText}</span>
+                                    {(vaccination.DaysUntilAppointment <= 3 ? "<span style='background: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;'>🚨 GẤP</span>" : "")}
+                                </div>
+                                <h3 style='color: #2c3e50; margin: 0 0 10px 0; font-size: 18px;'>
+                                    <span class='emoji'>👶</span> {vaccination.ChildName} ({vaccination.ChildAge} tháng tuổi)
+                                </h3>
+                                <div style='margin-bottom: 12px;'>
+                                    <strong style='color: #27ae60;'><span class='emoji'>💉</span> {vaccination.VaccineName}</strong>
+                                    <span style='background: #e8f5e8; color: #27ae60; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;'>Mũi {vaccination.DoseNumber}</span>
+                                </div>
+                                <div style='color: #666; line-height: 1.6;'>
+                                    <p style='margin: 5px 0;'><span class='emoji'>📅</span> <strong>Ngày hẹn:</strong> {vaccination.AppointmentDate:dd/MM/yyyy} lúc {vaccination.AppointmentTime}</p>
+                                    <p style='margin: 5px 0;'><span class='emoji'>🏥</span> <strong>Cơ sở:</strong> {vaccination.FacilityName}</p>
+                                    <p style='margin: 5px 0;'><span class='emoji'>📍</span> <strong>Địa chỉ:</strong> {vaccination.FacilityAddress}</p>
+                                    <p style='margin: 5px 0;'><span class='emoji'>⏰</span> <strong>Còn {vaccination.DaysUntilAppointment} ngày</strong></p>
+                                </div>
+                            </div>";
+                    }
+                }
+                else
+                {
+                    vaccinationListHtml = @"
+                        <div style='text-align: center; padding: 40px; color: #666;'>
+                            <span class='emoji' style='font-size: 48px;'>✅</span>
+                            <h3 style='color: #27ae60; margin: 20px 0 10px 0;'>Tuyệt vời!</h3>
+                            <p>Hiện tại không có lịch tiêm chủng nào sắp tới.</p>
+                            <p style='margin-top: 15px;'><em>Hệ thống sẽ tự động thông báo khi có lịch tiêm mới.</em></p>
+                        </div>";
+                }
+
+                var body = $@"
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset='utf-8'>
+                        <style>
+                            .emoji {{ font-family: 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }}
+                            .vaccination-item.urgent {{ border-left: 4px solid #dc3545 !important; }}
+                            .cta-button {{ 
+                                display: inline-block; 
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                color: white; 
+                                padding: 15px 30px; 
+                                text-decoration: none; 
+                                border-radius: 25px; 
+                                font-weight: bold;
+                                margin: 20px 0;
+                                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                                transition: transform 0.2s;
+                            }}
+                            .cta-button:hover {{ transform: translateY(-2px); }}
+                            .footer {{ background: #f8f9fa; padding: 20px; text-align: center; color: #666; border-radius: 8px; margin-top: 30px; }}
+                        </style>
+                    </head>
+                    <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>
+                        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 15px 15px 0 0; color: white;'>
+                            <h1 style='margin: 0; font-size: 24px;'>
+                                <span class='emoji'>🗓️</span> Lịch Tiêm Chủng Sắp Tới
+                            </h1>
+                            <p style='margin: 10px 0 0 0; opacity: 0.9;'>Chào {memberName}! Đây là lịch tiêm chủng sắp tới của bạn</p>
+                        </div>
+                        
+                        <div style='background: #f8f9fa; padding: 30px; border-radius: 0 0 15px 15px;'>
+                            <div style='background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+                                <h2 style='color: #2c3e50; margin-top: 0;'>
+                                    <span class='emoji'>📋</span> Danh Sách Lịch Hẹn ({upcomingVaccinations.Count} lịch)
+                                </h2>
+                                
+                                {vaccinationListHtml}
+                                
+                                <div style='text-align: center; margin-top: 30px;'>
+                                    <p style='color: #666; margin-bottom: 20px;'>💡 <strong>Lưu ý quan trọng:</strong></p>
+                                    <ul style='text-align: left; color: #666; line-height: 1.8;'>
+                                        <li>Vui lòng đến đúng giờ hẹn để đảm bảo chất lượng dịch vụ</li>
+                                        <li>Mang theo sổ tiêm chủng và giấy tờ tùy thân</li>
+                                        <li>Liên hệ cơ sở y tế nếu cần thay đổi lịch hẹn</li>
+                                        <li>Theo dõi sức khỏe trẻ trước và sau khi tiêm</li>
+                                    </ul>
+                                    <a href='#' class='cta-button'>
+                                        <span class='emoji'>📱</span> Mở ứng dụng để xem chi tiết
+                                    </a>
+                                </div>
+                                
+                                <div style='margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;'>
+                                    <p><strong>Cần hỗ trợ?</strong></p>
+                                    <ul style='color: #666; line-height: 1.6;'>
+                                        <li><span class='emoji'>📧</span> Email: support@healthchildtracker.com</li>
+                                        <li><span class='emoji'>📞</span> Hotline: 1900-xxxx (8:00 - 18:00, T2-T6)</li>
+                                        <li><span class='emoji'>💬</span> Chat trong app: Luôn sẵn sàng hỗ trợ 24/7</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class='footer'>
+                                <p><strong>Health Child Tracker</strong></p>
+                                <p style='font-size: 12px; opacity: 0.8; margin-top: 15px;'>
+                                    Email này được gửi tự động, vui lòng không trả lời trực tiếp.
+                                </p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>";
+
+                await SendEmailAsync(email, subject, body);
+                _logger.LogInformation($"Upcoming vaccination email sent to {email} for member {memberName} with {upcomingVaccinations.Count} appointments");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to send upcoming vaccination email to {email}: {ex.Message}");
                 throw;
             }
         }

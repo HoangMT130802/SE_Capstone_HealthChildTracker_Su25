@@ -15,6 +15,12 @@ namespace Contracts.DTOs.Appointment
         /// </summary>
         public int? OrderId { get; set; }
         
+        /// <summary>
+        /// ID OrderDetail cụ thể nếu muốn chọn vaccine khác từ order
+        /// Nếu không có, sẽ tự động tìm OrderDetail phù hợp với ChildVaccineProfile hiện tại
+        /// </summary>
+        public int? OrderDetailId { get; set; }
+        
         public string? Note { get; set; }
     }
 }

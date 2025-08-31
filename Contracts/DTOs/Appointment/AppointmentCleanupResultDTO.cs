@@ -57,3 +57,4 @@ namespace Contracts.DTOs.Appointment
         public List<string> Errors { get; set; } = new List<string>();
     }
 }
+

@@ -21,5 +21,8 @@ namespace Services.Interfaces
         
         // Thank you email method
         Task SendThankYouEmailAsync(string email, string memberName, int totalChildren = 0, int totalAppointments = 0, int totalVaccinations = 0);
+        
+        // Upcoming vaccination email method
+        Task SendUpcomingVaccinationEmailAsync(string email, string memberName, List<Contracts.DTOs.Email.UpcomingVaccinationItemDTO> upcomingVaccinations);
     }
 }
