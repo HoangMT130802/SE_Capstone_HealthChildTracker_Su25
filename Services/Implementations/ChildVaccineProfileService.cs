@@ -492,16 +492,42 @@ namespace Services.Implementations
                 _logger.LogInformation("Tìm thấy {ProfileCount} ChildVaccineProfile cho AppointmentId {AppointmentId}", 
                     appointmentProfiles.Count(), completeDto.AppointmentId);
 
-                // 4. Cập nhật TẤT CẢ CVP thành "Completed" (Multi-Disease Vaccine Support)
+                // 4. Cập nhật CVP với logic compatibility cho vaccine được chọn
                 ChildVaccineProfile? primaryProfile = null;
+                
+                // Lấy danh sách disease mà vaccine mới có thể chữa
+                var newVaccineDiseaseIds = vaccine.VaccineDiseases?.Select(vd => vd.DiseaseId).ToList() ?? new List<int>();
+                _logger.LogInformation("Vaccine {VaccineId} có thể chữa {DiseaseCount} diseases: [{DiseaseIds}]", 
+                    facilityVaccine.VaccineId, newVaccineDiseaseIds.Count, string.Join(", ", newVaccineDiseaseIds));
+
                 foreach (var profile in appointmentProfiles)
                 {
                     profile.ActualDate = actualDate;
                     profile.Status = "Completed";
-                    // Sync lại VaccineId nếu cần (do mismatch giữa Book và Complete)
-                    profile.VaccineId = facilityVaccine.VaccineId;
                     profile.DoseNum = completeDto.DoseNumber;
                     profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                    // ✅ CRITICAL FIX: Update VaccineId và kiểm tra compatibility
+                    var oldVaccineId = profile.VaccineId;
+                    profile.VaccineId = facilityVaccine.VaccineId;
+
+                    // ✅ CRITICAL FIX: Kiểm tra vaccine mới có chữa được disease này không
+                    var canTreatThisDisease = newVaccineDiseaseIds.Contains(profile.DiseaseId);
+                    
+                    if (!canTreatThisDisease)
+                    {
+                        // Vaccine mới KHÔNG chữa được disease này -> Cập nhật DiseaseId theo determinedDiseaseId
+                        var oldDiseaseId = profile.DiseaseId;
+                        profile.DiseaseId = determinedDiseaseId.Value;
+                        
+                        _logger.LogWarning("⚠️ ChildVaccineProfile {ProfileId}: Vaccine mới {NewVaccineId} không chữa được Disease {OldDiseaseId}, đã update thành Disease {NewDiseaseId}", 
+                            profile.VaccineProfileId, facilityVaccine.VaccineId, oldDiseaseId, determinedDiseaseId.Value);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ ChildVaccineProfile {ProfileId}: Vaccine {VaccineId} vẫn chữa được Disease {DiseaseId}", 
+                            profile.VaccineProfileId, facilityVaccine.VaccineId, profile.DiseaseId);
+                    }
 
                     profileRepository.Update(profile);
 
