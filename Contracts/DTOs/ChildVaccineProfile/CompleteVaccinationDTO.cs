@@ -34,5 +34,12 @@ namespace Contracts.DTOs.ChildVaccineProfile
         /// </summary>
         [Required]
         public DateOnly ExpectedDateForNextDose { get; set; }
+        
+        /// <summary>
+        /// ID của vaccine tiếp theo (tùy chọn) - dùng khi vaccine hiện tại đã hoàn thành và muốn tạo profile cho vaccine khác trong order
+        /// Vaccine này phải có trong gói đã mua. Hệ thống sẽ tự động xác định disease từ vaccine này.
+        /// Nếu null thì hệ thống sẽ tự động chọn vaccine tiếp theo trong order
+        /// </summary>
+        public int? NextVaccineId { get; set; }
     }
 } 
