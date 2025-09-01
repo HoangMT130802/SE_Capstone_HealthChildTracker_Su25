@@ -59,8 +59,7 @@ namespace Services.Implementations
             try
             {
                 _logger.LogInformation($"ChildService: Getting children for AccountId: {accountId}");
-                
-              
+
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -72,13 +71,18 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-               
                 var childRepository = _unitOfWork.GetRepository<Child>();
+                var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
+                var userMembership = await userMembershipRepo.GetAsync(um => um.AccountId == accountId);
+
                 var children = await childRepository.FindAsync(c => c.MemberId == member.MemberId && c.Status == true);
-                
-                _logger.LogInformation($"ChildService: Found {children.Count()} children for MemberId {member.MemberId}");
-                
-                return _mapper.Map<IEnumerable<ChildDTO>>(children);
+
+                // Kiểm tra trạng thái membership
+                var result = await ValidateMembershipStatusForChildren(member.MemberId, userMembership, childRepository, children);
+
+                _logger.LogInformation($"ChildService: Found {result.Count()} children for MemberId {member.MemberId}");
+
+                return _mapper.Map<IEnumerable<ChildDTO>>(result);
             }
             catch (Exception ex)
             {
@@ -87,11 +91,35 @@ namespace Services.Implementations
             }
         }
 
+        private async Task<IEnumerable<Child>> ValidateMembershipStatusForChildren(int memberId, UserMembership userMembership, IGenericRepository<Child> childRepository, IEnumerable<Child> children)
+        {
+            var errors = new List<string>();
+
+            if (userMembership == null || !userMembership.Status)
+            {
+                var firstChild = children.OrderBy(c => c.CreatedAt).FirstOrDefault();
+
+                if (children.Any() && firstChild != null)
+                {
+                    // Chỉ trả về trẻ đầu tiên nếu có trẻ
+                    return new List<Child> { firstChild };
+                }
+
+                errors.Add("Gói đã hết hạn, chỉ có thể xem thông tin trẻ đầu tiên.");
+            }
+
+            if (errors.Any())
+            {
+                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+            }
+
+            return children;
+        }
+
         public async Task<ChildDTO> GetChildByIdAsync(int childId, int accountId)
         {
             try
             {
-              
                 var memberRepo = _unitOfWork.GetRepository<Member>();
                 var member = await memberRepo.GetAsync(m => m.AccountId == accountId);
 
@@ -100,7 +128,6 @@ namespace Services.Implementations
                     throw new InvalidOperationException($"Không tìm thấy member cho account {accountId}");
                 }
 
-                
                 var childRepository = _unitOfWork.GetRepository<Child>();
                 var child = await childRepository.GetAsync(c => c.ChildId == childId && c.MemberId == member.MemberId);
 
@@ -108,6 +135,11 @@ namespace Services.Implementations
                 {
                     throw new KeyNotFoundException($"Child with ID {childId} not found for account {accountId}");
                 }
+
+                // Kiểm tra trạng thái membership
+                var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
+                var userMembership = await userMembershipRepo.GetAsync(um => um.AccountId == accountId);
+                await ValidateMembershipStatus(childId, member.MemberId, userMembership, childRepository);
 
                 return _mapper.Map<ChildDTO>(child);
             }
@@ -117,6 +149,28 @@ namespace Services.Implementations
                 throw;
             }
         }
+
+        private async Task ValidateMembershipStatus(int childId, int memberId, UserMembership userMembership, IGenericRepository<Child> childRepository)
+        {
+            var errors = new List<string>();
+
+            if (userMembership == null || !userMembership.Status)
+            {
+                var children = await childRepository.FindAsync(c => c.MemberId == memberId && c.Status == true);
+                var firstChild = children.OrderBy(c => c.CreatedAt).FirstOrDefault();
+
+                if (firstChild == null || firstChild.ChildId != childId)
+                {
+                    errors.Add("Gói đã hết hạn, chỉ có thể xem thông tin trẻ đầu tiên.");
+                }
+            }
+
+            if (errors.Any())
+            {
+                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+            }
+        }
+
 
         /// <summary>
         /// Lấy thông tin child theo childId mà không cần check account ownership (public API)
