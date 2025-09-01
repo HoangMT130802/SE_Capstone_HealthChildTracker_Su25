@@ -2358,19 +2358,9 @@ namespace Services.Implementations
                         _logger.LogInformation("Appointment {AppointmentId} không có OrderId, chỉ cập nhật VaccinationAppointmentDetails", appointmentId);
                     }
 
-                    // ✅ Cập nhật ChildVaccineProfile status thành "Completed" nếu có
-                    var childVaccineProfileRepo = _unitOfWork.GetRepository<ChildVaccineProfile>();
-                    var childVaccineProfiles = await childVaccineProfileRepo.FindAsync(
-                        p => p.AppointmentId == appointmentId && p.Status == "Pending");
-
-                    foreach (var profile in childVaccineProfiles)
-                    {
-                        profile.Status = "Completed";
-                        profile.ActualDate = appointment.Schedule.Date;
-                        profile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        childVaccineProfileRepo.Update(profile);
-                        _logger.LogInformation("Đã cập nhật ChildVaccineProfile {ProfileId} status thành Completed", profile.VaccineProfileId);
-                    }
+                    // ✅ KHÔNG cập nhật ChildVaccineProfile status thành "Completed" khi chuyển sang Paid
+                    // Việc hoàn thành vaccine phải được thực hiện bởi bác sĩ thông qua CompleteVaccinationAsync
+                    _logger.LogInformation("Appointment {AppointmentId} đã chuyển sang Paid. ChildVaccineProfile sẽ được cập nhật thành Completed khi bác sĩ gọi CompleteVaccinationAsync", appointmentId);
 
                     // ✅ RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid
                     _logger.LogInformation("RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid cho appointment {AppointmentId}", appointmentId);
