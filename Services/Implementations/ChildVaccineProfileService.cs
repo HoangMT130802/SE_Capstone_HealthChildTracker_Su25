@@ -495,56 +495,93 @@ namespace Services.Implementations
                 _logger.LogInformation("Tìm thấy {ProfileCount} ChildVaccineProfile cho AppointmentId {AppointmentId}", 
                     appointmentProfiles.Count(), completeDto.AppointmentId);
 
-                // 4. ✅ CRITICAL FIX: CHỈ cập nhật PROFILE CHÍNH, không tạo thêm profiles mới
-                ChildVaccineProfile? primaryProfile = null;
-                
-                // Lấy danh sách disease mà vaccine mới có thể chữa
+                // 4. ✅ IMPROVED LOGIC: Tạo nhiều ChildVaccineProfile cho tất cả bệnh mà vaccine có thể chữa
                 var newVaccineDiseaseIds = vaccine.VaccineDiseases?.Select(vd => vd.DiseaseId).ToList() ?? new List<int>();
                 _logger.LogInformation("Vaccine {VaccineId} có thể chữa {DiseaseCount} diseases: [{DiseaseIds}]", 
                     facilityVaccine.VaccineId, newVaccineDiseaseIds.Count, string.Join(", ", newVaccineDiseaseIds));
 
-                // ✅ PRIORITY 1: Tìm profile có DiseaseId khớp với determinedDiseaseId
-                primaryProfile = appointmentProfiles.FirstOrDefault(p => p.DiseaseId == determinedDiseaseId.Value);
-                
-                // ✅ PRIORITY 2: Nếu không có, chọn profile đầu tiên và update DiseaseId
-                if (primaryProfile == null)
+                // ✅ Tạo hoặc cập nhật ChildVaccineProfile cho TẤT CẢ các bệnh mà vaccine có thể chữa
+                var multiDiseaseCompletedProfiles = new List<ChildVaccineProfile>();
+                var currentProfile = (ChildVaccineProfile?)null;
+
+                foreach (var diseaseId in newVaccineDiseaseIds)
                 {
-                    primaryProfile = appointmentProfiles.First();
-                    _logger.LogInformation("Không tìm thấy profile với DiseaseId {DiseaseId}, sử dụng profile {ProfileId} và update DiseaseId", 
-                        determinedDiseaseId.Value, primaryProfile.VaccineProfileId);
-                }
-
-                // ✅ CHỈ cập nhật primary profile, KHÔNG cập nhật tất cả profiles
-                var oldVaccineId = primaryProfile.VaccineId;
-                var oldDiseaseId = primaryProfile.DiseaseId;
-                
-                primaryProfile.ActualDate = actualDate;
-                primaryProfile.Status = "Completed";
-                primaryProfile.DoseNum = completeDto.DoseNumber;
-                primaryProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                primaryProfile.VaccineId = facilityVaccine.VaccineId;
-                primaryProfile.DiseaseId = determinedDiseaseId.Value; // Luôn set theo determinedDiseaseId
-
-                profileRepository.Update(primaryProfile);
-
-                _logger.LogInformation("✅ Cập nhật PRIMARY ChildVaccineProfile {ProfileId}: VaccineId {OldVaccine}→{NewVaccine}, DiseaseId {OldDisease}→{NewDisease}, Status→Completed", 
-                    primaryProfile.VaccineProfileId, oldVaccineId, facilityVaccine.VaccineId, oldDiseaseId, determinedDiseaseId.Value);
-
-                // ✅ XÓA hoặc UPDATE các profiles khác thành CANCELLED để tránh duplicate
-                var otherProfiles = appointmentProfiles.Where(p => p.VaccineProfileId != primaryProfile.VaccineProfileId);
-                foreach (var otherProfile in otherProfiles)
-                {
-                    // Option 1: Cancel other profiles
-                    otherProfile.Status = "Cancelled";
-                    otherProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                    profileRepository.Update(otherProfile);
+                    // Tìm profile hiện có cho disease này
+                    var existingProfile = appointmentProfiles.FirstOrDefault(p => p.DiseaseId == diseaseId);
                     
-                    _logger.LogInformation("🚫 Cancelled ChildVaccineProfile {ProfileId} (VaccineId {VaccineId}, DiseaseId {DiseaseId}) to avoid duplicate completion", 
-                        otherProfile.VaccineProfileId, otherProfile.VaccineId, otherProfile.DiseaseId);
+                    if (existingProfile != null)
+                    {
+                        // Cập nhật profile hiện có
+                        var oldVaccineId = existingProfile.VaccineId;
+                        var oldDiseaseId = existingProfile.DiseaseId;
+                        
+                        existingProfile.ActualDate = actualDate;
+                        existingProfile.Status = "Completed";
+                        existingProfile.DoseNum = completeDto.DoseNumber;
+                        existingProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        existingProfile.VaccineId = facilityVaccine.VaccineId;
+                        existingProfile.DiseaseId = diseaseId;
+
+                        profileRepository.Update(existingProfile);
+                        multiDiseaseCompletedProfiles.Add(existingProfile);
+                        
+                        _logger.LogInformation("✅ Cập nhật ChildVaccineProfile {ProfileId}: VaccineId {OldVaccine}→{NewVaccine}, DiseaseId {OldDisease}→{NewDisease}, Status→Completed", 
+                            existingProfile.VaccineProfileId, oldVaccineId, facilityVaccine.VaccineId, oldDiseaseId, diseaseId);
+                        
+                        // Sử dụng profile đầu tiên làm currentProfile cho response
+                        if (currentProfile == null)
+                        {
+                            currentProfile = existingProfile;
+                        }
+                    }
+                    else
+                    {
+                        // Tạo profile mới cho disease này
+                        var newProfile = new ChildVaccineProfile
+                        {
+                            ChildId = childId,
+                            VaccineId = facilityVaccine.VaccineId,
+                            DiseaseId = diseaseId,
+                            AppointmentId = completeDto.AppointmentId,
+                            DoseNum = completeDto.DoseNumber,
+                            ExpectedDate = appointment.Schedule?.Date ?? DateOnly.FromDateTime(DateTime.Today),
+                            ActualDate = actualDate,
+                            Status = "Completed",
+                            IsRequired = true,
+                            Priority = "High",
+                            Note = $"Tự động tạo khi complete vaccine {vaccine.Name} cho bệnh {diseaseId}",
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        };
+
+                        await profileRepository.AddAsync(newProfile);
+                        multiDiseaseCompletedProfiles.Add(newProfile);
+                        
+                        _logger.LogInformation("✅ Tạo mới ChildVaccineProfile cho DiseaseId {DiseaseId}: VaccineId {VaccineId}, Status→Completed", 
+                            diseaseId, facilityVaccine.VaccineId);
+                        
+                        // Sử dụng profile đầu tiên làm currentProfile cho response
+                        if (currentProfile == null)
+                        {
+                            currentProfile = newProfile;
+                        }
+                    }
                 }
 
-                // ✅ Sử dụng primaryProfile làm currentProfile (đã được xác định ở trên)
-                var currentProfile = primaryProfile;
+                // ✅ Hủy các profile không liên quan đến vaccine hiện tại
+                var unrelatedProfiles = appointmentProfiles.Where(p => !newVaccineDiseaseIds.Contains(p.DiseaseId));
+                foreach (var unrelatedProfile in unrelatedProfiles)
+                {
+                    unrelatedProfile.Status = "Cancelled";
+                    unrelatedProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    profileRepository.Update(unrelatedProfile);
+                    
+                    _logger.LogInformation("🚫 Cancelled ChildVaccineProfile {ProfileId} (VaccineId {VaccineId}, DiseaseId {DiseaseId}) - không liên quan đến vaccine hiện tại", 
+                        unrelatedProfile.VaccineProfileId, unrelatedProfile.VaccineId, unrelatedProfile.DiseaseId);
+                }
+
+                _logger.LogInformation("✅ Đã tạo/cập nhật {ProfileCount} ChildVaccineProfile cho vaccine {VaccineId} với {DiseaseCount} bệnh", 
+                    multiDiseaseCompletedProfiles.Count, facilityVaccine.VaccineId, newVaccineDiseaseIds.Count);
 
                                                 // ✅ NEW LOGIC: Sử dụng nextVaccineId để quyết định tạo profile tiếp theo
                 var currentVaccineId = facilityVaccine.VaccineId; // Vaccine hiện tại được complete
