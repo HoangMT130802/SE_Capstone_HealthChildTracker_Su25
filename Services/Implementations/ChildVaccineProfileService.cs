@@ -558,13 +558,13 @@ namespace Services.Implementations
                 if (isSameVaccine)
                 {
                     // ✅ CASE 1: Cùng vaccine → Tạo mũi tiếp theo
-                    var totalDoses = vaccine.NumberOfDoses;
+                    var currentVaccineTotalDoses = vaccine.NumberOfDoses;
                     var nextDoseNumber = completeDto.DoseNumber + 1;
                     
                     _logger.LogInformation("🔄 CASE 1: Cùng vaccine {VaccineId}, kiểm tra tạo mũi tiếp theo (Dose {NextDose}/{TotalDoses})", 
-                        currentVaccineId, nextDoseNumber, totalDoses);
+                        currentVaccineId, nextDoseNumber, currentVaccineTotalDoses);
 
-                if (nextDoseNumber <= totalDoses)
+                    if (nextDoseNumber <= currentVaccineTotalDoses)
                 {
                     nextExpectedDate = completeDto.ExpectedDateForNextDose != default
                         ? completeDto.ExpectedDateForNextDose
@@ -577,7 +577,7 @@ namespace Services.Implementations
                         }
                         else
                         {
-                        _logger.LogInformation("✅ Vaccine {VaccineId} đã hoàn thành đủ {TotalDoses} mũi", currentVaccineId, totalDoses);
+                        _logger.LogInformation("✅ Vaccine {VaccineId} đã hoàn thành đủ {TotalDoses} mũi", currentVaccineId, currentVaccineTotalDoses);
                     }
                 }
                 else
@@ -687,8 +687,8 @@ namespace Services.Implementations
                     p.DiseaseId == currentProfile.DiseaseId &&
                     p.Status == "Completed");
 
-                var completedDoses = completedProfiles.Count();
-                var isVaccineCourseCompleted = completedDoses >= totalDoses;
+                var originalCompletedDoses = completedProfiles.Count();
+                var originalIsVaccineCourseCompleted = originalCompletedDoses >= vaccine.NumberOfDoses;
 
                 // 10. Load full data để return
                 var completedProfile = await profileRepository.GetAsync(
@@ -722,9 +722,9 @@ namespace Services.Implementations
                 var isNextDoseOfSameVaccine = nextProfileFullData != null && nextProfileFullData.VaccineId == currentProfile.VaccineId;
                 var isNewVaccineProfile = nextProfileFullData != null && nextProfileFullData.VaccineId != currentProfile.VaccineId;
                 
-                var totalDoses = vaccine.NumberOfDoses;
-                var completedDoses = completeDto.DoseNumber;
-                var isVaccineCourseCompleted = completedDoses >= totalDoses;
+                var responseTotalDoses = vaccine.NumberOfDoses;
+                var responseCompletedDoses = completeDto.DoseNumber;
+                var responseIsVaccineCourseCompleted = responseCompletedDoses >= responseTotalDoses;
 
                 var result = new VaccinationCompletionResponseDTO
                 {
@@ -734,9 +734,9 @@ namespace Services.Implementations
                     // ✅ Profile tiếp theo (có thể cùng vaccine hoặc vaccine mới)
                     NextDoseOfCurrentVaccine = isNextDoseOfSameVaccine ? _mapper.Map<ChildVaccineProfileDTO>(nextProfileFullData) : null,
                     HasNextDoseOfCurrentVaccine = isNextDoseOfSameVaccine,
-                    IsCurrentVaccineCourseCompleted = isVaccineCourseCompleted,
-                    TotalDoses = totalDoses,
-                    CompletedDoses = completedDoses,
+                    IsCurrentVaccineCourseCompleted = responseIsVaccineCourseCompleted,
+                    TotalDoses = responseTotalDoses,
+                    CompletedDoses = responseCompletedDoses,
                     NextExpectedDateOfCurrentVaccine = isNextDoseOfSameVaccine ? nextExpectedDate : null,
                     
                     // ✅ VACCINE MỚI (nếu facilityVaccineId khác)
@@ -747,7 +747,7 @@ namespace Services.Implementations
                     Message = isNewVaccineProfile ? 
                         $"Hoàn thành vaccine {vaccine.Name}. Đã tạo lịch cho vaccine {nextProfileFullData?.Vaccine?.Name}" :
                         isNextDoseOfSameVaccine ?
-                        $"Hoàn thành mũi {completeDto.DoseNumber}/{totalDoses}. Mũi tiếp theo dự kiến: {nextExpectedDate?.ToString("dd/MM/yyyy")}" :
+                        $"Hoàn thành mũi {completeDto.DoseNumber}/{responseTotalDoses}. Mũi tiếp theo dự kiến: {nextExpectedDate?.ToString("dd/MM/yyyy")}" :
                         $"Hoàn thành toàn bộ liệu trình vaccine {vaccine.Name}"
                 };
                 // Commit transaction cuối cùng
