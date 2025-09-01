@@ -80,12 +80,23 @@ namespace KidTracking.API.Controllers
                 var children = await _childService.GetAllChildrenByAccountIdAsync(accountId);
                 return Ok(children);
             }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, $"Invalid operation when getting children for account {GetCurrentAccountId()}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, $"Invalid argument when getting children for account {GetCurrentAccountId()}");
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting children for current account");
                 return StatusCode(500, new { message = "Internal server error" });
             }
         }
+
         [HttpGet("{childId}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetChildById(int childId)
@@ -98,10 +109,17 @@ namespace KidTracking.API.Controllers
             }
             catch (KeyNotFoundException ex)
             {
+                _logger.LogWarning(ex, $"Child {childId} not found for account {GetCurrentAccountId()}");
                 return NotFound(new { message = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(ex, $"Invalid operation when getting child {childId} for account {GetCurrentAccountId()}");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, $"Invalid argument when getting child {childId} for account {GetCurrentAccountId()}");
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
