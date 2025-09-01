@@ -382,14 +382,10 @@ namespace Services.Implementations
                 // 8. Tạo VaccinationAppointmentDetail cho TẤT CẢ trường hợp (có Order hoặc không)
                 await CreateVaccinationAppointmentDetailForRebookingAsync(newAppointment, profile, schedule, usedOrder, request.Note);
 
-                // 8.1. Decrease RemainingQuantity từ OrderDetail nếu sử dụng order
+                // 8.1. KHÔNG trừ RemainingQuantity khi rebook - chỉ trừ khi bác sĩ complete vaccination
                 if (selectedOrderDetail != null && usedOrder != null)
                 {
-                    selectedOrderDetail.RemainingQuantity -= 1;
-                    var orderDetailRepo = _unitOfWork.GetRepository<OrderDetail>();
-                    orderDetailRepo.Update(selectedOrderDetail);
-                    
-                    _logger.LogInformation("✅ Giảm 1 vaccine từ OrderDetail {OrderDetailId} cho rebook. RemainingQuantity: {Remaining}", 
+                    _logger.LogInformation("✅ Rebook sử dụng OrderDetail {OrderDetailId} với RemainingQuantity: {Remaining} - KHÔNG trừ ngay, sẽ trừ khi complete vaccination", 
                         selectedOrderDetail.OrderDetailId, selectedOrderDetail.RemainingQuantity);
                 }
 

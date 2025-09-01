@@ -2362,8 +2362,8 @@ namespace Services.Implementations
                     // Việc hoàn thành vaccine phải được thực hiện bởi bác sĩ thông qua CompleteVaccinationAsync
                     _logger.LogInformation("Appointment {AppointmentId} đã chuyển sang Paid. ChildVaccineProfile sẽ được cập nhật thành Completed khi bác sĩ gọi CompleteVaccinationAsync", appointmentId);
 
-                    // ✅ RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid
-                    _logger.LogInformation("RemainingQuantity đã được trừ khi đặt lịch, không cần trừ lại khi chuyển sang Paid cho appointment {AppointmentId}", appointmentId);
+                    // ✅ RemainingQuantity chỉ được trừ khi bác sĩ complete vaccination, không trừ khi đặt lịch hoặc chuyển sang Paid
+                    _logger.LogInformation("RemainingQuantity chỉ được trừ khi bác sĩ complete vaccination, không trừ khi đặt lịch hoặc chuyển sang Paid cho appointment {AppointmentId}", appointmentId);
                 }
                 // ✅ Nếu chuyển sang Cancelled, xoá appointmentId khỏi ChildVaccineProfile và trả lại số lượng vaccine
                 else if (updateDto.Status == "Cancelled")
