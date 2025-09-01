@@ -506,12 +506,41 @@ namespace Services.Implementations
 
                 foreach (var diseaseId in newVaccineDiseaseIds)
                 {
-                    // Tìm profile hiện có cho disease này
+                    // ✅ IMPROVED LOGIC: Tìm profile hiện có cho disease này (bao gồm cả Completed)
                     var existingProfile = appointmentProfiles.FirstOrDefault(p => p.DiseaseId == diseaseId);
+                    
+                    // ✅ TÌM THÊM: Kiểm tra xem đã có profile "Completed" cho vaccine/disease/dose này chưa
+                    var existingCompletedProfile = await profileRepository.GetAsync(p => 
+                        p.ChildId == childId &&
+                        p.VaccineId == facilityVaccine.VaccineId &&
+                        p.DiseaseId == diseaseId &&
+                        p.DoseNum == completeDto.DoseNumber &&
+                        p.Status == "Completed");
+                    
+                    if (existingCompletedProfile != null)
+                    {
+                        _logger.LogWarning("⚠️ Đã có ChildVaccineProfile Completed cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}, Dose {DoseNum}. Cập nhật thông tin thay vì tạo mới.", 
+                            childId, facilityVaccine.VaccineId, diseaseId, completeDto.DoseNumber);
+                        
+                        // Cập nhật thông tin profile đã completed (thay đổi ActualDate, Note)
+                        existingCompletedProfile.ActualDate = actualDate;
+                        existingCompletedProfile.Note = $"Tiêm lại mũi {completeDto.DoseNumber} - {actualDate:dd/MM/yyyy}";
+                        existingCompletedProfile.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        
+                        profileRepository.Update(existingCompletedProfile);
+                        multiDiseaseCompletedProfiles.Add(existingCompletedProfile);
+                        
+                        if (currentProfile == null)
+                        {
+                            currentProfile = existingCompletedProfile;
+                        }
+                        
+                        continue; // Bỏ qua việc tạo/cập nhật profile khác
+                    }
                     
                     if (existingProfile != null)
                     {
-                        // Cập nhật profile hiện có
+                        // Cập nhật profile hiện có từ appointment
                         var oldVaccineId = existingProfile.VaccineId;
                         var oldDiseaseId = existingProfile.DiseaseId;
                         
@@ -755,14 +784,19 @@ namespace Services.Implementations
 
                 await _unitOfWork.SaveChangesAsync();
 
-                // 9. Đếm số mũi đã hoàn thành
+                // 9. Đếm số mũi đã hoàn thành (sửa logic để tránh duplicate từ multi-disease vaccine)
                 var completedProfiles = await profileRepository.FindAsync(p =>
                     p.ChildId == currentProfile.ChildId &&
                     p.VaccineId == currentProfile.VaccineId &&
                     p.DiseaseId == currentProfile.DiseaseId &&
                     p.Status == "Completed");
 
-                var originalCompletedDoses = completedProfiles.Count();
+                // ✅ FIX: Đếm unique doses thay vì đếm tất cả profiles (tránh duplicate từ multi-disease vaccine)
+                var uniqueCompletedDoses = completedProfiles
+                    .GroupBy(p => p.DoseNum) // Group theo DoseNum để tránh duplicate
+                    .Count();
+                
+                var originalCompletedDoses = uniqueCompletedDoses;
                 var originalIsVaccineCourseCompleted = originalCompletedDoses >= vaccine.NumberOfDoses;
 
                 // 10. Load full data để return
@@ -945,14 +979,15 @@ namespace Services.Implementations
                 var vaccineTemplates = vaccineTemplatesResult.Data ?? new List<VaccineTemplate>();
                 _logger.LogInformation($"Retrieved {vaccineTemplates.Count} vaccine templates");
 
-                // Group child vaccine profiles by DiseaseId and count completed doses
+                // Group child vaccine profiles by DiseaseId and count completed doses (sửa logic để tránh duplicate từ multi-disease vaccine)
                 var completedDosesByDisease = childVaccineProfiles
                     .GroupBy(cvp => cvp.DiseaseId)
                     .Select(g => new
                     {
                         DiseaseId = g.Key,
                         DiseaseName = g.First().Disease?.Name ?? "Unknown",
-                        CompletedDoseNum = g.Count()
+                        // ✅ FIX: Đếm unique doses thay vì đếm tất cả profiles (tránh duplicate từ multi-disease vaccine)
+                        CompletedDoseNum = g.GroupBy(p => p.DoseNum).Count() // Group theo DoseNum để tránh duplicate
                     })
                     .ToList();
 

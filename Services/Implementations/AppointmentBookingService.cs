@@ -3486,6 +3486,82 @@ namespace Services.Implementations
                     return;
                 }
 
+                // 1.5. ✅ NEW LOGIC: Kiểm tra xem có thể rebook vaccine đã completed không
+                var completedProfiles = existingProfiles
+                    .Where(p => p.Status == "Completed")
+                    .OrderBy(p => p.DoseNum)
+                    .ToList();
+
+                if (completedProfiles.Any())
+                {
+                    _logger.LogInformation("🎯 DEBUG: Tìm thấy {Count} CVP Completed cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}. Có thể rebook vaccine đã completed.", 
+                        completedProfiles.Count, childId, vaccineId, diseaseId);
+                    
+                    // Tìm dose cao nhất đã completed
+                    var maxCompletedDose = completedProfiles.Max(p => p.DoseNum);
+                    
+                    // Nếu dose tiếp theo không vượt quá số liều tối đa, tạo profile mới cho dose tiếp theo
+                    if (maxCompletedDose < totalDoses)
+                    {
+                        var nextDoseForCompleted = maxCompletedDose + 1;
+                        _logger.LogInformation("🎯 DEBUG: Vaccine đã completed đến dose {MaxDose}, tạo profile cho dose tiếp theo {NextDose}", 
+                            maxCompletedDose, nextDoseForCompleted);
+                        
+                        // Tạo profile mới cho dose tiếp theo
+                        var newProfileForCompleted = new ChildVaccineProfile
+                        {
+                            ChildId = childId,
+                            VaccineId = vaccineId,
+                            DiseaseId = diseaseId,
+                            AppointmentId = appointmentId,
+                            DoseNum = nextDoseForCompleted,
+                            ExpectedDate = expectedDate,
+                            Status = "Pending",
+                            IsRequired = true,
+                            Priority = "High",
+                            Note = $"Mũi {nextDoseForCompleted}/{totalDoses} - Rebook vaccine đã completed",
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        };
+
+                        await childVaccineProfileRepo.AddAsync(newProfileForCompleted);
+                        
+                        _logger.LogInformation("✅ Đã tạo CVP mới cho dose tiếp theo (ID: {ProfileId}, Dose: {DoseNum}) từ vaccine đã completed cho Child {ChildId}, Vaccine {VaccineId}",
+                            newProfileForCompleted.VaccineProfileId, nextDoseForCompleted, childId, vaccineId);
+                        return;
+                    }
+                    else
+                    {
+                        // ✅ BOOSTER SHOT LOGIC: Nếu đã completed đủ liều, có thể tạo booster shot
+                        _logger.LogInformation("🎯 DEBUG: Vaccine đã completed đủ {TotalDoses} liều. Có thể tạo booster shot cho Child {ChildId}, Vaccine {VaccineId}, Disease {DiseaseId}.", 
+                            totalDoses, childId, vaccineId, diseaseId);
+                        
+                        // Tạo booster shot (dose = totalDoses + 1)
+                        var boosterDose = totalDoses + 1;
+                        var boosterProfile = new ChildVaccineProfile
+                        {
+                            ChildId = childId,
+                            VaccineId = vaccineId,
+                            DiseaseId = diseaseId,
+                            AppointmentId = appointmentId,
+                            DoseNum = boosterDose,
+                            ExpectedDate = expectedDate,
+                            Status = "Pending",
+                            IsRequired = false, // Booster shot thường không bắt buộc
+                            Priority = "Medium",
+                            Note = $"Booster shot - Mũi tăng cường sau khi đã hoàn thành {totalDoses} liều cơ bản",
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        };
+
+                        await childVaccineProfileRepo.AddAsync(boosterProfile);
+                        
+                        _logger.LogInformation("✅ Đã tạo booster shot (ID: {ProfileId}, Dose: {DoseNum}) cho vaccine đã completed đủ liều cho Child {ChildId}, Vaccine {VaccineId}",
+                            boosterProfile.VaccineProfileId, boosterDose, childId, vaccineId);
+                        return;
+                    }
+                }
+
                 // 2. Tìm CVP "Scheduled" để dùng lại (ưu tiên thứ hai)
                 var scheduledProfile = existingProfiles
                     .Where(p => p.Status == "Scheduled")
