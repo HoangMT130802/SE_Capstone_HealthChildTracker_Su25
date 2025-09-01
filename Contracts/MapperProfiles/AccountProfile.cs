@@ -23,7 +23,9 @@ namespace Contracts.MapperProfiles
               .ForMember(dest => dest.FacilityStaffs, opt => opt.Ignore())
               .ForMember(dest => dest.Members, opt => opt.Ignore())
               .ForMember(dest => dest.UserMemberships, opt => opt.Ignore());
-            CreateMap<Account, AccountDTO>();
+            CreateMap<Account, AccountDTO>()
+            .ForMember(dest => dest.PhoneNumber, opt => opt.Ignore()) 
+            .ForMember(dest => dest.Address, opt => opt.Ignore());
         }
         
     }
