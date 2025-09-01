@@ -151,6 +151,17 @@ namespace Services.Implementations
                 }
 
                 var response = _mapper.Map<AccountDTO>(account);
+                if (account.Role == "Member")
+                {
+                    var memberRepository = _unitOfWork.GetRepository<Member>();
+                    var member = await memberRepository.GetAsync(m => m.AccountId == currentUserId);
+                    if (member != null)
+                    {
+                        response.PhoneNumber = member.PhoneNumber;
+                        response.Address = member.Address;
+                    }
+                }
+
                 _logger.LogInformation($"Retrieved account info for {account.AccountName}");
                 return response;
             }
