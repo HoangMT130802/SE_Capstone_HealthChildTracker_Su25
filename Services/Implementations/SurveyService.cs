@@ -52,7 +52,6 @@ public class SurveyService : ISurveyService
             if (survey == null)
                 throw new KeyNotFoundException($"Survey with ID {surveyId} not found");
 
-            await ValidateDoctorAccess(accountId);
 
             var question = new SurveyQuestion
             {
