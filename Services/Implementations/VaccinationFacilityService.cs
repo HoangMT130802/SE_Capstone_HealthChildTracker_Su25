@@ -274,7 +274,6 @@ namespace Services.Implementations
         {
             try
             {
-                await ValidateManagerAccess(managerAccountId);
                 var facilityRepository = _unitOfWork.GetRepository<VaccinationFacility>();
                 var facility = await facilityRepository.GetAsync(f => f.FacilityId == updateDto.FacilityId && f.Status > 0);
 
@@ -283,14 +282,27 @@ namespace Services.Implementations
                     throw new KeyNotFoundException("Không tìm thấy cơ sở.");
                 }
 
-                var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
-                var facilityStaff = await facilityStaffRepository.GetAsync(
-                    fs => fs.AccountId == managerAccountId && fs.FacilityId == updateDto.FacilityId && fs.Status && fs.FacilityId > 0
-                );
+                // Kiểm tra vai trò của tài khoản
+                var accountRepository = _unitOfWork.GetRepository<Repositories.Entities.Account>();
+                var account = await accountRepository.GetAsync(a => a.AccountId == managerAccountId);
 
-                if (facilityStaff == null)
+                if (account == null)
                 {
-                    throw new UnauthorizedAccessException("Bạn không có quyền chỉnh sửa cơ sở này.");
+                    throw new KeyNotFoundException("Tài khoản không tồn tại.");
+                }
+
+                // Nếu không phải Admin, kiểm tra FacilityStaff
+                if (account.Role != "Admin")
+                {
+                    var facilityStaffRepository = _unitOfWork.GetRepository<FacilityStaff>();
+                    var facilityStaff = await facilityStaffRepository.GetAsync(
+                        fs => fs.AccountId == managerAccountId && fs.FacilityId == updateDto.FacilityId && fs.Status && fs.FacilityId > 0
+                    );
+
+                    if (facilityStaff == null)
+                    {
+                        throw new UnauthorizedAccessException("Bạn không có quyền chỉnh sửa cơ sở này.");
+                    }
                 }
 
                 if (facility.LicenseNumber != updateDto.LicenseNumber)
