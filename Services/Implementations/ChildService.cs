@@ -87,7 +87,7 @@ namespace Services.Implementations
                 throw;
             }
         }
-        
+
 
         private async Task<IEnumerable<Child>> ValidateMembershipStatusForChildren(int accountId, IGenericRepository<Child> childRepository, IEnumerable<Child> children)
         {
@@ -97,21 +97,21 @@ namespace Services.Implementations
             var userMemberships = await userMembershipRepo.FindAsync(um => um.AccountId == accountId);
             var latestMembership = userMemberships.OrderByDescending(um => um.StartDate).FirstOrDefault();
 
+            _logger.LogInformation($"ChildService: UserMembership lookup for AccountId {accountId}: {(latestMembership != null ? $"Found UserMembershipId {latestMembership.UserMembershipId}, Status: {latestMembership.Status}, StartDate: {latestMembership.StartDate}, EndDate: {latestMembership.EndDate}" : "Not found")}");
+
             if (latestMembership == null || !latestMembership.Status)
             {
                 var firstChild = children.OrderBy(c => c.CreatedAt).FirstOrDefault();
+
+                _logger.LogInformation($"ChildService: Children lookup for AccountId {accountId}: {(firstChild != null ? $"Found first ChildId {firstChild.ChildId}" : "No active children")}");
 
                 if (children.Any() && firstChild != null)
                 {
                     return new List<Child> { firstChild };
                 }
 
-                errors.Add("Gói đã hết hạn, chỉ có thể xem thông tin trẻ đầu tiên.");
-            }
-
-            if (errors.Any())
-            {
-                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+                // Trả về danh sách rỗng nếu không có trẻ thay vì ném lỗi
+                return new List<Child>();
             }
 
             return children;
