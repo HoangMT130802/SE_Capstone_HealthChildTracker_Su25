@@ -21,7 +21,7 @@ namespace Contracts.MapperProfiles
                 .ForMember(dest => dest.AppointmentId, opt => opt.MapFrom(src => src.AppointmentId)) // nullable
                 .ForMember(dest => dest.FacilityId, opt => opt.MapFrom(src => 
                     src.Appointment != null && src.Appointment.Schedule != null ? 
-                    src.Appointment.Schedule.FacilityId : (int?)null)) // FacilityId từ appointment
+                    src.Appointment.Schedule.FacilityId : (int?)null)) // FacilityId từ appointment (fallback)
                 .ForMember(dest => dest.VaccineId, opt => opt.MapFrom(src => src.VaccineId))
                 .ForMember(dest => dest.DoseNum, opt => opt.MapFrom(src => src.DoseNum))
                 .ForMember(dest => dest.ExpectedDate, opt => opt.MapFrom(src => src.ExpectedDate))

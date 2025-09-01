@@ -1,5 +1,6 @@
 using Contracts.DTOs.Disease;
 using Contracts.DTOs.Vaccine;
+using Contracts.DTOs.VaccinationFacility;
 
 namespace Contracts.DTOs.ChildVaccineProfile
 {
@@ -54,6 +55,11 @@ namespace Contracts.DTOs.ChildVaccineProfile
         /// Thông tin bệnh mới được tạo profile (nếu có)
         /// </summary>
         public DiseaseDTO? NewDisease { get; set; }
+        
+        /// <summary>
+        /// Thông tin cơ sở tiêm chủng cho vaccine mới (nếu có)
+        /// </summary>
+        public VaccinationFacilityDTO? NewFacility { get; set; }
         
         /// <summary>
         /// Message tổng hợp

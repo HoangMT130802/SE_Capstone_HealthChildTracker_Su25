@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using Newtonsoft.Json;
 using System.Linq.Expressions;
+using Contracts.DTOs.VaccinationFacility;
 
 namespace Services.Implementations
 {
@@ -552,20 +553,26 @@ namespace Services.Implementations
                 ChildVaccineProfile? nextProfile = null;
                 DateOnly? nextExpectedDate = null;
 
-                // Kiểm tra có NextVaccineId không
-                if (completeDto.NextVaccineId.HasValue)
+                // Kiểm tra có NextFacilityVaccineId không
+                _logger.LogInformation("🔍 DEBUG: FacilityVaccineId={FacilityVaccineId}, CurrentVaccineId={CurrentVaccineId}, NextFacilityVaccineId={NextFacilityVaccineId}", 
+                    completeDto.FacilityVaccineId, currentVaccineId, completeDto.NextFacilityVaccineId);
+                
+                if (completeDto.NextFacilityVaccineId.HasValue)
                 {
-                    var nextVaccineId = completeDto.NextVaccineId.Value;
-                    var isSameVaccine = (nextVaccineId == currentVaccineId);
+                    var nextFacilityVaccineId = completeDto.NextFacilityVaccineId.Value;
+                    var isSameFacilityVaccine = (nextFacilityVaccineId == completeDto.FacilityVaccineId);
                     
-                    if (isSameVaccine)
+                    _logger.LogInformation("🔍 DEBUG: NextFacilityVaccineId={NextFacilityVaccineId}, CurrentFacilityVaccineId={CurrentFacilityVaccineId}, IsSameFacilityVaccine={IsSameFacilityVaccine}", 
+                        nextFacilityVaccineId, completeDto.FacilityVaccineId, isSameFacilityVaccine);
+                    
+                    if (isSameFacilityVaccine)
                     {
-                        // ✅ CASE 1: NextVaccineId = facilityVaccineId → Tạo mũi tiếp theo của cùng vaccine
+                        // ✅ CASE 1: NextFacilityVaccineId = facilityVaccineId → Tạo mũi tiếp theo của cùng vaccine tại cùng cơ sở
                         var currentVaccineTotalDoses = vaccine.NumberOfDoses;
                         var nextDoseNumber = completeDto.DoseNumber + 1;
                         
-                        _logger.LogInformation("🔄 CASE 1: NextVaccineId = facilityVaccineId → Tạo mũi tiếp theo của vaccine {VaccineId} (Dose {NextDose}/{TotalDoses})", 
-                            currentVaccineId, nextDoseNumber, currentVaccineTotalDoses);
+                        _logger.LogInformation("🔄 CASE 1: NextFacilityVaccineId = facilityVaccineId → Tạo mũi tiếp theo của vaccine {VaccineId} tại facility {FacilityId} (Dose {NextDose}/{TotalDoses})", 
+                            currentVaccineId, facilityVaccine.FacilityId, nextDoseNumber, currentVaccineTotalDoses);
 
                         if (nextDoseNumber <= currentVaccineTotalDoses)
                         {
@@ -573,10 +580,10 @@ namespace Services.Implementations
                                 ? completeDto.ExpectedDateForNextDose
                                 : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
                             
-                            // Tạo mũi tiếp theo cho cùng vaccine/disease
-                            nextProfile = await CreateNextDoseProfileAsync(currentProfile.ChildId, currentVaccineId, currentDiseaseId, nextDoseNumber, nextExpectedDate.Value);
+                            // Tạo mũi tiếp theo cho cùng vaccine/disease/facility
+                            nextProfile = await CreateNextDoseProfileAsync(currentProfile.ChildId, currentVaccineId, currentDiseaseId, nextDoseNumber, nextExpectedDate.Value, facilityVaccine.FacilityId);
                             
-                            _logger.LogInformation("✅ Tạo mũi tiếp theo cho vaccine hiện tại - Dose {NextDose}", nextDoseNumber);
+                            _logger.LogInformation("✅ Tạo mũi tiếp theo cho vaccine hiện tại - Dose {NextDose} tại facility {FacilityId}", nextDoseNumber, facilityVaccine.FacilityId);
                         }
                         else
                         {
@@ -586,47 +593,68 @@ namespace Services.Implementations
                     }
                     else
                     {
-                        // ✅ CASE 2: NextVaccineId != facilityVaccineId → Tạo mũi đầu tiên của vaccine khác
-                        _logger.LogInformation("🔄 CASE 2: NextVaccineId != facilityVaccineId → Tạo vaccine mới từ {CurrentVaccineId} sang {NextVaccineId}", 
-                            currentVaccineId, nextVaccineId);
+                        // ✅ CASE 2: NextFacilityVaccineId != facilityVaccineId → Tạo mũi đầu tiên của vaccine khác (có thể khác cơ sở)
+                        _logger.LogInformation("🔄 CASE 2: NextFacilityVaccineId != facilityVaccineId → Tạo vaccine mới từ FacilityVaccine {CurrentFacilityVaccineId} sang {NextFacilityVaccineId}", 
+                            completeDto.FacilityVaccineId, nextFacilityVaccineId);
                         
-                        // Tìm disease tương ứng với vaccine mới trong order
-                        if (appointment.OrderId.HasValue)
+                        // Load NextFacilityVaccine để lấy thông tin vaccine và facility mới
+                        var facilityVaccineRepos = _unitOfWork.GetRepository<FacilityVaccine>();
+                        var nextFacilityVaccine = await facilityVaccineRepo.GetAsync(
+                            fv => fv.FacilityVaccineId == nextFacilityVaccineId,
+                            includeProperties: "Vaccine,Facility"
+                        );
+                        
+                        if (nextFacilityVaccine != null)
                         {
-                            var orderRepo = _unitOfWork.GetRepository<Order>();
-                            var order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, "OrderDetails,OrderDetails.Disease,OrderDetails.FacilityVaccine");
-                            
-                            var newVaccineOrderDetail = order?.OrderDetails?.FirstOrDefault(od => 
-                                od.FacilityVaccine?.VaccineId == nextVaccineId);
-                            
-                            if (newVaccineOrderDetail != null)
+                            // Tìm disease tương ứng với FacilityVaccine mới trong order
+                            if (appointment.OrderId.HasValue)
                             {
-                                nextExpectedDate = completeDto.ExpectedDateForNextDose != default
-                                    ? completeDto.ExpectedDateForNextDose
-                                    : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+                                var orderRepo = _unitOfWork.GetRepository<Order>();
+                                var order = await orderRepo.GetAsync(o => o.OrderId == appointment.OrderId.Value, "OrderDetails,OrderDetails.Disease,OrderDetails.FacilityVaccine");
                                 
-                                // Tạo profile cho vaccine mới (dose = 1)
-                                nextProfile = await CreateNextDoseProfileAsync(currentProfile.ChildId, nextVaccineId, newVaccineOrderDetail.DiseaseId, 1, nextExpectedDate.Value);
+                                var newVaccineOrderDetail = order?.OrderDetails?.FirstOrDefault(od => 
+                                    od.FacilityVaccine?.FacilityVaccineId == nextFacilityVaccineId);
                                 
-                                _logger.LogInformation("✅ Tạo profile cho vaccine mới - VaccineId {VaccineId}, DiseaseId {DiseaseId}", 
-                                    nextVaccineId, newVaccineOrderDetail.DiseaseId);
+                                if (newVaccineOrderDetail != null)
+                                {
+                                    nextExpectedDate = completeDto.ExpectedDateForNextDose != default
+                                        ? completeDto.ExpectedDateForNextDose
+                                        : DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+                                    
+                                    // Tạo profile cho vaccine mới (dose = 1) tại facility mới
+                                    nextProfile = await CreateNextDoseProfileAsync(
+                                        currentProfile.ChildId, 
+                                        nextFacilityVaccine.VaccineId, 
+                                        newVaccineOrderDetail.DiseaseId, 
+                                        1, 
+                                        nextExpectedDate.Value, 
+                                        nextFacilityVaccine.FacilityId
+                                    );
+                                    
+                                    _logger.LogInformation("✅ Tạo profile cho vaccine mới - VaccineId {VaccineId}, DiseaseId {DiseaseId}, FacilityId {FacilityId}", 
+                                        nextFacilityVaccine.VaccineId, newVaccineOrderDetail.DiseaseId, nextFacilityVaccine.FacilityId);
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("⚠️ Không tìm thấy NextFacilityVaccineId {FacilityVaccineId} trong order {OrderId}", 
+                                        nextFacilityVaccineId, appointment.OrderId.Value);
+                                }
                             }
                             else
                             {
-                                _logger.LogWarning("⚠️ Không tìm thấy NextVaccineId {VaccineId} trong order {OrderId}", 
-                                    nextVaccineId, appointment.OrderId.Value);
+                                _logger.LogWarning("⚠️ Không có order để tạo profile cho vaccine mới");
                             }
                         }
                         else
                         {
-                            _logger.LogWarning("⚠️ Không có order để tạo profile cho vaccine mới");
+                            _logger.LogWarning("⚠️ Không tìm thấy NextFacilityVaccineId {FacilityVaccineId}", nextFacilityVaccineId);
                         }
                     }
                 }
                 else
                 {
-                    // ✅ CASE 3: Không có NextVaccineId → Không tạo profile tiếp theo
-                    _logger.LogInformation("✅ Không có NextVaccineId → Chỉ complete vaccine hiện tại, không tạo profile tiếp theo");
+                    // ✅ CASE 3: Không có NextFacilityVaccineId → Không tạo profile tiếp theo
+                    _logger.LogInformation("✅ Không có NextFacilityVaccineId → Chỉ complete vaccine hiện tại, không tạo profile tiếp theo");
                 }
 
                 // 7. Cập nhật appointment: status và note
@@ -706,40 +734,54 @@ namespace Services.Implementations
                     includeProperties: "Child,Vaccine"
                 );
 
-                ChildVaccineProfile? nextProfileWithData = null;
-                if (nextProfile != null)
-                {
-                    nextProfileWithData = await profileRepository.GetAsync(
-                        p => p.VaccineProfileId == nextProfile.VaccineProfileId,
-                        includeProperties: "Child,Vaccine"
-                    );
-                }
-                
-                // Load full data cho profile mới (nếu có)
+                // Load full data cho profile tiếp theo (nếu có) - bao gồm cả facility info
                 ChildVaccineProfile? nextProfileFullData = null;
+                FacilityVaccine? nextFacilityVaccineData = null;
                 if (nextProfile != null)
                 {
                     nextProfileFullData = await profileRepository.GetAsync(
                         p => p.VaccineProfileId == nextProfile.VaccineProfileId,
                         includeProperties: "Child,Vaccine,Disease"
                     );
+                    
+                    // Load FacilityVaccine info để có thông tin facility
+                    if (completeDto.NextFacilityVaccineId.HasValue)
+                    {
+                        var facilityVaccineRepos = _unitOfWork.GetRepository<FacilityVaccine>();
+                        nextFacilityVaccineData = await facilityVaccineRepo.GetAsync(
+                            fv => fv.FacilityVaccineId == completeDto.NextFacilityVaccineId.Value,
+                            includeProperties: "Facility,Vaccine"
+                        );
+                    }
                 }
 
                 _logger.LogInformation("Successfully completed vaccination for Child {ChildId}, FacilityVaccine {FacilityVaccineId}, Dose {DoseNumber}", 
                     currentProfile.ChildId, completeDto.FacilityVaccineId, completeDto.DoseNumber);
 
-                // Xác định loại profile được tạo dựa trên NextVaccineId
-                var isNextDoseOfSameVaccine = nextProfileFullData != null && nextProfileFullData.VaccineId == currentProfile.VaccineId;
-                var isNewVaccineProfile = nextProfileFullData != null && nextProfileFullData.VaccineId != currentProfile.VaccineId;
+                // Xác định loại profile được tạo dựa trên NextFacilityVaccineId
+                var isNextDoseOfSameVaccine = nextProfileFullData != null && completeDto.NextFacilityVaccineId.HasValue && 
+                    completeDto.NextFacilityVaccineId.Value == completeDto.FacilityVaccineId;
+                var isNewVaccineProfile = nextProfileFullData != null && completeDto.NextFacilityVaccineId.HasValue && 
+                    completeDto.NextFacilityVaccineId.Value != completeDto.FacilityVaccineId;
+                
+                _logger.LogInformation("🔍 RESPONSE MAPPING: nextProfileFullData={HasNextProfile}, NextFacilityVaccineId={NextFacilityVaccineId}, FacilityVaccineId={FacilityVaccineId}, isNextDoseOfSameVaccine={IsNextDose}, isNewVaccineProfile={IsNewVaccine}", 
+                    nextProfileFullData != null, completeDto.NextFacilityVaccineId, completeDto.FacilityVaccineId, isNextDoseOfSameVaccine, isNewVaccineProfile);
                 
                 var responseTotalDoses = vaccine.NumberOfDoses;
                 var responseCompletedDoses = completeDto.DoseNumber;
                 var responseIsVaccineCourseCompleted = responseCompletedDoses >= responseTotalDoses;
 
+                // ✅ Tạo CompletedDose với FacilityId được set đúng
+                var completedDoseDto = _mapper.Map<ChildVaccineProfileDTO>(completedProfile);
+                completedDoseDto.FacilityId = facilityVaccine.FacilityId; // Set FacilityId từ FacilityVaccine hiện tại
+                
+                _logger.LogInformation("✅ Set FacilityId cho CompletedDose: {FacilityId} từ FacilityVaccine {FacilityVaccineId}", 
+                    completedDoseDto.FacilityId, completeDto.FacilityVaccineId);
+                
                 var result = new VaccinationCompletionResponseDTO
                 {
                     // ✅ VACCINE HIỆN TẠI (đã completed)
-                    CompletedDose = _mapper.Map<ChildVaccineProfileDTO>(completedProfile),
+                    CompletedDose = completedDoseDto,
                     
                     // ✅ Profile tiếp theo (có thể cùng vaccine hoặc vaccine mới)
                     NextDoseOfCurrentVaccine = isNextDoseOfSameVaccine ? _mapper.Map<ChildVaccineProfileDTO>(nextProfileFullData) : null,
@@ -753,6 +795,7 @@ namespace Services.Implementations
                     NewVaccineProfile = isNewVaccineProfile ? _mapper.Map<ChildVaccineProfileDTO>(nextProfileFullData) : null,
                     NewVaccine = isNewVaccineProfile && nextProfileFullData?.Vaccine != null ? _mapper.Map<VaccineDTO>(nextProfileFullData.Vaccine) : null,
                     NewDisease = isNewVaccineProfile && nextProfileFullData?.Disease != null ? _mapper.Map<DiseaseDTO>(nextProfileFullData.Disease) : null,
+                    NewFacility = isNewVaccineProfile && nextFacilityVaccineData?.Facility != null ? _mapper.Map<VaccinationFacilityDTO>(nextFacilityVaccineData.Facility) : null,
                     
                     Message = isNewVaccineProfile ? 
                         $"Hoàn thành vaccine {vaccine.Name}. Đã tạo lịch cho vaccine {nextProfileFullData?.Vaccine?.Name}" :
@@ -916,13 +959,14 @@ namespace Services.Implementations
         
         /// <summary>
         /// Tạo ChildVaccineProfile cho dose tiếp theo (có thể cùng vaccine hoặc vaccine mới)
+        /// Status sẽ là "Scheduled" vì profile này chưa có appointment cụ thể
         /// </summary>
-        private async Task<ChildVaccineProfile?> CreateNextDoseProfileAsync(int childId, int vaccineId, int diseaseId, int doseNumber, DateOnly expectedDate)
+        private async Task<ChildVaccineProfile?> CreateNextDoseProfileAsync(int childId, int vaccineId, int diseaseId, int doseNumber, DateOnly expectedDate, int? facilityId = null)
         {
             try
             {
-                _logger.LogInformation("🎯 Tạo profile - ChildId: {ChildId}, VaccineId: {VaccineId}, DiseaseId: {DiseaseId}, DoseNumber: {DoseNumber}, ExpectedDate: {ExpectedDate}", 
-                    childId, vaccineId, diseaseId, doseNumber, expectedDate);
+                _logger.LogInformation("🎯 Tạo profile - ChildId: {ChildId}, VaccineId: {VaccineId}, DiseaseId: {DiseaseId}, DoseNumber: {DoseNumber}, ExpectedDate: {ExpectedDate}, FacilityId: {FacilityId}", 
+                    childId, vaccineId, diseaseId, doseNumber, expectedDate, facilityId);
 
                 var profileRepository = _unitOfWork.GetRepository<ChildVaccineProfile>();
                 
@@ -958,10 +1002,12 @@ namespace Services.Implementations
                         DoseNum = doseNumber,
                         ExpectedDate = expectedDate,
                         ActualDate = null, // Chưa tiêm
-                        Status = "Pending", // Chờ đặt lịch - nhất quán với booking logic
+                        Status = "Scheduled", // Đã được lên lịch nhưng chưa có appointment
                         IsRequired = true,
                         Priority = "High",
-                        Note = doseNumber == 1 ? "Mũi đầu tiên của vaccine mới" : $"Mũi tiếp theo của vaccine hiện tại",
+                        Note = doseNumber == 1 ? 
+                               (facilityId.HasValue ? $"Mũi đầu tiên của vaccine mới tại facility {facilityId} - Status: Scheduled (chờ đặt lịch)" : "Mũi đầu tiên của vaccine mới - Status: Scheduled (chờ đặt lịch)") : 
+                               (facilityId.HasValue ? $"Mũi tiếp theo của vaccine hiện tại tại facility {facilityId} - Status: Scheduled (chờ đặt lịch)" : "Mũi tiếp theo của vaccine hiện tại - Status: Scheduled (chờ đặt lịch)"),
                         CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                         UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     };
@@ -969,7 +1015,7 @@ namespace Services.Implementations
                     await profileRepository.AddAsync(newProfile);
                     await _unitOfWork.SaveChangesAsync();
                     
-                    _logger.LogInformation("✅ Tạo thành công profile - ProfileId: {ProfileId}, VaccineId: {VaccineId}, DiseaseId: {DiseaseId}, DoseNumber: {DoseNumber}", 
+                    _logger.LogInformation("✅ Tạo thành công profile với status 'Scheduled' - ProfileId: {ProfileId}, VaccineId: {VaccineId}, DiseaseId: {DiseaseId}, DoseNumber: {DoseNumber}", 
                         newProfile.VaccineProfileId, vaccineId, diseaseId, doseNumber);
                     
                     return newProfile;
