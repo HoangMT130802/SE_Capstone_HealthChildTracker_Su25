@@ -427,7 +427,7 @@ namespace Services.Implementations
         public async Task<int> GetTotalCountAsync()
         {
             var repository = _unitOfWork.GetRepository<VaccinationFacility>();
-            return await repository.CountAsync(a => true);
+            return await repository.CountAsync(a => a.Status == 1);
         }
     }
 } 
