@@ -90,32 +90,6 @@ namespace Services.Implementations
                 throw;
             }
         }
-
-        private async Task<IEnumerable<Child>> ValidateMembershipStatusForChildren(int memberId, UserMembership userMembership, IGenericRepository<Child> childRepository, IEnumerable<Child> children)
-        {
-            var errors = new List<string>();
-
-            if (userMembership == null || !userMembership.Status)
-            {
-                var firstChild = children.OrderBy(c => c.CreatedAt).FirstOrDefault();
-
-                if (children.Any() && firstChild != null)
-                {
-                    // Chỉ trả về trẻ đầu tiên nếu có trẻ
-                    return new List<Child> { firstChild };
-                }
-
-                errors.Add("Gói đã hết hạn, chỉ có thể xem thông tin trẻ đầu tiên.");
-            }
-
-            if (errors.Any())
-            {
-                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
-            }
-
-            return children;
-        }
-
         public async Task<ChildDTO> GetChildByIdAsync(int childId, int accountId)
         {
             try
@@ -150,11 +124,46 @@ namespace Services.Implementations
             }
         }
 
+        private async Task<IEnumerable<Child>> ValidateMembershipStatusForChildren(int memberId, UserMembership userMembership, IGenericRepository<Child> childRepository, IEnumerable<Child> children)
+        {
+            var errors = new List<string>();
+
+            // Fetch all UserMembership records and get the latest one
+            var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
+            var userMemberships = await userMembershipRepo.FindAsync(um => um.AccountId == memberId);
+            var latestMembership = userMemberships.OrderByDescending(um => um.StartDate).FirstOrDefault();
+
+            if (latestMembership == null || !latestMembership.Status)
+            {
+                var firstChild = children.OrderBy(c => c.CreatedAt).FirstOrDefault();
+
+                if (children.Any() && firstChild != null)
+                {
+                    // Only return the first child if there are children
+                    return new List<Child> { firstChild };
+                }
+
+                errors.Add("Gói đã hết hạn, chỉ có thể xem thông tin trẻ đầu tiên.");
+            }
+
+            if (errors.Any())
+            {
+                throw new ArgumentException($"Dữ liệu không hợp lệ: {string.Join("; ", errors)}");
+            }
+
+            return children;
+        }
+
         private async Task ValidateMembershipStatus(int childId, int memberId, UserMembership userMembership, IGenericRepository<Child> childRepository)
         {
             var errors = new List<string>();
 
-            if (userMembership == null || !userMembership.Status)
+            // Fetch all UserMembership records and get the latest one
+            var userMembershipRepo = _unitOfWork.GetRepository<UserMembership>();
+            var userMemberships = await userMembershipRepo.FindAsync(um => um.AccountId == memberId);
+            var latestMembership = userMemberships.OrderByDescending(um => um.StartDate).FirstOrDefault();
+
+            if (latestMembership == null || !latestMembership.Status)
             {
                 var children = await childRepository.FindAsync(c => c.MemberId == memberId && c.Status == true);
                 var firstChild = children.OrderBy(c => c.CreatedAt).FirstOrDefault();
