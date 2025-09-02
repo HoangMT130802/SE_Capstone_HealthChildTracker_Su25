@@ -719,6 +719,7 @@ public partial class HealthChildTrackerContext : DbContext
 
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Note).HasMaxLength(50);
             entity.Property(e => e.OrderDate).HasColumnType("datetime");
             entity.Property(e => e.Status)
                 .IsRequired()

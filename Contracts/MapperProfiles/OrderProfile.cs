@@ -44,7 +44,8 @@ namespace Contracts.MapperProfiles
             .ForMember(dest => dest.OrderDetails, opt => opt.MapFrom(src => src.OrderDetails))
             .ForMember(dest => dest.Member, opt => opt.MapFrom(src => src.Member))
             .ForMember(dest => dest.PackageName, opt => opt.MapFrom(src => src.Package != null ? src.Package.Name : null))
-            .ForMember(dest => dest.FacilityName, opt => opt.MapFrom(src => src.Package != null && src.Package.Facility != null ? src.Package.Facility.FacilityName : null));
+            .ForMember(dest => dest.FacilityName, opt => opt.MapFrom(src => src.Package != null && src.Package.Facility != null ? src.Package.Facility.FacilityName : null))
+            .ForMember(dest => dest.Note, opt => opt.MapFrom(src => src.Note));
 
             CreateMap<OrderDetail, OrderDetailDTO>();
             CreateMap<FacilityVaccine, FacilityVaccineDTO>();

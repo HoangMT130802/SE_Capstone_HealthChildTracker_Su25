@@ -12,5 +12,6 @@ namespace Contracts.DTOs.Order
         public List<SelectedVaccineDTO> SelectedVaccines { get; set; } = new List<SelectedVaccineDTO>();
         public DateTime OrderDate { get; set; }
         public string Status { get; set; }
+        public string? Note { get; set; }
     }
 }

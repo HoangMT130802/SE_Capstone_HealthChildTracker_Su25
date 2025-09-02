@@ -93,6 +93,7 @@ namespace Services.Implementations
                 order.CreatedAt = currentTime;
                 order.UpdatedAt = currentTime;
                 order.Status = orderDto.Status ?? "Pending";
+                order.Note = orderDto.Note;
                 order.TotalAmount = 0;
                 order.MemberId = memberId;
                 order.Package = package;
