@@ -164,8 +164,8 @@ namespace Services.Implementations
         {
             try
             {
-                // Lấy growth velocity standards (nếu có)
-                var standardRepo = _unitOfWork.GetRepository<GrowthStandard>();
+                // ✅ IMPROVED: Sử dụng GrowthVelocity standards thay vì GrowthStandard
+                var velocityRepo = _unitOfWork.GetRepository<GrowthVelocity>();
                 
                 string gender = child.Gender?.Trim().ToUpper();
                 if (string.IsNullOrEmpty(gender) || (gender != "MALE" && gender != "FEMALE"))
@@ -173,6 +173,54 @@ namespace Services.Implementations
                     return (predictedHeight, predictedWeight, predictedHead);
                 }
                 gender = char.ToUpper(gender[0]) + gender.Substring(1).ToLower();
+
+                // Tìm growth velocity standards gần nhất
+                var heightVelocity = await velocityRepo.GetAsync(s => 
+                    s.Gender == gender && 
+                    s.Measurement == "Height" &&
+                    s.AgeInMonths == ageInMonths);
+
+                var weightVelocity = await velocityRepo.GetAsync(s => 
+                    s.Gender == gender && 
+                    s.Measurement == "Weight" &&
+                    s.AgeInMonths == ageInMonths);
+
+                var headVelocity = await velocityRepo.GetAsync(s => 
+                    s.Gender == gender && 
+                    s.Measurement == "HeadCircumference" &&
+                    s.AgeInMonths == ageInMonths);
+
+                // Nếu không có velocity standards, fallback về growth standards cũ
+                if (heightVelocity == null && weightVelocity == null && headVelocity == null)
+                {
+                    _logger.LogWarning("Không tìm thấy GrowthVelocity standards, sử dụng GrowthStandard fallback");
+                    return await ApplyGrowthStandardFallback(child, ageInMonths, predictedHeight, predictedWeight, predictedHead);
+                }
+
+                // ✅ Áp dụng velocity-based constraints
+                var adjustedHeight = ApplyVelocityConstraints(predictedHeight, heightVelocity, "Height");
+                var adjustedWeight = ApplyVelocityConstraints(predictedWeight, weightVelocity, "Weight");
+                var adjustedHead = ApplyVelocityConstraints(predictedHead, headVelocity, "HeadCircumference");
+
+                return (adjustedHeight, adjustedWeight, adjustedHead);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lỗi khi áp dụng GrowthVelocity adjustment, sử dụng fallback");
+                // Fallback về growth standards cũ
+                return await ApplyGrowthStandardFallback(child, ageInMonths, predictedHeight, predictedWeight, predictedHead);
+            }
+        }
+
+        // ✅ Fallback method sử dụng GrowthStandard cũ
+        private async Task<(decimal Height, decimal Weight, decimal HeadCircumference)> ApplyGrowthStandardFallback(
+            Child child, int ageInMonths, decimal predictedHeight, decimal predictedWeight, decimal predictedHead)
+        {
+            try
+            {
+                var standardRepo = _unitOfWork.GetRepository<GrowthStandard>();
+                
+                string gender = char.ToUpper(child.Gender[0]) + child.Gender.Substring(1).ToLower();
 
                 // Tìm chuẩn tăng trưởng gần nhất
                 var nearestStandards = await standardRepo.FindAsync(s => 
@@ -201,6 +249,44 @@ namespace Services.Implementations
                 // Nếu có lỗi, trả về dự đoán gốc
                 return (predictedHeight, predictedWeight, predictedHead);
             }
+        }
+
+        // ✅ Method mới sử dụng GrowthVelocity
+        private decimal ApplyVelocityConstraints(decimal predictedValue, GrowthVelocity velocity, string measurement)
+        {
+            if (velocity == null) return predictedValue;
+
+            // Tính toán giới hạn dựa trên velocity standards
+            var maxGrowthPerMonth = velocity.Sd2pos; // Giới hạn tối đa ở +2SD
+            var minGrowthPerMonth = velocity.Sd2neg; // Giới hạn tối thiểu ở -2SD
+
+            // Chuyển đổi từ growth per month sang growth per day
+            var maxGrowthPerDay = maxGrowthPerMonth / 30.44m;
+            var minGrowthPerDay = minGrowthPerMonth / 30.44m;
+
+            // Áp dụng constraints dựa trên loại measurement
+            switch (measurement)
+            {
+                case "Height":
+                    // Chiều cao chỉ có thể tăng hoặc không đổi
+                    if (predictedValue < 0) return 0;
+                    if (predictedValue > maxGrowthPerDay * 30) return maxGrowthPerDay * 30;
+                    break;
+
+                case "Weight":
+                    // Cân nặng có thể tăng hoặc giảm trong giới hạn
+                    if (predictedValue < minGrowthPerDay * 30) return minGrowthPerDay * 30;
+                    if (predictedValue > maxGrowthPerDay * 30) return maxGrowthPerDay * 30;
+                    break;
+
+                case "HeadCircumference":
+                    // Vòng đầu chỉ có thể tăng hoặc không đổi
+                    if (predictedValue < 0) return 0;
+                    if (predictedValue > maxGrowthPerDay * 30) return maxGrowthPerDay * 30;
+                    break;
+            }
+
+            return predictedValue;
         }
 
         private decimal ApplyBounds(decimal predictedValue, GrowthStandard standard)
@@ -767,14 +853,49 @@ namespace Services.Implementations
 
                 
                 var standardRepo = _unitOfWork.GetRepository<GrowthStandard>();
+                
+                // ✅ IMPROVED LOGIC: Tìm độ tuổi gần nhất thay vì tìm chính xác
                 var standards = await standardRepo.FindAsync(s =>
                     s.Gender == gender &&
                     s.AgeInMonths == ageInMonths
                 );
 
+                // Biến để track xem có sử dụng độ tuổi gần nhất không
+                bool isUsingClosestAge = false;
+                int? standardAgeInMonths = null;
+                
+                // Nếu không tìm thấy độ tuổi chính xác, tìm độ tuổi gần nhất
                 if (!standards.Any())
                 {
-                    throw new InvalidOperationException($"Không tìm thấy dữ liệu chuẩn cho độ tuổi {ageInMonths} tháng");
+                    _logger.LogWarning("Không tìm thấy dữ liệu chuẩn cho độ tuổi {AgeInMonths} tháng. Tìm độ tuổi gần nhất...", ageInMonths);
+                    
+                    // Lấy tất cả standards cho giới tính này
+                    var allStandardsForGender = await standardRepo.FindAsync(s => s.Gender == gender);
+                    
+                    if (!allStandardsForGender.Any())
+                    {
+                        throw new InvalidOperationException($"Không tìm thấy dữ liệu chuẩn cho giới tính {gender}");
+                    }
+                    
+                    // Tìm độ tuổi gần nhất
+                    var closestAge = allStandardsForGender
+                        .Select(s => s.AgeInMonths)
+                        .OrderBy(age => Math.Abs(age - ageInMonths))
+                        .First();
+                    
+                    standardAgeInMonths = closestAge;
+                    isUsingClosestAge = true;
+                    
+                    _logger.LogInformation("Sử dụng dữ liệu chuẩn cho độ tuổi gần nhất: {ClosestAge} tháng (thay vì {RequestedAge} tháng)", closestAge, ageInMonths);
+                    
+                    // Lấy standards cho độ tuổi gần nhất
+                    standards = allStandardsForGender.Where(s => s.AgeInMonths == closestAge).ToList();
+                }
+                else
+                {
+                    // Nếu tìm thấy độ tuổi chính xác
+                    standardAgeInMonths = ageInMonths;
+                    isUsingClosestAge = false;
                 }
 
                 var heightStandard = standards.FirstOrDefault(s => s.Measurement == "Height");
@@ -791,6 +912,10 @@ namespace Services.Implementations
                     Weight = record.Weight,
                     BMI = record.Bmi,
                     HeadCircumference = record.HeadCircumference,
+                    // ✅ Thông tin về độ tuổi chuẩn được sử dụng
+                    StandardAgeInMonths = standardAgeInMonths,
+                    RequestedAgeInMonths = ageInMonths,
+                    IsUsingClosestAge = isUsingClosestAge,
                     Assessments = new GrowthAssessmentsDTO
                     {
                         HeightStatus = AssessHeightStatus(record.Height, heightStandard),
@@ -800,7 +925,7 @@ namespace Services.Implementations
                     }
                 };
 
-                assessment.Recommendations = GenerateBasicRecommendations(assessment.Assessments);
+                assessment.Recommendations = GenerateBasicRecommendations(assessment.Assessments, isUsingClosestAge, ageInMonths, standardAgeInMonths);
 
                 return assessment;
             }
@@ -853,10 +978,20 @@ namespace Services.Implementations
             return "Đầu rất to (Macrocephaly)";
         }
 
-        private string GenerateBasicRecommendations(GrowthAssessmentsDTO assessments)
+        private string GenerateBasicRecommendations(GrowthAssessmentsDTO assessments, bool isUsingClosestAge, int requestedAge, int? standardAge)
         {
             var recommendations = new List<string>();
 
+            // ✅ Thông báo về độ tuổi chuẩn được sử dụng
+            if (isUsingClosestAge && standardAge.HasValue)
+            {
+                recommendations.Add("⚠️ **LƯU Ý QUAN TRỌNG**");
+                recommendations.Add($"- Độ tuổi yêu cầu: {requestedAge} tháng");
+                recommendations.Add($"- Độ tuổi chuẩn được sử dụng: {standardAge.Value} tháng");
+                recommendations.Add("- Đánh giá dựa trên dữ liệu chuẩn của độ tuổi gần nhất");
+                recommendations.Add("");
+            }
+            
             // Hiển thị tình trạng hiện tại
             recommendations.Add("📊 **TÌNH TRẠNG HIỆN TẠI**");
             recommendations.Add($"- Chiều cao: {assessments.HeightStatus}");
@@ -867,6 +1002,13 @@ namespace Services.Implementations
 
             // Khuyến nghị cơ bản (không chi tiết như VIP)
             recommendations.Add("💡 **KHUYẾN NGHỊ CỦA BÁC SĨ**");
+            
+            // Thêm khuyến nghị đặc biệt nếu sử dụng độ tuổi gần nhất
+            if (isUsingClosestAge && standardAge.HasValue)
+            {
+                recommendations.Add("- 🔍 **KHUYẾN NGHỊ ĐẶC BIỆT**: Do không có dữ liệu chuẩn cho độ tuổi chính xác, đánh giá này dựa trên độ tuổi gần nhất. Vui lòng tham vấn bác sĩ để có đánh giá chính xác hơn.");
+                recommendations.Add("");
+            }
 
             // Đánh giá chiều cao
             if (assessments.HeightStatus.Contains("nặng") || assessments.HeightStatus.Contains("Thấp còi"))
