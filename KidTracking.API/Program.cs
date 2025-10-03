@@ -203,10 +203,6 @@ namespace KidTracking.API
             builder.Services.AddScoped<IGrowthStandardService, GrowthStandardService>();
             builder.Services.AddScoped<IGrowthRecordService, GrowthRecordService>();
             builder.Services.AddScoped<IGrowthAssessmentService, GrowthAssessmentService>();
-            
-            // ✅ Đăng ký AI Recommendation Service
-            builder.Services.AddHttpClient<IAIRecommendationService, AIRecommendationService>();
-            builder.Services.AddScoped<IAIRecommendationService, AIRecommendationService>();
             builder.Services.AddScoped<IDailyRecordService, DailyRecordService>();
             builder.Services.AddScoped<IDiseaseService, DiseaseService>();
             builder.Services.AddScoped<IVaccineService, VaccineService>();

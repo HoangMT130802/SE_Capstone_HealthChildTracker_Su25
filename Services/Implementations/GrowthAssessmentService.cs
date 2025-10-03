@@ -18,18 +18,15 @@ namespace Services.Implementations
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<GrowthAssessmentService> _logger;
         private readonly IMapper _mapper;
-        private readonly IAIRecommendationService _aiService;
 
         public GrowthAssessmentService(
             IUnitOfWork unitOfWork,
             IMapper mapper,
-            ILogger<GrowthAssessmentService> logger,
-            IAIRecommendationService aiService)
+            ILogger<GrowthAssessmentService> logger)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _logger = logger;
-            _aiService = aiService;
         }
 
         public async Task<GrowthPredictionDTO> PredictGrowthAsync(int childId, int days = 90)
@@ -85,9 +82,9 @@ namespace Services.Implementations
 
                     // Dự đoán dựa trên linear trend
                     var daysFromLast = timePoint.Days;
-                    var predictedHeight = Math.Round((decimal)(heightTrend.Slope * daysFromLast + (double)lastRecord.Height), 2);
-                    var predictedWeight = Math.Round((decimal)(weightTrend.Slope * daysFromLast + (double)lastRecord.Weight), 2);
-                    var predictedHead = Math.Round((decimal)(headTrend.Slope * daysFromLast + (double)lastRecord.HeadCircumference), 2);
+                    var predictedHeight = (decimal)(heightTrend.Slope * daysFromLast + (double)lastRecord.Height);
+                    var predictedWeight = (decimal)(weightTrend.Slope * daysFromLast + (double)lastRecord.Weight);
+                    var predictedHead = (decimal)(headTrend.Slope * daysFromLast + (double)lastRecord.HeadCircumference);
 
                     // Áp dụng growth velocity adjustment
                     var adjustedPredictions = await ApplyGrowthVelocityAdjustment(
@@ -96,13 +93,6 @@ namespace Services.Implementations
                     // Áp dụng realistic constraints (validation cẩn thận)
                     var realisticPredictions = ApplyRealisticConstraints(
                         lastRecord, adjustedPredictions, daysFromLast);
-
-                    // Làm tròn tất cả giá trị để đẹp
-                    realisticPredictions = (
-                        Math.Round(realisticPredictions.Height, 2),
-                        Math.Round(realisticPredictions.Weight, 2),
-                        Math.Round(realisticPredictions.HeadCircumference, 2)
-                    );
 
                     // Tính BMI dự đoán
                     var heightInMeters = realisticPredictions.Height / 100;
@@ -120,8 +110,7 @@ namespace Services.Implementations
                     });
                 }
 
-                // ✅ Sử dụng AI để tạo recommendations
-                prediction.Recommendations = await GenerateAIRecommendations(recentRecords, prediction.PredictionPoints, prediction.PredictionQuality, child);
+                prediction.Recommendations = await GenerateEnhancedRecommendations(recentRecords, prediction.PredictionPoints, prediction.PredictionQuality, child);
 
                 return prediction;
             }
@@ -155,7 +144,7 @@ namespace Services.Implementations
             if (records.Count < 2) return (0, 0);
 
             var baseDate = records.First().CreatedAt;
-            var xValues = records.Select(r => (dateSelector(r) - baseDate).TotalDays + 1).ToArray();
+            var xValues = records.Select(r => (dateSelector(r) - baseDate).TotalDays).ToArray();
             var yValues = records.Select(valueSelector).ToArray();
 
             var n = xValues.Length;
@@ -275,31 +264,29 @@ namespace Services.Implementations
             var maxGrowthPerDay = maxGrowthPerMonth / 30.44m;
             var minGrowthPerDay = minGrowthPerMonth / 30.44m;
 
-            decimal result = predictedValue;
-
             // Áp dụng constraints dựa trên loại measurement
             switch (measurement)
             {
                 case "Height":
                     // Chiều cao chỉ có thể tăng hoặc không đổi
-                    if (predictedValue < 0) result = 0;
-                    else if (predictedValue > maxGrowthPerDay * 30) result = maxGrowthPerDay * 30;
+                    if (predictedValue < 0) return 0;
+                    if (predictedValue > maxGrowthPerDay * 30) return maxGrowthPerDay * 30;
                     break;
 
                 case "Weight":
                     // Cân nặng có thể tăng hoặc giảm trong giới hạn
-                    if (predictedValue < minGrowthPerDay * 30) result = minGrowthPerDay * 30;
-                    else if (predictedValue > maxGrowthPerDay * 30) result = maxGrowthPerDay * 30;
+                    if (predictedValue < minGrowthPerDay * 30) return minGrowthPerDay * 30;
+                    if (predictedValue > maxGrowthPerDay * 30) return maxGrowthPerDay * 30;
                     break;
 
                 case "HeadCircumference":
                     // Vòng đầu chỉ có thể tăng hoặc không đổi
-                    if (predictedValue < 0) result = 0;
-                    else if (predictedValue > maxGrowthPerDay * 30) result = maxGrowthPerDay * 30;
+                    if (predictedValue < 0) return 0;
+                    if (predictedValue > maxGrowthPerDay * 30) return maxGrowthPerDay * 30;
                     break;
             }
 
-            return Math.Round(result, 2);
+            return predictedValue;
         }
 
         private decimal ApplyBounds(decimal predictedValue, GrowthStandard standard)
@@ -310,15 +297,10 @@ namespace Services.Implementations
             var minBound = standard.Sd3neg;
             var maxBound = standard.Sd3pos;
 
-            decimal result;
-            if (predictedValue < minBound) 
-                result = minBound + (standard.Median - minBound) * 0.1m;
-            else if (predictedValue > maxBound) 
-                result = maxBound - (maxBound - standard.Median) * 0.1m;
-            else 
-                result = predictedValue;
+            if (predictedValue < minBound) return minBound + (standard.Median - minBound) * 0.1m;
+            if (predictedValue > maxBound) return maxBound - (maxBound - standard.Median) * 0.1m;
 
-            return Math.Round(result, 2);
+            return predictedValue;
         }
 
         private (decimal Height, decimal Weight, decimal HeadCircumference) ApplyRealisticConstraints(
@@ -339,7 +321,7 @@ namespace Services.Implementations
             if (predictedHeight < currentHeight)
             {
                 _logger.LogWarning($"Dự đoán chiều cao giảm từ {currentHeight} xuống {predictedHeight}, điều chỉnh về không đổi");
-                return Math.Round(currentHeight, 2); // Giữ nguyên chiều cao hiện tại
+                return currentHeight; // Giữ nguyên chiều cao hiện tại
             }
 
             // Giới hạn tăng trưởng chiều cao hợp lý: tối đa 2cm/tháng cho trẻ nhỏ
@@ -349,10 +331,10 @@ namespace Services.Implementations
             if (predictedHeight > maxAllowedHeight)
             {
                 _logger.LogWarning($"Dự đoán chiều cao tăng quá nhanh từ {currentHeight} lên {predictedHeight}, điều chỉnh về {maxAllowedHeight}");
-                return Math.Round(maxAllowedHeight, 2);
+                return maxAllowedHeight;
             }
 
-            return Math.Round(predictedHeight, 2);
+            return predictedHeight;
         }
 
         private decimal ApplyWeightConstraints(decimal currentWeight, decimal predictedWeight, int daysFromLast)
@@ -365,7 +347,7 @@ namespace Services.Implementations
             if (predictedWeight < minAllowedWeight)
             {
                 _logger.LogWarning($"Dự đoán cân nặng giảm quá nhiều từ {currentWeight} xuống {predictedWeight}, điều chỉnh về {minAllowedWeight}");
-                return Math.Round(minAllowedWeight, 2);
+                return minAllowedWeight;
             }
 
             // Giới hạn tăng cân tối đa: 1kg/tháng cho trẻ nhỏ
@@ -375,10 +357,10 @@ namespace Services.Implementations
             if (predictedWeight > maxAllowedWeight)
             {
                 _logger.LogWarning($"Dự đoán cân nặng tăng quá nhanh từ {currentWeight} lên {predictedWeight}, điều chỉnh về {maxAllowedWeight}");
-                return Math.Round(maxAllowedWeight, 2);
+                return maxAllowedWeight;
             }
 
-            return Math.Round(predictedWeight, 2);
+            return predictedWeight;
         }
 
         private decimal ApplyHeadCircumferenceConstraints(decimal currentHead, decimal predictedHead)
@@ -387,7 +369,7 @@ namespace Services.Implementations
             if (predictedHead < currentHead)
             {
                 _logger.LogWarning($"Dự đoán vòng đầu giảm từ {currentHead} xuống {predictedHead}, điều chỉnh về không đổi");
-                return Math.Round(currentHead, 2); // Giữ nguyên vòng đầu hiện tại
+                return currentHead; // Giữ nguyên vòng đầu hiện tại
             }
 
             // Giới hạn tăng trưởng vòng đầu hợp lý: tối đa 1cm/tháng cho trẻ nhỏ
@@ -397,10 +379,10 @@ namespace Services.Implementations
             if (predictedHead > maxAllowedHead)
             {
                 _logger.LogWarning($"Dự đoán vòng đầu tăng quá nhanh từ {currentHead} lên {predictedHead}, điều chỉnh về {maxAllowedHead}");
-                return Math.Round(maxAllowedHead, 2);
+                return maxAllowedHead;
             }
 
-            return Math.Round(predictedHead, 2);
+            return predictedHead;
         }
 
         private async Task<string> GenerateEnhancedRecommendations(List<GrowthRecord> recentRecords, List<PredictionDataPointDTO> predictions, PredictionQualityDTO quality, Child child)
@@ -805,16 +787,15 @@ namespace Services.Implementations
         private bool RequiresMedicalAttention(GrowthAssessmentsDTO assessment)
         {
             // Cần tham vấn y tế nếu có bất kỳ tình trạng nào ở mức nghiêm trọng
-            return assessment.HeightStatus.Contains("mức độ nặng") ||
-                   assessment.WeightStatus.Contains("mức độ nặng") ||
-                   assessment.BMIStatus.Contains("mức độ nặng") ||
-                   assessment.HeadCircumferenceStatus.Contains("rất nhỏ") ||
-                   assessment.HeadCircumferenceStatus.Contains("rất to") ||
-                   assessment.HeightStatus.Contains("suy dinh dưỡng thể thấp còi") ||
-                   assessment.WeightStatus.Contains("suy dinh dưỡng thể gầy còm") ||
-                   assessment.BMIStatus.Contains("suy dinh dưỡng thể gầy còm") ||
-                   assessment.WeightStatus.Contains("Trẻ béo phì") ||
-                   assessment.BMIStatus.Contains("Trẻ béo phì");
+            return assessment.HeightStatus.Contains("nặng") ||
+                   assessment.WeightStatus.Contains("nặng") ||
+                   assessment.BMIStatus.Contains("nặng") ||
+                   assessment.HeadCircumferenceStatus.Contains("rất") ||
+                   assessment.HeightStatus.Contains("Thấp còi") ||
+                   assessment.WeightStatus.Contains("Suy dinh dưỡng") ||
+                   assessment.BMIStatus.Contains("Suy dinh dưỡng") ||
+                   assessment.WeightStatus.Contains("Béo phì") ||
+                   assessment.BMIStatus.Contains("Béo phì");
         }
 
         private List<string> GetMedicalConsultationReasons(GrowthAssessmentsDTO assessment, PredictionQualityDTO quality, double heightTrend, double weightTrend)
@@ -830,18 +811,16 @@ namespace Services.Implementations
             if (weightTrend < -0.3)
                 reasons.Add("Xu hướng giảm cân đáng lo ngại");
 
-            if (assessment.HeightStatus.Contains("mức độ nặng") || assessment.HeightStatus.Contains("mức độ vừa"))
+            if (assessment.HeightStatus.Contains("nặng") || assessment.HeightStatus.Contains("Thấp còi"))
                 reasons.Add($"Tình trạng chiều cao: {assessment.HeightStatus}");
 
-            if (assessment.WeightStatus.Contains("mức độ nặng") || assessment.WeightStatus.Contains("mức độ vừa") || 
-                assessment.WeightStatus.Contains("Trẻ béo phì") || assessment.WeightStatus.Contains("Trẻ thừa cân"))
+            if (assessment.WeightStatus.Contains("nặng") || assessment.WeightStatus.Contains("Suy dinh dưỡng") || assessment.WeightStatus.Contains("Béo phì"))
                 reasons.Add($"Tình trạng cân nặng: {assessment.WeightStatus}");
 
-            if (assessment.BMIStatus.Contains("mức độ nặng") || assessment.BMIStatus.Contains("mức độ vừa") || 
-                assessment.BMIStatus.Contains("Trẻ béo phì") || assessment.BMIStatus.Contains("Trẻ thừa cân"))
+            if (assessment.BMIStatus.Contains("nặng") || assessment.BMIStatus.Contains("Suy dinh dưỡng") || assessment.BMIStatus.Contains("Béo phì"))
                 reasons.Add($"Tình trạng BMI: {assessment.BMIStatus}");
 
-            if (assessment.HeadCircumferenceStatus.Contains("rất nhỏ") || assessment.HeadCircumferenceStatus.Contains("rất to"))
+            if (assessment.HeadCircumferenceStatus.Contains("rất"))
                 reasons.Add($"Tình trạng vòng đầu: {assessment.HeadCircumferenceStatus}");
 
             return reasons;
@@ -946,8 +925,7 @@ namespace Services.Implementations
                     }
                 };
 
-                // ✅ Sử dụng AI để tạo recommendations cho basic assessment
-                assessment.Recommendations = await GenerateAIBasicRecommendations(assessment.Assessments, isUsingClosestAge, ageInMonths, standardAgeInMonths, child, record);
+                assessment.Recommendations = GenerateBasicRecommendations(assessment.Assessments, isUsingClosestAge, ageInMonths, standardAgeInMonths);
 
                 return assessment;
             }
@@ -962,10 +940,10 @@ namespace Services.Implementations
         {
             if (standard == null) return "Không có dữ liệu chuẩn";
 
-            if (height <= standard.Sd3neg) return "Trẻ suy dinh dưỡng thể thấp còi, mức độ nặng";
-            if (height <= standard.Sd2neg) return "Trẻ suy dinh dưỡng thể thấp còi, mức độ vừa";
+            if (height <= standard.Sd3neg) return "Thấp còi nặng";
+            if (height <= standard.Sd2neg) return "Thấp còi";
             if (height <= standard.Sd1neg) return "Nguy cơ thấp còi";
-            if (height <= standard.Median) return "Bình thường";
+            if (height <= standard.Median) return "Bình thường thấp";
             if (height <= standard.Sd1pos) return "Bình thường";
             if (height <= standard.Sd2pos) return "Chiều cao trung bình khá";
             if (height <= standard.Sd3pos) return "Cao";
@@ -976,14 +954,14 @@ namespace Services.Implementations
         {
             if (standard == null) return "Không có dữ liệu chuẩn";
 
-            if (value <= standard.Sd3neg) return "Trẻ suy dinh dưỡng thể gầy còm, mức độ nặng";
-            if (value <= standard.Sd2neg) return "Trẻ suy dinh dưỡng thể gầy còm, mức độ vừa";
+            if (value <= standard.Sd3neg) return "Suy dinh dưỡng nặng";
+            if (value <= standard.Sd2neg) return "Suy dinh dưỡng";
             if (value <= standard.Sd1neg) return "Nguy cơ suy dinh dưỡng";
             if (value <= standard.Median) return "Bình thường thấp";
             if (value <= standard.Sd1pos) return "Bình thường";
             if (value <= standard.Sd2pos) return "Nguy cơ thừa cân/béo phì";
-            if (value <= standard.Sd3pos) return "Trẻ thừa cân";
-            return "Trẻ béo phì";
+            if (value <= standard.Sd3pos) return "Béo phì";
+            return "Béo phì nặng";
         }
 
         private string AssessHeadCircumferenceStatus(decimal headCircumference, GrowthStandard standard)
@@ -992,10 +970,10 @@ namespace Services.Implementations
 
             if (headCircumference <= standard.Sd3neg) return "Đầu rất nhỏ (Microcephaly)";
             if (headCircumference <= standard.Sd2neg) return "Đầu hơi nhỏ";
-            if (headCircumference <= standard.Sd1neg) return "Bình thường";
-            if (headCircumference <= standard.Median) return "Bình thường";
+            if (headCircumference <= standard.Sd1neg) return "Bình thường nhỏ";
+            if (headCircumference <= standard.Median) return "Bình thường thấp";
             if (headCircumference <= standard.Sd1pos) return "Bình thường";
-            if (headCircumference <= standard.Sd2pos) return "Bình thường";
+            if (headCircumference <= standard.Sd2pos) return "Bình thường lớn";
             if (headCircumference <= standard.Sd3pos) return "Đầu hơi to";
             return "Đầu rất to (Macrocephaly)";
         }
@@ -1033,183 +1011,55 @@ namespace Services.Implementations
             }
 
             // Đánh giá chiều cao
-            if (assessments.HeightStatus.Contains("mức độ nặng") || assessments.HeightStatus.Contains("mức độ vừa"))
+            if (assessments.HeightStatus.Contains("nặng") || assessments.HeightStatus.Contains("Thấp còi"))
             {
-                recommendations.Add("- 🏥 Cần tham vấn bác sĩ nhi khoa ngay");
-                recommendations.Add("- 🥛 Chú ý chế độ dinh dưỡng đặc biệt");
-                recommendations.Add("- 📊 Theo dõi sát sao chiều cao");
+                recommendations.Add("- 🏥 Cần tham vấn bác sĩ nhi khoa");
+                recommendations.Add("- 🥛 Chú ý chế độ dinh dưỡng");
             }
-            else if (assessments.HeightStatus.Contains("Nguy cơ thấp còi"))
+            else if (assessments.HeightStatus.Contains("Nguy cơ"))
             {
                 recommendations.Add("- 📊 Theo dõi sát chiều cao");
                 recommendations.Add("- 🏃‍♂️ Tăng cường vận động");
-                recommendations.Add("- 🥛 Cải thiện chế độ dinh dưỡng");
             }
 
             // Đánh giá cân nặng và BMI
-            if (assessments.WeightStatus.Contains("mức độ nặng") || assessments.BMIStatus.Contains("mức độ nặng") ||
-                assessments.WeightStatus.Contains("mức độ vừa") || assessments.BMIStatus.Contains("mức độ vừa"))
-            {
-                recommendations.Add("- 🏥 Cần tham vấn bác sĩ dinh dưỡng ngay");
-                recommendations.Add("- 🍎 Điều chỉnh chế độ ăn uống đặc biệt");
-                recommendations.Add("- 📊 Theo dõi sát sao cân nặng và BMI");
-            }
-            else if (assessments.WeightStatus.Contains("Nguy cơ suy dinh dưỡng") || assessments.BMIStatus.Contains("Nguy cơ suy dinh dưỡng"))
-            {
-                recommendations.Add("- 📊 Theo dõi cân nặng thường xuyên");
-                recommendations.Add("- 🍎 Cải thiện chế độ dinh dưỡng");
-            }
-            else if (assessments.WeightStatus.Contains("Nguy cơ thừa cân/béo phì") || assessments.BMIStatus.Contains("Nguy cơ thừa cân/béo phì"))
-            {
-                recommendations.Add("- 📊 Theo dõi cân nặng thường xuyên");
-                recommendations.Add("- 🏃‍♂️ Tăng cường vận động");
-                recommendations.Add("- 🍎 Điều chỉnh chế độ ăn uống");
-            }
-            else if (assessments.WeightStatus.Contains("Trẻ thừa cân") || assessments.BMIStatus.Contains("Trẻ thừa cân") ||
-                     assessments.WeightStatus.Contains("Trẻ béo phì") || assessments.BMIStatus.Contains("Trẻ béo phì"))
+            if (assessments.WeightStatus.Contains("nặng") || assessments.BMIStatus.Contains("nặng") ||
+                assessments.WeightStatus.Contains("Suy dinh dưỡng") || assessments.BMIStatus.Contains("Suy dinh dưỡng") ||
+                assessments.WeightStatus.Contains("Béo phì") || assessments.BMIStatus.Contains("Béo phì"))
             {
                 recommendations.Add("- 🏥 Cần tham vấn bác sĩ dinh dưỡng");
                 recommendations.Add("- 🍎 Điều chỉnh chế độ ăn uống");
-                recommendations.Add("- 🏃‍♂️ Tăng cường vận động");
+            }
+            else if (assessments.WeightStatus.Contains("Nguy cơ") || assessments.BMIStatus.Contains("Nguy cơ"))
+            {
+                recommendations.Add("- 📊 Theo dõi cân nặng thường xuyên");
             }
 
             // Đánh giá vòng đầu
-            if (assessments.HeadCircumferenceStatus.Contains("rất nhỏ") ||
-                assessments.HeadCircumferenceStatus.Contains("Microcephaly"))
+            if (assessments.HeadCircumferenceStatus.Contains("rất") ||
+                assessments.HeadCircumferenceStatus.Contains("Microcephaly") ||
+                assessments.HeadCircumferenceStatus.Contains("Macrocephaly"))
             {
-                recommendations.Add("- 🧠 Cần khám chuyên khoa thần kinh nhi ngay");
-                recommendations.Add("- 🔬 Kiểm tra sự phát triển não bộ");
-                recommendations.Add("- 📊 Theo dõi sát sao vòng đầu");
-            }
-            else if (assessments.HeadCircumferenceStatus.Contains("rất to") ||
-                     assessments.HeadCircumferenceStatus.Contains("Macrocephaly"))
-            {
-                recommendations.Add("- 🧠 Cần khám chuyên khoa thần kinh nhi ngay");
-                recommendations.Add("- 🔬 Kiểm tra áp lực nội sọ và não úng thủy");
-                recommendations.Add("- 📊 Theo dõi sát sao vòng đầu");
-            }
-            else if (assessments.HeadCircumferenceStatus.Contains("hơi nhỏ") ||
-                     assessments.HeadCircumferenceStatus.Contains("hơi to"))
-            {
-                recommendations.Add("- 📊 Theo dõi vòng đầu thường xuyên");
-                recommendations.Add("- 🔍 Quan sát các dấu hiệu bất thường");
+                recommendations.Add("- 🧠 Cần khám chuyên khoa thần kinh nhi");
             }
 
             // Khuyến nghị chung cho trường hợp bình thường
-            if ((assessments.HeightStatus.Contains("Bình thường") || assessments.HeightStatus.Contains("Chiều cao trung bình khá")) && 
-                (assessments.WeightStatus.Contains("Bình thường") || assessments.WeightStatus.Contains("Bình thường thấp")) && 
-                (assessments.BMIStatus.Contains("Bình thường") || assessments.BMIStatus.Contains("Bình thường thấp")))
+            if (assessments.HeightStatus.Contains("Bình thường") && 
+                assessments.WeightStatus.Contains("Bình thường") && 
+                assessments.BMIStatus.Contains("Bình thường"))
             {
                 recommendations.Add("- ✅ Trẻ đang phát triển bình thường");
                 recommendations.Add("- 📊 Tiếp tục theo dõi định kỳ");
-                recommendations.Add("- 🏃‍♂️ Duy trì chế độ dinh dưỡng và vận động hiện tại");
             }
+
+            recommendations.Add("");
+            recommendations.Add("🔄 **NÂNG CẤP VIP**");
+            recommendations.Add("- 📈 Xem dự đoán tăng trưởng chi tiết");
+            recommendations.Add("- 💊 Nhận khuyến nghị y khoa cụ thể");
+            recommendations.Add("- 📊 Phân tích xu hướng phát triển");
+            recommendations.Add("- 🎯 Lời khuyên cá nhân hóa");
 
             return string.Join("\n", recommendations);
-        }
-
-        // ✅ AI METHODS - Thay thế recommendations cố định bằng AI
-        private async Task<string> GenerateAIRecommendations(
-            List<GrowthRecord> recentRecords, 
-            List<PredictionDataPointDTO> predictions, 
-            PredictionQualityDTO quality, 
-            Child child)
-        {
-            try
-            {
-                _logger.LogInformation("🤖 Bắt đầu tạo AI recommendations cho trẻ {ChildId} - {ChildName}", child.ChildId, child.FullName);
-                
-                // Tạo context cho AI
-                var context = new GrowthAssessmentContext
-                {
-                    Child = new ChildInfo
-                    {
-                        ChildId = child.ChildId,
-                        FullName = child.FullName,
-                        BirthDate = child.BirthDate,
-                        Gender = child.Gender,
-                        AgeInMonths = (int)((decimal)(DateTime.Now - child.BirthDate).TotalDays / 30.44M)
-                    },
-                    RecentRecords = recentRecords,
-                    CurrentAssessment = await AssessCurrentStatus(recentRecords.Last(), child),
-                    Predictions = predictions,
-                    Quality = quality,
-                    HeightTrend = AnalyzeTrend(recentRecords.Select(r => (double)r.Height).ToList()),
-                    WeightTrend = AnalyzeTrend(recentRecords.Select(r => (double)r.Weight).ToList())
-                };
-
-                _logger.LogInformation("📊 Context AI đã tạo: Child={ChildName}, Records={RecordCount}, Predictions={PredictionCount}", 
-                    context.Child.FullName, context.RecentRecords.Count, context.Predictions.Count);
-
-                // Gọi AI để tạo khuyến nghị
-                var aiResult = await _aiService.GenerateGrowthRecommendationsAsync(context);
-                
-                _logger.LogInformation("✅ AI đã tạo recommendations thành công cho trẻ {ChildId}. Độ dài: {Length} ký tự", 
-                    child.ChildId, aiResult?.Length ?? 0);
-                
-                return aiResult;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ LỖI AI: Không thể tạo AI recommendations cho trẻ {ChildId} - {ChildName}. Lỗi: {ErrorMessage}", 
-                    child.ChildId, child.FullName, ex.Message);
-                _logger.LogWarning("🔄 Fallback về recommendations cố định cho trẻ {ChildId}", child.ChildId);
-                
-                // Fallback về recommendations cũ nếu AI lỗi
-                return await GenerateEnhancedRecommendations(recentRecords, predictions, quality, child);
-            }
-        }
-
-        private async Task<string> GenerateAIBasicRecommendations(
-            GrowthAssessmentsDTO assessments, 
-            bool isUsingClosestAge, 
-            int requestedAge, 
-            int? standardAge, 
-            Child child, 
-            GrowthRecord record)
-        {
-            try
-            {
-                _logger.LogInformation("🤖 Bắt đầu tạo AI basic recommendations cho trẻ {ChildId} - {ChildName}", child.ChildId, child.FullName);
-                
-                // Tạo context cho AI
-                var context = new BasicAssessmentContext
-                {
-                    Child = new ChildInfo
-                    {
-                        ChildId = child.ChildId,
-                        FullName = child.FullName,
-                        BirthDate = child.BirthDate,
-                        Gender = child.Gender,
-                        AgeInMonths = requestedAge
-                    },
-                    CurrentRecord = record,
-                    Assessment = assessments,
-                    IsUsingClosestAge = isUsingClosestAge,
-                    StandardAgeInMonths = standardAge,
-                    RequestedAgeInMonths = requestedAge
-                };
-
-                _logger.LogInformation("📊 Basic Assessment Context: Child={ChildName}, Age={RequestedAge}, UsingClosestAge={IsUsingClosestAge}", 
-                    context.Child.FullName, context.RequestedAgeInMonths, context.IsUsingClosestAge);
-
-                // Gọi AI để tạo khuyến nghị
-                var aiResult = await _aiService.GenerateBasicAssessmentRecommendationsAsync(context);
-                
-                _logger.LogInformation("✅ AI đã tạo basic recommendations thành công cho trẻ {ChildId}. Độ dài: {Length} ký tự", 
-                    child.ChildId, aiResult?.Length ?? 0);
-                
-                return aiResult;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ LỖI AI: Không thể tạo AI basic recommendations cho trẻ {ChildId} - {ChildName}. Lỗi: {ErrorMessage}", 
-                    child.ChildId, child.FullName, ex.Message);
-                _logger.LogWarning("🔄 Fallback về basic recommendations cố định cho trẻ {ChildId}", child.ChildId);
-                
-                // Fallback về recommendations cũ nếu AI lỗi
-                return GenerateBasicRecommendations(assessments, isUsingClosestAge, requestedAge, standardAge);
-            }
         }
     }
 }
