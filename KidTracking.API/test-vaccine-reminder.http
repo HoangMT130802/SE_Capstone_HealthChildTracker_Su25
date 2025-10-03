@@ -1,0 +1,72 @@
+### Health Child Tracker - Vaccine Reminder API Testing
+### ✅ FIXED: Sử dụng đúng data structure và mapper
+
+### Variables
+@baseUrl = https://localhost:7000
+@token = your-jwt-token-here
+@adminToken = your-admin-jwt-token-here
+
+### 1. Test Vaccine Reminder Email (Admin only)
+POST {{baseUrl}}/api/vaccinereminder/test-email
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "your-test-email@gmail.com",
+  "emailType": "vaccine"
+}
+
+### 2. Test Appointment Reminder Email (Admin only)
+POST {{baseUrl}}/api/vaccinereminder/test-email
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "your-test-email@gmail.com",
+  "emailType": "appointment"
+}
+
+### 3. Test Vaccination Completion Email (Admin only)
+POST {{baseUrl}}/api/vaccinereminder/test-email
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "your-test-email@gmail.com",
+  "emailType": "completion"
+}
+
+### 4. Get Upcoming Vaccine Reminders
+GET {{baseUrl}}/api/vaccinereminder/upcoming-vaccine-reminders?daysAhead=7
+Authorization: Bearer {{token}}
+
+### 5. Get Upcoming Appointment Reminders
+GET {{baseUrl}}/api/vaccinereminder/upcoming-appointment-reminders?daysAhead=3
+Authorization: Bearer {{token}}
+
+### 6. Send Manual Vaccine Reminder (replace with actual IDs)
+POST {{baseUrl}}/api/vaccinereminder/send-vaccine-reminder/1/1
+Authorization: Bearer {{token}}
+
+### 7. Send Manual Appointment Reminder (replace with actual ID)
+POST {{baseUrl}}/api/vaccinereminder/send-appointment-reminder/1
+Authorization: Bearer {{token}}
+
+### 8. Send Vaccination Completion Notification (replace with actual IDs)
+POST {{baseUrl}}/api/vaccinereminder/send-completion-notification/1/1
+Authorization: Bearer {{token}}
+
+### 9. Trigger Daily Reminders Manually (Admin only)
+POST {{baseUrl}}/api/vaccinereminder/trigger-daily-reminders
+Authorization: Bearer {{adminToken}}
+
+### 10. Test Authentication (to get token)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "accountName": "your-username",
+  "password": "your-password"
+}
+
+###
