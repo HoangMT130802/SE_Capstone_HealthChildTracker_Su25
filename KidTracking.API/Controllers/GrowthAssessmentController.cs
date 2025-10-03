@@ -38,9 +38,7 @@ namespace KidTracking.API.Controllers
         /// Đánh giá tăng trưởng dựa trên bản ghi cụ thể
         /// </summary>
         [HttpGet("record/{recordId}")]
-        [ProducesResponseType(typeof(GrowthAssessmentDTO), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+      
         public async Task<ActionResult<GrowthAssessmentDTO>> AssessGrowthByRecordId(int recordId)
         {
             try
@@ -74,9 +72,7 @@ namespace KidTracking.API.Controllers
         /// Đánh giá tăng trưởng cho bản ghi mới nhất của trẻ
         /// </summary>
         [HttpGet("child/{childId}/latest")]
-        [ProducesResponseType(typeof(GrowthAssessmentDTO), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+      
         public async Task<ActionResult<GrowthAssessmentDTO>> AssessLatestGrowthByChildId(int childId)
         {
             try
@@ -115,10 +111,7 @@ namespace KidTracking.API.Controllers
         /// Dự đoán tăng trưởng tương lai cho trẻ
         /// </summary>
         [HttpGet("child/{childId}/prediction")]
-        [ProducesResponseType(typeof(GrowthPredictionDTO), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+       
         public async Task<ActionResult<GrowthPredictionDTO>> PredictGrowthByChildId(
             int childId, 
             [FromQuery] int days = 90)

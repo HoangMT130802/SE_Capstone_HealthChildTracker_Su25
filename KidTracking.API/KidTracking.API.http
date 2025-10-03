@@ -1,0 +1,117 @@
+@KidTracking.API_HostAddress = http://localhost:5000
+
+### Test Authentication
+POST {{KidTracking.API_HostAddress}}/api/authentication/login
+Content-Type: application/json
+
+{
+    "Email": "manager@facility1.com",
+    "Password": "password123"
+}
+
+### 
+
+### ===============================
+### SCHEDULE SLOT TESTS
+### ===============================
+
+@token = {{login.response.body.$.token}}
+
+### 1. Get All Slots (Admin only)
+GET {{KidTracking.API_HostAddress}}/api/scheduleslots
+Authorization: Bearer {{token}}
+
+### 2. Get My Facility Slots (Manager/Staff/Doctor/Member)
+GET {{KidTracking.API_HostAddress}}/api/scheduleslots/my-facility
+Authorization: Bearer {{token}}
+
+### 3. Get Slots by Facility ID (Admin/Member)
+GET {{KidTracking.API_HostAddress}}/api/scheduleslots/facility/1
+Authorization: Bearer {{token}}
+
+### 4. Get Slot by ID
+GET {{KidTracking.API_HostAddress}}/api/scheduleslots/1
+Authorization: Bearer {{token}}
+
+### 🔥 CREATE Working Hours Slots - Tạo slots tự động
+POST {{KidTracking.API_HostAddress}}/api/scheduleslots
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startTime": "08:00",
+  "endTime": "17:00",
+  "slotDurationMinutes": 60,
+  "lunchBreakStart": "12:00",
+  "lunchBreakEnd": "13:00",
+  "maxCapacity": 20,
+  "status": "Available"
+}
+
+### 🔥 CREATE Working Hours Slots - Không có lunch break
+POST {{KidTracking.API_HostAddress}}/api/scheduleslots
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startTime": "09:00",
+  "endTime": "16:00",
+  "slotDurationMinutes": 30,
+  "maxCapacity": 15,
+  "status": "Available"
+}
+
+### 🔥 CREATE Working Hours Slots - Slot 2 tiếng
+POST {{KidTracking.API_HostAddress}}/api/scheduleslots
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startTime": "08:00",
+  "endTime": "18:00",
+  "slotDurationMinutes": 120,
+  "lunchBreakStart": "12:00",
+  "lunchBreakEnd": "13:00",
+  "maxCapacity": 50,
+  "status": "Available"
+}
+
+### ===============================
+### WORKING HOURS GROUP MANAGEMENT
+### ===============================
+
+### 🔥 GET Working Hours Groups - Lấy tất cả working hours groups
+GET {{KidTracking.API_HostAddress}}/api/scheduleslots/working-hours-groups
+Authorization: Bearer {{token}}
+
+### 🔥 GET Slots by Working Hours Group - Lấy slots theo GroupId
+GET {{KidTracking.API_HostAddress}}/api/scheduleslots/working-hours-groups/WH_1_20250125_12345678/slots
+Authorization: Bearer {{token}}
+
+### 7. Update Slot (Manager only)
+PUT {{KidTracking.API_HostAddress}}/api/scheduleslots/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "MaxCapacity": 15,
+    "Status": "Available"
+}
+
+### 8. Update Slot Status (Manager only)
+PUT {{KidTracking.API_HostAddress}}/api/scheduleslots/1/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+"Unavailable"
+
+### 9. Delete Single Slot (Manager only)
+DELETE {{KidTracking.API_HostAddress}}/api/scheduleslots/1
+Authorization: Bearer {{token}}
+
+### 10. Delete Multiple Slots (Manager only)
+DELETE {{KidTracking.API_HostAddress}}/api/scheduleslots/batch
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+[1, 2, 3, 4, 5]
